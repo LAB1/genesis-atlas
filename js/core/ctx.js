@@ -159,6 +159,7 @@
     this._loops = [];
     this._timers.forEach(function (id) { clearTimeout(id); });
     this._timers = [];
+    if (this._bt) { var ws = this._bt.waiters; this._bt.waiters = []; ws.forEach(function (w) { w.res(); }); }
     if (keepCanvas) return;
     if (this._canvas && this._canvas.parentNode) this._canvas.parentNode.removeChild(this._canvas);
     this._canvas = null;
@@ -357,7 +358,9 @@
   /* ---------- text ---------- */
   P.text = function (x, y, str, o) {
     o = o || {};
-    var fam = { sans: 'f-sans', mono: 'f-mono', display: 'f-display' }[o.font || 'sans'];
+    var fnt = o.font || 'sans';
+    if (o.pre && (fnt === 'mono' || fnt === 'sans')) fnt = 'code';   /* column-aligned text needs a real monospace */
+    var fam = { sans: 'f-sans', mono: 'f-mono', display: 'f-display', code: 'f-code', serif: 'f-serif' }[fnt] || 'f-sans';
     var e = this.el('text', {
       x: x, y: y, fill: colorOf(o.color || C.text), 'font-size': o.size || 16,
       'text-anchor': o.anchor || 'start', 'font-weight': o.weight || 400, 'class': fam,
@@ -447,14 +450,14 @@
     if (kind === 'cyl') {
       var ry = Math.min(14, h * 0.18);
       body = this.path('M' + x0 + ',' + (y0 + ry) + ' A' + w / 2 + ',' + ry + ' 0 0 1 ' + (x0 + w) + ',' + (y0 + ry) +
-        ' V' + (y0 + h - ry) + ' A' + w / 2 + ',' + ry + ' 0 0 1 ' + x0 + ',' + (y0 + h - ry) + ' Z', { fill: fill, stroke: col, sw: 1.6, parent: g });
+        ' V' + (y0 + h - ry) + ' A' + w / 2 + ',' + ry + ' 0 0 1 ' + x0 + ',' + (y0 + h - ry) + ' Z', { fill: fill, stroke: col, sw: 1.3, parent: g });
       this.path('M' + x0 + ',' + (y0 + ry) + ' A' + w / 2 + ',' + ry + ' 0 0 0 ' + (x0 + w) + ',' + (y0 + ry), { stroke: col, sw: 1.2, parent: g, opacity: 0.8 });
     } else if (kind === 'hex') {
       var k = Math.min(22, h / 2);
       body = this.poly([[x0 + k, y0], [x0 + w - k, y0], [x0 + w, y0 + h / 2], [x0 + w - k, y0 + h], [x0 + k, y0 + h], [x0, y0 + h / 2]], { fill: fill, stroke: col, sw: 1.6, parent: g });
     } else {
-      var rx = kind === 'pill' ? h / 2 : (kind === 'chip' ? 4 : 10);
-      body = this.rect(x0, y0, w, h, { rx: rx, fill: fill, stroke: col, sw: kind === 'ghost' ? 1.2 : 1.6, dash: kind === 'ghost' ? '5 5' : null, parent: g });
+      var rx = kind === 'pill' ? h / 2 : (kind === 'chip' ? 5 : 14);
+      body = this.rect(x0, y0, w, h, { rx: rx, fill: fill, stroke: col, sw: kind === 'ghost' ? 1.1 : 1.3, dash: kind === 'ghost' ? '4 6' : null, parent: g });
       if (kind === 'chip') {
         for (var i = 1; i < 5; i++) {
           var px = x0 + (w * i) / 5;
@@ -464,11 +467,6 @@
       }
     }
     if (o.glow !== false) body.setAttribute('filter', 'url(#fx-glow)');
-    /* corner ticks (tech accent) */
-    if (kind === 'box') {
-      this.path('M' + (x0 + 2) + ',' + (y0 + 12) + ' V' + (y0 + 2) + ' H' + (x0 + 12), { stroke: col, sw: 2.2, parent: g });
-      this.path('M' + (x0 + w - 2) + ',' + (y0 + h - 12) + ' V' + (y0 + h - 2) + ' H' + (x0 + w - 12), { stroke: col, sw: 2.2, parent: g });
-    }
     var tx = o.x, anchor = 'middle';
     if (o.icon) {
       var isz = Math.min(28, h * 0.5);
@@ -482,10 +480,10 @@
     var ts = o.titleSize || 16, ss = o.subSize || 12;
     if (o.title) {
       var ty = o.sub ? o.y - ss * 0.65 : o.y;
-      g.titleEl = this.text(tx, ty, o.title, { size: ts, weight: 600, color: C.white, anchor: anchor, font: 'display', parent: g });
+      g.titleEl = this.text(tx, ty, o.title, { size: ts, weight: 650, color: C.white, anchor: anchor, font: 'display', parent: g });
     }
     if (o.sub) {
-      g.subEl = this.text(tx, o.y + ts * 0.7, o.sub, { size: ss, color: hexA(col, 0.9), anchor: anchor, font: 'mono', parent: g });
+      g.subEl = this.text(tx, o.y + ts * 0.7, o.sub, { size: ss, color: hexA(col, 0.92), anchor: anchor, font: 'sans', weight: 500, parent: g });
     }
     g.body = body;
     g.color = col;
@@ -661,14 +659,14 @@
     this.rect(o.x, o.y, o.w, h, { rx: 10, fill: 'rgba(6,12,24,0.92)', stroke: hexA(col, 0.55), sw: 1.2, parent: g });
     this.rect(o.x, o.y, o.w, 28, { rx: 10, fill: hexA(col, 0.12), parent: g });
     [0, 1, 2].forEach(function (i) { self.circle(o.x + 16 + i * 14, o.y + 14, 4, { fill: [C.red, C.amber, C.lime][i], opacity: 0.8, parent: g }); });
-    if (o.title) this.text(o.x + 64, o.y + 14.5, o.title, { size: 12, color: hexA(col, 0.95), font: 'mono', parent: g });
+    if (o.title) this.text(o.x + 64, o.y + 14.5, o.title, { size: 12, color: hexA(col, 0.95), font: 'sans', weight: 500, parent: g });
     g.lineEls = [];
     g.h = h;
     g.box = { x: o.x, y: o.y, w: o.w, h: h, cx: o.x + o.w / 2, cy: o.y + h / 2, l: o.x, r: o.x + o.w, t: o.y, b: o.y + h };
     var n = 0;
     g.addLine = function (str, instantLine) {
       var y = o.y + 46 + n * lh; n++;
-      var t = self.text(o.x + 16, y, '', { size: size, font: 'mono', color: C.text, parent: g, baseline: 'middle', pre: true });
+      var t = self.text(o.x + 16, y, '', { size: size, font: 'code', color: C.text, parent: g, baseline: 'middle', pre: true });
       g.lineEls.push(t);
       if (self.instant || instantLine || !o.typing) { highlight(t, str, o.lang); return Promise.resolve(); }
       var chars = str.length;
@@ -983,6 +981,19 @@
     this._canvasApi = { ctx2d: c2, canvas: cv, W: W, H: H };
     this._syncCanvas();
     return this._canvasApi;
+  };
+
+  /* Beat gates. A step may be split into beats (see docs/SCENE_API.md): the animation of beat k starts
+   * only after `await ctx.beat(k)`. Call ctx.beat(k+1) AFTER beat k's animations have finished; it
+   * both reports 'segment k is done' to the engine and waits until the engine (or the user, in Step
+   * mode) enters beat k+1. Outside a step run (fast-forward rebuilds) it resolves immediately. */
+  P.beat = function (k) {
+    var b = this._bt;
+    if (!b || this.dead || !(k > 0)) return Promise.resolve();
+    if (k > b.reached) b.reached = k;
+    if (b.onProgress) b.onProgress();
+    if (k <= b.entered) return Promise.resolve();
+    return new Promise(function (res) { b.waiters.push({ k: k, res: res }); });
   };
 
   /* notify the engine/drawer of a key metric or callout (shown in the HUD) */
