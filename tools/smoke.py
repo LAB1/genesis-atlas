@@ -3,7 +3,8 @@
 usage:
   python tools/smoke.py [scene-id ...]        build + animated replay + beat-gate + seek-consistency checks
   python tools/smoke.py --nav                 navigation: zoom in/out, backward jumps, tour, map, references
-  python tools/smoke.py --layout [id ...]     layout audit at the end of every beat  [--theme light] [--json out.json]
+  python tools/smoke.py --layout [id ...]     layout audit at the end of every beat  [--viewport 1366x768] [--json out.json]
+  (--viewport also works for the other modes; the title block and rails are laid out for that window size)
 """
 import json
 import os
@@ -30,7 +31,7 @@ def pop_opt(args, name, takes_value=False):
     return val
 
 
-def run_browser(query, timeout=600):
+def run_browser(query, timeout=600, viewport='1600x900'):
     exe = next((b for b in BROWSERS if os.path.exists(b)), None)
     if not exe:
         print('no Edge/Chrome found')
@@ -39,7 +40,7 @@ def run_browser(query, timeout=600):
     prof = os.path.join(os.environ.get('TEMP', ROOT), 'atlas-smoke-%d' % os.getpid())
     cmd = [exe, '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--mute-audio',
            '--user-data-dir=' + prof, '--allow-file-access-from-files', '--virtual-time-budget=900000',
-           '--window-size=1600,900', '--dump-dom', url]
+           '--window-size=' + viewport.replace('x', ','), '--dump-dom', url]
     try:
         out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout).stdout.decode('utf-8', 'replace')
     except subprocess.TimeoutExpired:
@@ -62,6 +63,7 @@ def main():
     layout = pop_opt(args, '--layout')
     theme = pop_opt(args, '--theme', True)
     out_json = pop_opt(args, '--json', True)
+    viewport = pop_opt(args, '--viewport', True) or '1600x900'
     ids = args
     q = '?smoke'
     if nav:
@@ -72,7 +74,7 @@ def main():
         q += '=' + ','.join(ids)
     if theme:
         q += '&theme=' + theme
-    report = run_browser(q)
+    report = run_browser(q, viewport=viewport)
 
     if layout:
         rec = report[0]

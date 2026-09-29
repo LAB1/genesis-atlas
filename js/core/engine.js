@@ -1,22 +1,37 @@
 /* Atlas engine: scene registry, navigation, zoom transitions, beat-by-beat playback (Auto / Step),
- * narration sync, callout cards, progressive deep-dive rail, references page, settings, themes. */
+ * narration + captions, callout cards, progressive deep-dive rail, settings, themes, layout. */
 (function () {
   'use strict';
   var NS = 'http://www.w3.org/2000/svg';
   var X = window.AtlasCtx;
   var W = X.W, H = X.H, C = X.C;
   var N = window.AtlasNarrator;
+  var R = window.AtlasRefs;
 
   function $(s) { return document.querySelector(s); }
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   function h(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function strip(html) { var d = document.createElement('div'); d.innerHTML = html || ''; return (d.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function strip(html) { return R.strip(html); }
   function words(s) { s = String(s || '').trim(); return s ? s.split(/\s+/).length : 0; }
   function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } return null; }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
 
-  var DEFAULTS = { mode: 'auto', rate: 1, pause: 1, voiceMode: 'studio', voiceName: '', theme: 'dark', rails: true };
+  var SETTINGS_KEY = 'atlas.settings.v2';
+  /* playMode: 'step' = one point per press; 'topic' = press Play once, the topic plays through with pauses;
+   * 'auto' = plays everything and opens each new topic by itself. Derived: settings.mode ('step'|'auto') is
+   * how points advance inside a topic, settings.autoStart says whether a newly opened topic starts alone. */
+  var DEFAULTS = { playMode: 'topic', rate: 0.9, pause: 1, voiceMode: 'browser', voiceName: '', theme: 'dark', rails: true, deep: null, captions: true };
+  function derivePlayMode(s) {
+    if (['step', 'topic', 'auto'].indexOf(s.playMode) < 0) s.playMode = 'topic';
+    s.mode = s.playMode === 'step' ? 'step' : 'auto';
+    s.autoStart = s.playMode === 'auto';
+  }
+  var ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+  var ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 4l12 8-12 8z"/></svg>';
+  var ICON_SPK_ON = '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  var ICON_SPK_OFF = '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9.5l5 5M22 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  var CHECK_SVG = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
   var Engine = {
     scenes: {},          /* registered implementations */
@@ -24,7 +39,7 @@
     order: [],
     cur: null,           /* { id, ctx, wrap, step, bt, beatIdx, idle, wait } */
     settings: Object.assign({}, DEFAULTS),
-    playing: true,       /* auto mode only: false = paused */
+    voicePaused: false,  /* the user paused narration / autoplay */
     tour: null,          /* { list, i, name } */
     visited: {},
     speed: 1,
@@ -61,27 +76,6 @@
     window.ATLAS_TOURS.deep = dfs;
   }
 
-  /* global reference numbering: identical references in different chambers share one number */
-  function buildRefs() {
-    var byKey = {};
-    Engine.refList = [];
-    Engine.order.forEach(function (m) {
-      var impl = Engine.scenes[m.id];
-      if (!impl) return;
-      impl._refNums = [];
-      (impl.refs || []).forEach(function (r) {
-        var key = strip(r).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-        var e = byKey[key];
-        if (!e) {
-          e = { n: Engine.refList.length + 1, html: r, text: strip(r), scenes: [] };
-          byKey[key] = e; Engine.refList.push(e);
-        }
-        if (e.scenes.indexOf(m.id) < 0) e.scenes.push(m.id);
-        impl._refNums.push(e.n);
-      });
-    });
-  }
-
   /* ---------------- frame driver ---------------- */
   Engine._wake = function () {
     if (Engine._raf) return;
@@ -102,7 +96,6 @@
       if (p >= 1) { tw.done = true; tw.resolve(); } else active = true;
     }
     Engine._etweens = tws.filter(function (t) { return !t.done; });
-    if (Engine._leaving && Engine._leaving.ctx && !Engine._leaving.ctx.dead) { if (Engine._leaving.ctx._tick(now, dt)) active = true; }
     if (Engine.cur && Engine.cur.ctx && Engine.cur.ctx._tick(now, dt)) active = true;
     if (active || Engine._etweens.length) Engine._raf = requestAnimationFrame(Engine._frame);
     else Engine._raf = 0;
@@ -201,9 +194,16 @@
     Engine._busy = true;
     stopAll();
     var prev = Engine.cur;
-    var step = Math.max(0, opts.step || 0);
     var impl = Engine.impl(id);
-    step = Math.min(step, Math.max(0, (impl.steps || []).length - 1));
+    var lastStep = Math.max(0, (impl.steps || []).length - 1);
+    /* Where to land. An explicit step starts fresh there (progress list, deep link, tour). Otherwise the chamber
+     * returns to where the learner left it. Back lands on the finished last step (its zoom targets are visible). */
+    var mode = 'fresh', step = 0, beat = opts.beat || 0;
+    if (opts.step !== undefined) step = clamp(opts.step, 0, lastStep);
+    else if (!opts.fresh && !Engine._forceFresh && Engine.pos[id]) { mode = 'restore'; step = clamp(Engine.pos[id].s, 0, lastStep); beat = Engine.pos[id].b; }
+    else if (opts.landOnEnd) { mode = 'restore'; step = lastStep; beat = 1e9; }
+    Engine._last = id;
+    posSave();
     var trans = opts.transition;
     if (!trans) {
       if (!prev) trans = 'fade';
@@ -229,9 +229,330 @@
         teardown(prev);
         Engine._busy = false;
         if (Engine._queued) { var q = Engine._queued; Engine._queued = null; return Engine.go(q[0], q[1]); }
-        return Engine.playStep(step, { startBeat: opts.beat || 0 });
+        /* a newly opened topic waits for Play, unless the user chose Auto (or this call insists) */
+        if (mode === 'restore') return Engine.restoreStep(step, beat);
+        var autostart = opts.autostart !== undefined ? opts.autostart : (Engine._forceAutoStart || Engine.settings.autoStart);
+        if (autostart) return Engine.playStep(step, { startBeat: beat });
+        return Engine.prepareStep(step, { startBeat: beat });
       });
     });
+  };
+
+  /* Show a step's frame (title, panels reset) without running anything; wait for Play / Next / Space. */
+  Engine.prepareStep = function (k, opts) {
+    opts = opts || {};
+    var cur = Engine.cur;
+    if (!cur) return Promise.resolve();
+    var steps = cur.impl.steps || [];
+    if (k < 0 || k >= steps.length) return Promise.resolve();
+    clearTimer(); N.stop();
+    Engine.voicePaused = false;
+    ++Engine._stepToken;
+    var st = steps[k], bs = beatsOf(st);
+    cur.step = k; cur.idle = false; cur.wait = null; cur.beatIdx = -1;
+    cur.bt = newBt(bs.length, st._gated);
+    cur.ctx._bt = cur.bt;
+    cur.pending = { step: k, startBeat: opts.startBeat || 0 };
+    renderStepStart(cur, st, bs);
+    writeHash();
+    $('#start-sum').textContent = cur.meta.summary || '';
+    showStart(true);
+    showPoster(cur.id);
+    setReady(true);
+    updatePlayBtn();
+    return Promise.resolve();
+  };
+
+  function showStart(on) { $('#start').classList.toggle('hidden', !on); if (!on) hidePoster(); }
+
+  /* the user asked to begin the waiting topic */
+  Engine.startPending = function () {
+    var cur = Engine.cur;
+    if (!cur || !cur.pending || Engine._busy) return;
+    var p = cur.pending;
+    cur.pending = null;
+    showStart(false);
+    return Engine.playStep(p.step, { startBeat: p.startBeat });
+  };
+
+  /* ================================================================
+   * POSTER: the backdrop of a paused (not yet started) topic is the topic's complete system diagram.
+   * The scene is replayed silently and instantly; the step whose picture holds the most visible text and
+   * nodes is cloned as a static SVG and shown dimmed behind the "Play this topic" prompt.
+   * ================================================================ */
+  Engine._posters = {};
+  function layerScore(layer) {
+    var s = 0;
+    Array.prototype.forEach.call(layer.querySelectorAll('text'), function (t) {
+      if (!(t.textContent || '').trim()) return;
+      var o = 1;
+      for (var n = t; n && n !== layer.parentNode; n = n.parentNode) {
+        var a = n.getAttribute && n.getAttribute('opacity');
+        if (a !== null && a !== undefined && a !== '') o *= parseFloat(a);
+      }
+      if (o > 0.4) s++;
+    });
+    return s + layer.querySelectorAll('g.node').length * 2;
+  }
+
+  Engine.makePoster = function (id) {
+    if (Engine._posters[id] !== undefined) return Promise.resolve(Engine._posters[id]);
+    if (!Engine.scenes[id]) { Engine._posters[id] = null; return Promise.resolve(null); }
+    var steps = Engine.impl(id).steps || [];
+    Engine._noHud = true;
+    return Engine._build(id, 0).then(function (s) {
+      s.wrap.setAttribute('visibility', 'hidden');
+      var best = null, bestScore = -1, chain = Promise.resolve();
+      steps.forEach(function (st) {
+        chain = chain.then(function () { s.ctx.instant = true; s.ctx._bt = null; return st.run ? st.run(s.ctx) : null; })
+          .catch(function () { /* a glitching step just contributes nothing */ })
+          .then(function () {
+            var sc = layerScore(s.ctx.layer);
+            if (sc >= bestScore) { bestScore = sc; best = s.ctx.layer.cloneNode(true); }
+          });
+      });
+      return chain.then(function () {
+        teardown(s);
+        Engine._noHud = false;
+        if (best) { best.removeAttribute('transform'); best.removeAttribute('class'); }
+        Engine._posters[id] = best;
+        return best;
+      });
+    }).catch(function (err) { Engine._noHud = false; console.error('poster', err); return null; });
+  };
+
+  function showPoster(id) {
+    var g = $('#poster');
+    g.innerHTML = '';
+    g.classList.remove('show');
+    Engine.makePoster(id).then(function (p) {
+      var cur = Engine.cur;
+      if (!p || !cur || cur.id !== id || !cur.pending) return;
+      g.appendChild(p.cloneNode(true));
+      void g.getBBox;                                   /* flush before fading in */
+      g.classList.add('show');
+    });
+  }
+  function hidePoster() {
+    var g = $('#poster');
+    if (!g) return;
+    g.classList.remove('show');
+    setTimeout(function () { if (!g.classList.contains('show')) g.innerHTML = ''; }, 650);
+  }
+
+  /* ================================================================
+   * PROGRESS: "played" is recorded automatically as points are shown; "learned" is the learner's own
+   * commitment (a checkbox). The two are kept and displayed separately.
+   * ================================================================ */
+  var PROG_KEY = 'atlas.progress.v1';
+  Engine.progress = { p: {}, l: {} };
+  var progOpen = {}, progHideLearned = false;
+  function progLoad() { var d = store(PROG_KEY) || {}; Engine.progress = { p: d.p || {}, l: d.l || {} }; }
+  function progSave() { store(PROG_KEY, Engine.progress); }
+  function skey(id, i) { return id + '/' + i; }
+
+  function markPlayed(id, step, j) {
+    var k = skey(id, step), n = j + 1;
+    if ((Engine.progress.p[k] || 0) >= n) return;
+    Engine.progress.p[k] = n;
+    progSave();
+    progRender();
+  }
+  function playState(id, i) {
+    var n = Engine.progress.p[skey(id, i)] || 0;
+    if (!n) return 0;
+    var st = (Engine.impl(id).steps || [])[i];
+    return n >= (st ? beatsOf(st).length : 1) ? 2 : 1;
+  }
+  function chamberStats(id) {
+    var steps = Engine.impl(id).steps || [], r = { n: steps.length, played: 0, part: 0, learned: 0 };
+    steps.forEach(function (st, i) {
+      var ps = playState(id, i);
+      if (ps === 2) r.played++; else if (ps === 1) r.part++;
+      if (Engine.progress.l[skey(id, i)]) r.learned++;
+    });
+    return r;
+  }
+  Engine.setLearned = function (id, i, on) {
+    if (on) Engine.progress.l[skey(id, i)] = 1; else delete Engine.progress.l[skey(id, i)];
+    progSave(); progRender();
+  };
+  Engine.setChamberLearned = function (id, on) {
+    (Engine.impl(id).steps || []).forEach(function (st, i) { if (on) Engine.progress.l[skey(id, i)] = 1; else delete Engine.progress.l[skey(id, i)]; });
+    progSave(); progRender();
+  };
+
+  Engine.jumpTo = function (id, step) {
+    closeProgress();
+    Engine.tour = null;
+    var cur = Engine.cur;
+    if (cur && cur.id === id && !cur.pending && !Engine._busy) return Engine.gotoStep(step);
+    return Engine.go(id, { step: step, transition: 'fade' });
+  };
+
+  function progRender() {
+    if (!$('#map').classList.contains('hidden')) renderMap();      /* the map shows the same numbers */
+    var panel = $('#prog');
+    if (!panel || panel.classList.contains('hidden')) return;
+    var sc = $('#prog-scroll'), top = sc.scrollTop;
+    var tree = $('#prog-tree');
+    tree.innerHTML = '';
+    var tot = 0, pl = 0, le = 0;
+    Engine.order.forEach(function (m) { var s = chamberStats(m.id); tot += s.n; pl += s.played; le += s.learned; });
+    tot = tot || 1;
+    $('#prog-sum').innerHTML =
+      '<div class="pg"><b>' + pl + '</b><span>of ' + tot + ' steps played</span><div class="bar"><i style="width:' + (100 * pl / tot).toFixed(1) + '%"></i></div></div>' +
+      '<div class="pg l"><b>' + le + '</b><span>of ' + tot + ' marked learned</span><div class="bar"><i style="width:' + (100 * le / tot).toFixed(1) + '%"></i></div></div>';
+    $('#prog-filter').textContent = progHideLearned ? 'Show learned' : 'Hide learned';
+    var curId = Engine.cur && Engine.cur.id, curStep = Engine.cur ? Engine.cur.step : -1;
+
+    function addChamber(m, parentEl) {
+      var steps = Engine.impl(m.id).steps || [], s = chamberStats(m.id);
+      var open = progOpen[m.id] === undefined ? (m.id === curId || (curId && Engine.isAncestor(m.id, curId))) : progOpen[m.id];
+      var box = h('div', 'pc' + (open ? ' open' : '') + (m.id === curId ? ' cur' : ''));
+      box.style.setProperty('--c', m.colorHex);
+      var head = h('div', 'pc-head');
+      var chev = h('button', 'chev', '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>');
+      chev.title = open ? 'Collapse' : 'Show steps';
+      chev.onclick = function () { progOpen[m.id] = !open; progRender(); };
+      var all = s.n > 0 && s.learned === s.n;
+      var ck = h('button', 'ck' + (all ? ' on' : (s.learned ? ' part' : '')), CHECK_SVG);
+      ck.title = all ? 'Unmark every step of this chamber' : 'Mark every step of this chamber as learned';
+      ck.onclick = function () { Engine.setChamberLearned(m.id, !all); };
+      var ttl = h('button', 'pc-title', '<i>L' + m.level + '</i>' + esc(m.title));
+      ttl.title = 'Open this chamber';
+      ttl.onclick = function () { closeProgress(); Engine.tour = null; Engine.go(m.id); };
+      var cnt = h('span', 'pc-count', '<span title="steps played">' + s.played + '/' + s.n + '</span><span class="l" title="steps marked learned">' + s.learned + '/' + s.n + '</span>');
+      var pct = function (v) { return s.n ? (100 * v / s.n).toFixed(1) : 0; };
+      var bars = h('div', 'dbar', '<i class="p" style="width:' + pct(s.played) + '%"></i><i class="l" style="width:' + pct(s.learned) + '%"></i>');
+      head.appendChild(chev); head.appendChild(ck); head.appendChild(ttl); head.appendChild(cnt); head.appendChild(bars);
+      box.appendChild(head);
+      if (open) {
+        var list = h('div', 'pc-steps');
+        steps.forEach(function (st, i) {
+          var learned = !!Engine.progress.l[skey(m.id, i)];
+          if (progHideLearned && learned) return;
+          var ps = playState(m.id, i);
+          var row = h('div', 'ps' + (learned ? ' done' : '') + (m.id === curId && i === curStep ? ' cur' : ''));
+          var c2 = h('button', 'ck' + (learned ? ' on' : ''), CHECK_SVG);
+          c2.title = learned ? 'Learned: click to unmark' : 'Mark as learned';
+          c2.onclick = function () { Engine.setLearned(m.id, i, !learned); };
+          var pr = h('span', 'pr pr' + ps);
+          pr.title = ['Not played yet', 'Partly played', 'Played'][ps];
+          var t = h('button', 'ps-title', '<em>' + (i + 1) + '</em>' + esc(st.title || ('Step ' + (i + 1))));
+          t.title = 'Jump to this step';
+          t.onclick = function () { Engine.jumpTo(m.id, i); };
+          row.appendChild(c2); row.appendChild(pr); row.appendChild(t);
+          list.appendChild(row);
+        });
+        if (list.children.length) box.appendChild(list);
+      }
+      parentEl.appendChild(box);
+      var kids = Engine.children(m.id);
+      if (kids.length) {
+        var kw = h('div', 'pc-kids');
+        kids.forEach(function (k) { addChamber(k, kw); });
+        parentEl.appendChild(kw);
+      }
+    }
+    addChamber(Engine.meta('overview'), tree);
+    sc.scrollTop = top;
+  }
+
+  function openProgress() {
+    toggleZoomMenu(false);
+    $('#settings').classList.add('hidden');
+    $('#prog').classList.remove('hidden');
+    $('#btn-progress').classList.add('on');
+    progRender();
+    var el = $('#prog .ps.cur') || $('#prog .pc.cur');
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+  }
+  function closeProgress() {
+    var p = $('#prog');
+    if (p) p.classList.add('hidden');
+    var b = $('#btn-progress');
+    if (b) b.classList.remove('on');
+  }
+  function toggleProgress(force) {
+    var open = force === undefined ? $('#prog').classList.contains('hidden') : force;
+    if (open) openProgress(); else closeProgress();
+  }
+  Engine.openProgress = openProgress; Engine.closeProgress = closeProgress;
+
+  /* ================================================================
+   * POSITION: every chamber remembers where the learner stopped (step + point), across zoom trips and
+   * reloads. Returning restores that exact picture, paused; "Start over" forgets it.
+   * ================================================================ */
+  var POS_KEY = 'atlas.pos.v1';
+  Engine.pos = {};
+  function posLoad() { var d = store(POS_KEY) || {}; Engine.pos = d.pos || {}; Engine._last = d.last || null; }
+  function posSave() { store(POS_KEY, { pos: Engine.pos, last: Engine._last }); }
+  function markPos(id, step, beat) { Engine.pos[id] = { s: step, b: beat }; Engine._last = id; posSave(); }
+
+  /* Show the state at the end of point `b` of step `k` without playing anything. */
+  Engine.restoreStep = function (k, b) {
+    var cur = Engine.cur;
+    if (!cur) return Promise.resolve();
+    var steps = cur.impl.steps || [];
+    if (k < 0 || k >= steps.length) return Promise.resolve();
+    clearTimer(); N.stop();
+    Engine.voicePaused = false;
+    var token = ++Engine._stepToken;
+    var st = steps[k], bs = beatsOf(st);
+    b = clamp(b, 0, bs.length - 1);
+    cur.pending = null; showStart(false);
+    cur.step = k; cur.idle = false; cur.wait = null; cur.beatIdx = b;
+    var bt = cur.bt = newBt(bs.length, st._gated);
+    cur.ctx._bt = bt;
+    renderStepStart(cur, st, bs);
+    writeHash();
+    return Engine._runInstantTo(cur, st, b).then(function () {
+      if (token !== Engine._stepToken) return;
+      for (var i = 0; i <= b; i++) showBeat(cur, bs, i, true);
+      setNarration(bs[b].say);
+      $$('span', Engine.subEl).forEach(function (sp) { sp.classList.add('past'); });
+      var last = Engine.blocksEl.lastElementChild;
+      if (last && last.scrollIntoView) last.scrollIntoView({ block: 'nearest' });
+      bt.entered = b; cur.beatIdx = b;
+      if (b >= bs.length - 1) { cur.idle = true; cur.wait = 'step'; flushWaiters(bt, Infinity); onStepIdle(); } else cur.wait = 'beat';
+      updateNextButton(); setReady(true); updatePlayBtn();
+      if (Engine.settings.autoStart) Engine.resume();
+      else toast('Back where you left off. Press Next to continue, or Start over (top left).');
+    });
+  };
+
+  /* forget this chamber's position and begin it again from its first point */
+  Engine.restart = function () {
+    var cur = Engine.cur;
+    if (!cur || Engine._busy) return;
+    delete Engine.pos[cur.id];
+    posSave();
+    Engine.tour = null;
+    Engine.go(cur.id, { step: 0, transition: 'none' });
+  };
+
+  /* ================================================================
+   * HOME and MUTE (reading mode)
+   * ================================================================ */
+  Engine.home = function () {
+    closeMap(true); closeProgress(); toggleZoomMenu(false);
+    $('#settings').classList.add('hidden');
+    if (Engine.cur && Engine.isPlaying()) Engine.pausePlayback();
+    $('#intro-resume').style.display = Engine.cur ? '' : 'none';
+    $('#intro').classList.remove('hidden');
+  };
+  function leaveHome() {
+    $('#intro').classList.add('hidden');
+    if (Engine.cur && Engine.voicePaused) Engine.resumePlayback();
+  }
+
+  Engine.setMuted = function (on) {
+    Engine.settings.voiceMode = on ? 'off' : 'browser';
+    applyVoiceSettings();
+    saveSettings();
+    syncControls();
+    toast(on ? 'Reading mode: narration is muted. The text panels set the pace.' : 'Narration is back on.');
   };
 
   function transition(prev, next, kind, box, backBox) {
@@ -298,17 +619,16 @@
   Engine.up = function () {
     if (!Engine.cur) return;
     var m = Engine.meta(Engine.cur.id);
-    if (m && m.parent) Engine.go(m.parent, { transition: 'zoomOut', step: stepCount(m.parent) - 1 });
+    if (m && m.parent) Engine.go(m.parent, { transition: 'zoomOut', landOnEnd: true });
   };
 
   function stepCount(id) { return (Engine.impl(id).steps || []).length || 1; }
 
   /* ================================================================
    * BEATS
-   * A step is a sequence of beats. Each beat = one idea: a narration chunk, an optional callout card
-   * (left rail), a chunk of deep-dive HTML (right rail) and the animation segment gated by ctx.beat(k).
-   * Authored steps declare `beats: [{say, card, deep}]`. Legacy steps (say + deep only) get beats derived
-   * automatically so they still play beat by beat.
+   * A step is a sequence of beats. Each beat = one idea: a narration chunk, a callout card, a chunk of
+   * deep-dive HTML and the animation segment gated by ctx.beat(k). Authored steps declare
+   * `beats: [{say, card, deep}]`. Legacy steps (say + deep only) get beats derived automatically.
    * ================================================================ */
   function stepSay(st) {
     if (st.say) return st.say;
@@ -369,8 +689,9 @@
   }
   function stepPauseMs() { return clamp(1600 * Engine.settings.pause / Math.min(1, Engine.settings.rate || 1), 900, 8000); }
 
-  function clearTimer() { if (Engine._timer) { clearTimeout(Engine._timer); Engine._timer = 0; } }
-  function stopAll() { clearTimer(); N.stop(); Engine._stepToken++; if (Engine.cur && Engine.cur.bt) flushWaiters(Engine.cur.bt, Infinity); }
+  function setTimer(fn, ms) { clearTimer(); Engine._timer = setTimeout(function () { Engine._timer = 0; updatePlayBtn(); fn(); }, ms); updatePlayBtn(); }
+  function clearTimer() { if (Engine._timer) { clearTimeout(Engine._timer); Engine._timer = 0; updatePlayBtn(); } }
+  function stopAll() { clearTimer(); N.stop(); Engine.voicePaused = false; Engine._stepToken++; if (Engine.cur && Engine.cur.bt) flushWaiters(Engine.cur.bt, Infinity); updatePlayBtn(); }
 
   function flushWaiters(bt, upTo) {
     var keep = [];
@@ -405,6 +726,9 @@
     if (k < 0 || k >= steps.length) return Promise.resolve();
     clearTimer();
     N.stop();
+    Engine.voicePaused = false;
+    cur.pending = null;
+    showStart(false);
     if (cur.bt) flushWaiters(cur.bt, Infinity);
     var token = ++Engine._stepToken;
     var st = steps[k];
@@ -454,29 +778,30 @@
     if (token !== Engine._stepToken) return;
     var bt = cur.bt;
     clearTimer();
+    Engine.voicePaused = false;
     bt.entered = j;
     cur.beatIdx = j; cur.wait = null;
+    markPlayed(cur.id, cur.step, j);
+    markPos(cur.id, cur.step, j);
     flushWaiters(bt, j);
     showBeat(cur, bs, j, false);
     setReady(false);
-    var spoke = N.speak(bs[j].say || '', { key: cur.id + '/' + cur.step + '/' + j });
+    var spoke = N.speak(bs[j].say || '');
     Promise.all([spoke, animDone(cur, j)]).then(function (r) {
       if (token !== Engine._stepToken || cur.bt.entered !== j) return;
       onBeatDone(cur, st, bs, j, token, r[0] !== false);
     });
   }
 
-  function autoRunning() { return Engine.settings.mode === 'auto' && Engine.playing; }
+  function autoRunning() { return Engine.settings.mode === 'auto' && !Engine.voicePaused; }
 
   function onBeatDone(cur, st, bs, j, token, spoke) {
     var last = j >= bs.length - 1;
-    Engine.dockEl.classList.remove('speaking');
     /* cur.wait = "the next thing needs a nudge": the timer (Auto) or the user (Step / paused) provides it */
     if (!last) {
       cur.wait = 'beat';
       if (spoke && autoRunning()) {
-        Engine._timer = setTimeout(function () {
-          Engine._timer = 0;
+        setTimer(function () {
           if (token === Engine._stepToken && cur.bt.entered === j && autoRunning()) enterBeat(cur, st, bs, j + 1, token);
           else if (token === Engine._stepToken) setReady(true);
         }, pauseMs(bs[j]));
@@ -489,18 +814,18 @@
     updateNextButton();
     onStepIdle();
     if (spoke && autoRunning()) {
-      Engine._timer = setTimeout(function () {
-        Engine._timer = 0;
+      setTimer(function () {
         if (token === Engine._stepToken && autoRunning()) Engine.advance();
         else if (token === Engine._stepToken) setReady(true);
       }, stepPauseMs());
     } else setReady(true);
   }
+
   function onStepIdle() {
     var cur = Engine.cur;
     if (!cur) return;
     var last = cur.step >= (cur.impl.steps || []).length - 1;
-    Engine.zoomEl.classList.toggle('attention', last && Engine.children(cur.id).length > 0);
+    $('#btn-zoom').classList.toggle('attention', last && Engine.children(cur.id).length > 0);
   }
 
   /* next step, next tour chamber, or stop at the end of a chamber */
@@ -511,7 +836,7 @@
     if (cur.step < n - 1) return Engine.gotoStep(cur.step + 1);
     if (Engine.tour) {
       Engine.tour.i++;
-      if (Engine.tour.i < Engine.tour.list.length) return Engine.go(Engine.tour.list[Engine.tour.i]);
+      if (Engine.tour.i < Engine.tour.list.length) return Engine.go(Engine.tour.list[Engine.tour.i], { step: 0 });
       toast('Tour complete. Open the System Map (M) to explore any chamber.');
       Engine.tour = null;
     }
@@ -554,6 +879,7 @@
   Engine.next = function () {
     var cur = Engine.cur;
     if (!cur || Engine._busy) return;
+    if (cur.pending) { Engine.startPending(); return; }
     if (cur.bt && cur.beatIdx < cur.bt.n - 1) {
       var st = cur.impl.steps[cur.step], bs = beatsOf(st);
       enterBeat(cur, st, bs, cur.beatIdx + 1, Engine._stepToken);
@@ -573,8 +899,13 @@
     else Engine.seekBeat(0);
   };
 
-  Engine.replay = function () { if (Engine.cur) Engine.seekBeat(Math.max(0, Engine.cur.beatIdx)); };
+  Engine.replay = function () {
+    if (!Engine.cur) return;
+    if (Engine.cur.pending) { Engine.startPending(); return; }
+    Engine.seekBeat(Math.max(0, Engine.cur.beatIdx));
+  };
 
+  /* the user pressed "next" on a waiting step (also how a paused auto flow continues) */
   Engine.resume = function () {
     var cur = Engine.cur;
     if (!cur || Engine._busy || !cur.wait) return;
@@ -582,28 +913,53 @@
     else if (cur.wait === 'step') Engine.advance();
   };
 
-  Engine.setPlaying = function (p) {
-    Engine.playing = p;
-    syncControls();
+  /* ---- narration play / pause (the button next to "Next point") ---- */
+  Engine.isPlaying = function () { return !Engine.voicePaused && ((N.active && !N.paused) || !!Engine._timer); };
+
+  Engine.pausePlayback = function () {
+    if (Engine.voicePaused) return;
+    Engine.voicePaused = true;
+    N.pause();
     var cur = Engine.cur;
-    if (!p) { clearTimer(); if (cur && cur.wait) setReady(true); return; }
-    if (cur && cur.wait && Engine.settings.mode === 'auto') Engine.resume();
+    clearTimer();
+    if (cur && cur.wait) setReady(true);
+    updatePlayBtn();
   };
 
-  Engine.setMode = function (mode) {
-    Engine.settings.mode = mode;
-    Engine.playing = mode === 'auto';
+  Engine.resumePlayback = function () {
+    if (!Engine.voicePaused) return;
+    Engine.voicePaused = false;
+    var cur = Engine.cur;
+    if (N.paused) N.resume();
+    else if (cur && cur.wait && Engine.settings.mode === 'auto') Engine.resume();
+    updatePlayBtn();
+  };
+
+  Engine.togglePlay = function () {
+    if (!Engine.cur || Engine._busy) return;
+    if (Engine.cur.pending) { Engine.startPending(); return; }
+    if (Engine.voicePaused) Engine.resumePlayback();
+    else if (Engine.isPlaying()) Engine.pausePlayback();
+    else Engine.replay();          /* idle: play this point's narration again */
+  };
+  /* API kept for older callers */
+  Engine.setPlaying = function (p) { if (p) Engine.resumePlayback(); else Engine.pausePlayback(); };
+
+  Engine.setMode = function (pm) {
+    Engine.settings.playMode = pm;
+    derivePlayMode(Engine.settings);
     saveSettings();
     syncControls();
     var cur = Engine.cur;
-    if (!cur) return;
-    if (mode === 'step') { clearTimer(); if (cur.wait) setReady(true); }
-    else if (cur.wait) Engine.resume();
+    if (!cur || cur.pending) return;
+    if (pm === 'step') { clearTimer(); if (cur.wait) setReady(true); }
+    else if (cur.wait && !Engine.voicePaused) Engine.resume();
   };
+
   Engine.startTour = function (name) {
     var list = window.ATLAS_TOURS[name];
     Engine.tour = { name: name, list: list, i: 0 };
-    closeMap(); closeRefs(true);
+    closeMap(true);
     $('#intro').classList.add('hidden');
     Engine.go(list[0], { step: 0 });
     toast(name === 'deep' ? 'Deep tour: all ' + list.length + ' chambers, top-down.' : 'Big-picture tour: ' + list.length + ' chambers.');
@@ -612,6 +968,7 @@
   /* HUD metric chip. Clearing only fades it out (the old text fades with it, no empty chip);
    * long strings get a smaller font and are ellipsized rather than wrapping. */
   Engine.setHud = function (s) {
+    if (Engine._noHud) return;      /* poster builds replay scenes silently */
     var el = Engine.hudMetric;
     if (!s) { el.style.opacity = 0; return; }
     el.textContent = s;
@@ -629,6 +986,7 @@
   function updateNextButton() {
     var cur = Engine.cur, lbl = $('#next-label'), cnt = $('#next-count');
     if (!cur || !cur.bt) { lbl.textContent = 'Next'; cnt.textContent = ''; return; }
+    if (cur.pending) { lbl.textContent = 'Start'; cnt.textContent = ''; return; }
     var nb = cur.bt.n, j = Math.max(0, cur.beatIdx);
     var n = (cur.impl.steps || []).length;
     if (cur.beatIdx < nb - 1) { lbl.textContent = 'Next point'; cnt.textContent = (j + 1) + '/' + nb; }
@@ -638,25 +996,55 @@
     else { lbl.textContent = 'End'; cnt.textContent = ''; }
   }
 
+  function updatePlayBtn() {
+    var b = $('#btn-voice-play');
+    if (!b) return;
+    var playing = Engine.isPlaying();
+    var waiting = !!(Engine.cur && Engine.cur.pending);
+    b.innerHTML = playing ? ICON_PAUSE : ICON_PLAY;
+    b.classList.toggle('on', playing);
+    b.classList.toggle('paused', Engine.voicePaused);
+    b.classList.toggle('waiting', waiting);
+    b.title = waiting ? 'Play this topic (Space)' : (playing ? 'Pause narration (Space)' : (Engine.voicePaused ? 'Resume narration (Space)' : 'Play this point again'));
+  }
+  N.onState = updatePlayBtn;
+
   function syncControls() {
     var s = Engine.settings;
-    $('#mode-auto').classList.toggle('on', s.mode === 'auto');
-    $('#mode-step').classList.toggle('on', s.mode === 'step');
-    var pb = $('#btn-pause');
-    pb.classList.toggle('hide', s.mode !== 'auto');
-    pb.innerHTML = Engine.playing
-      ? '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>'
-      : '<svg viewBox="0 0 24 24"><path d="M8 4l12 8-12 8z"/></svg>';
-    pb.title = Engine.playing ? 'Pause autoplay (Space)' : 'Resume autoplay (Space)';
-    $$('#set-mode button, #intro-mode-seg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-v') === s.mode); });
+    $$('#mode-seg button, #set-mode button, #intro-mode-seg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-v') === s.playMode); });
     $$('#set-theme button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-v') === s.theme); });
     $('#set-rate').value = String(s.rate);
     $('#set-pause').value = String(s.pause);
     $('#set-voice-mode').value = s.voiceMode;
-    $('#btn-rails').classList.toggle('on', s.rails);
+    $('#set-cc').value = s.captions ? 'on' : 'off';
+    $('#btn-rails').classList.toggle('on', !s.rails);
+    $('#btn-cc').classList.toggle('on', s.captions);
+    var muted = s.voiceMode === 'off', mb = $('#btn-mute');
+    mb.innerHTML = muted ? ICON_SPK_OFF : ICON_SPK_ON;
+    mb.classList.toggle('muted', muted);
+    mb.title = muted ? 'Reading mode: narration is muted. Click to turn the voice back on (V)' : 'Mute narration and read instead (V)';
+    updatePlayBtn();
   }
 
-  /* ---------------- chrome (HUD, rails, dock) ---------------- */
+  /* ---------------- narration box (fixed callout in the left panel) ---------------- */
+  function applyCaptionSettings() {
+    document.body.classList.toggle('cc-off', !Engine.settings.captions);
+  }
+  /* show this beat's narration; the sentence being spoken is highlighted, the box scrolls if it is long */
+  function setNarration(text) {
+    var sentences = text ? N.splitSentences(text) : [];
+    Engine.subEl.innerHTML = sentences.map(function (s, i) { return '<span data-i="' + i + '">' + esc(s) + ' </span>'; }).join('');
+    Engine.subEl.scrollTop = 0;
+    Engine.captionEl.classList.toggle('empty', !sentences.length);
+  }
+  N.onSentence = function (i) {
+    var spans = Engine.subEl.querySelectorAll('span');
+    for (var k = 0; k < spans.length; k++) { spans[k].classList.toggle('now', k === i); spans[k].classList.toggle('past', k < i); }
+    var el = spans[i];
+    if (el) Engine.subEl.scrollTop = Math.max(0, el.offsetTop - Engine.subEl.offsetTop - 6);
+  };
+
+  /* ---------------- chrome (HUD, top bar, rails) ---------------- */
   function markVisited(id) { Engine.visited[id] = 1; store('atlas.visited', Engine.visited); }
 
   function accentFor(hex) {
@@ -667,6 +1055,36 @@
     var root = document.documentElement.style;
     root.setProperty('--accent', accentFor(hex));
     root.setProperty('--accent-soft', X.hexA(hex, Engine.settings.theme === 'light' ? 0.12 : 0.18));
+  }
+
+  function renderZoomMenu(cur) {
+    var meta = cur.meta, menu = $('#zoom-menu'), btn = $('#btn-zoom');
+    menu.innerHTML = '';
+    var kids = Engine.children(cur.id);
+    btn.style.display = (meta.parent || kids.length) ? '' : 'none';
+    btn.classList.remove('attention');
+    $('#zoom-count').textContent = kids.length ? String(kids.length) : '';
+    if (meta.parent) {
+      var pm = Engine.meta(meta.parent);
+      var up = h('button', 'mi up', '<span class="dot" style="background:' + pm.colorHex + '"></span><span><b>Zoom out</b><small>' + esc(pm.title) + '</small></span><kbd>Esc</kbd>');
+      up.onclick = function () { toggleZoomMenu(false); Engine.up(); };
+      menu.appendChild(up);
+    }
+    if (kids.length) menu.appendChild(h('div', 'mh', 'Zoom into'));
+    kids.forEach(function (k) {
+      var b = h('button', 'mi', '<span class="dot" style="background:' + k.colorHex + '"></span><span><b>' + esc(k.title) + (function () { var s = chamberStats(k.id); return ' <span class="pr pr' + (s.n && s.played === s.n ? 2 : (s.played || s.part ? 1 : 0)) + '"></span>' + (s.n && s.learned === s.n ? ' <em>&#10003;</em>' : ''); })() + '</b><small>' + esc(k.kicker) + '</small></span>');
+      b.title = k.summary;
+      b.onclick = function () { toggleZoomMenu(false); Engine.tour = null; Engine.go(k.id, { transition: 'zoomIn' }); };
+      menu.appendChild(b);
+    });
+  }
+
+  function toggleZoomMenu(force) {
+    var m = $('#zoom-menu');
+    var open = force === undefined ? m.classList.contains('hidden') : force;
+    m.classList.toggle('hidden', !open);
+    $('#btn-zoom').classList.toggle('on', open);
+    if (open) $('#btn-zoom').classList.remove('attention');
   }
 
   function updateChrome() {
@@ -684,28 +1102,14 @@
     $('#hud-level').textContent = ['System', 'Subsystem', 'Component', 'Primitive'][meta.level] + ' · L' + meta.level;
     $('#hud-kicker').textContent = meta.kicker;
     $('#hud-title').textContent = meta.title;
-    var z = Engine.zoomEl;
-    z.innerHTML = '';
-    z.classList.remove('attention');
-    var kids = Engine.children(cur.id);
-    if (meta.parent) {
-      var up = h('button', 'zchip up', '&#8598; ' + esc(Engine.meta(meta.parent).title));
-      up.title = 'Zoom out (Esc)';
-      up.onclick = Engine.up;
-      z.appendChild(up);
-    }
-    if (kids.length) z.appendChild(h('span', 'zlabel', 'Zoom into'));
-    kids.forEach(function (k) {
-      var b = h('button', 'zchip', esc(k.title) + (Engine.visited[k.id] ? ' <em>&#10003;</em>' : ''));
-      b.style.setProperty('--c', k.colorHex);
-      b.title = k.summary;
-      b.onclick = function () { Engine.tour = null; Engine.go(k.id, { transition: 'zoomIn' }); };
-      z.appendChild(b);
-    });
+    renderZoomMenu(cur);
+    var pm = meta.parent ? Engine.meta(meta.parent) : null;
+    $('#up-label').textContent = pm ? 'Back' : 'Start';
+    $('#btn-up').title = pm ? 'Back to the level above: ' + pm.title + ' (Esc)' : 'Back to the start page';
     var tl = Engine.timelineEl;
     tl.innerHTML = '';
     (cur.impl.steps || []).forEach(function (st, i) {
-      var d = h('button', 'tick', '<span>' + esc(st.title || ('Step ' + (i + 1))) + '</span>');
+      var d = h('button', 'tick', '<span>' + (i + 1) + '. ' + esc(st.title || ('Step ' + (i + 1))) + '</span>');
       d.onclick = function () { Engine.gotoStep(i); };
       tl.appendChild(d);
     });
@@ -713,6 +1117,11 @@
     renderSources(cur);
     renderMap();
   }
+
+  /* references open in their own tab so the atlas keeps playing where it was */
+  function refsUrl(n) { return 'references.html' + (n ? '#ref-' + n : ''); }
+  function openRefs(n) { var w = window.open(refsUrl(n), 'atlas-refs'); if (w && w.focus) w.focus(); return w; }
+  Engine.openRefs = openRefs;
 
   function renderSources(cur) {
     var nums = (cur.impl._refNums || []).slice().sort(function (a, b) { return a - b; });
@@ -722,13 +1131,15 @@
     el.appendChild(h('span', 'lbl', 'Sources'));
     nums.forEach(function (n) {
       var e = Engine.refList[n - 1];
-      var b = h('button', 'src', String(n));
-      b.title = e ? e.text : '';
-      b.onclick = function () { openRefs(n); };
-      el.appendChild(b);
+      var a = h('a', 'src', String(n));
+      a.href = refsUrl(n); a.target = 'atlas-refs';
+      a.title = (e ? e.text : '') + '  (opens in a new tab)';
+      a.onclick = function (ev) { ev.preventDefault(); openRefs(n); };
+      el.appendChild(a);
     });
-    var all = h('button', 'src all', 'All references ›');
-    all.onclick = function () { openRefs(); };
+    var all = h('a', 'src all', 'All references ↗');
+    all.href = refsUrl(); all.target = 'atlas-refs';
+    all.onclick = function (ev) { ev.preventDefault(); openRefs(); };
     el.appendChild(all);
   }
 
@@ -738,11 +1149,13 @@
       d.classList.toggle('done', i < cur.step);
       d.classList.toggle('cur', i === cur.step);
     });
-    $('#hud-step').textContent = String(cur.step + 1).padStart(2, '0') + ' / ' + String(steps.length).padStart(2, '0') + '  ·  ' + (st.title || '');
+    $('#hud-step').textContent = 'Step ' + (cur.step + 1) + ' of ' + steps.length + '  ·  ' + (st.title || '');
     var rs = $('#rail-step');
     rs.innerHTML = '<small>Step ' + (cur.step + 1) + ' of ' + steps.length + '</small>' + esc(st.title || '');
     rs.classList.remove('swap'); void rs.offsetWidth; rs.classList.add('swap');
-    Engine.cardsEl.innerHTML = '';
+    $('#card-new').innerHTML = '';
+    $('#hist-list').innerHTML = '';
+    updateHistSummary();
     Engine.blocksEl.innerHTML = '';
     Engine._glossSeen = {};
     var pips = $('#pips');
@@ -752,24 +1165,16 @@
       p.onclick = function () { if (Engine.cur && Engine.cur.beatIdx !== i) Engine.seekBeat(i); };
       pips.appendChild(p);
     });
-    Engine.subEl.textContent = '';
-    Engine.dockEl.classList.add('speaking');
-    Engine.zoomEl.classList.remove('attention');
+    setNarration('');
+    $('#btn-zoom').classList.remove('attention');
     updateNextButton();
   }
 
   function showBeat(cur, bs, j, instant) {
     var b = bs[j];
-    /* pips */
     $$('.pip', $('#pips')).forEach(function (p, i) { p.classList.toggle('done', i < j); p.classList.toggle('cur', i === j); });
-    /* subtitle: this beat's sentences */
-    var sentences = N.splitSentences(b.say || '');
-    Engine.subEl.innerHTML = sentences.map(function (s, i) { return '<span data-i="' + i + '">' + esc(s) + ' </span>'; }).join('');
-    Engine.subEl.scrollTop = 0;
-    /* card */
+    if (!instant) setNarration(b.say);
     if (b.card) addCard(b.card, j, instant);
-    $$('.card', Engine.cardsEl).forEach(function (c, i) { c.classList.toggle('old', i >= 2); });
-    /* deep block */
     $$('.blk', Engine.blocksEl).forEach(function (e) { e.classList.remove('now'); });
     if (b.deep) {
       var blk = h('section', 'blk' + (instant ? '' : ' enter') + ' now');
@@ -800,8 +1205,23 @@
     var mb = $('.more-btn', el);
     if (mb) mb.onclick = function () { el.classList.toggle('open'); };
     el.addEventListener('dblclick', function () { if (Engine.cur && Engine.cur.beatIdx !== j) Engine.seekBeat(j); });
-    Engine.cardsEl.insertBefore(el, Engine.cardsEl.firstChild);
-    if (!instant) { Engine.cardsEl.scrollTop = 0; var strip = $('#cards-strip'); if (strip) strip.scrollLeft = 0; }
+    /* the newest card owns the top slot in full; the previous one folds into "Earlier points" */
+    var slot = $('#card-new'), prevCard = slot.firstElementChild;
+    if (prevCard) {
+      prevCard.classList.add('old');
+      prevCard.classList.remove('enter');
+      prevCard.onclick = function () { prevCard.classList.toggle('open'); };
+      $('#hist-list').insertBefore(prevCard, $('#hist-list').firstChild);
+    }
+    slot.appendChild(el);
+    updateHistSummary();
+    if (!instant) { Engine.cardsHost.scrollTop = 0; }
+  }
+
+  function updateHistSummary() {
+    var n = $('#hist-list').children.length, d = $('#card-hist');
+    d.style.display = n ? '' : 'none';
+    d.querySelector('summary').textContent = 'Earlier points (' + n + ')';
   }
 
   /* copy buttons on code, glossary terms on prose */
@@ -890,15 +1310,10 @@
     });
   }
 
-  N.onSentence = function (i) {
-    var spans = Engine.subEl.querySelectorAll('span');
-    for (var k = 0; k < spans.length; k++) { spans[k].classList.toggle('now', k === i); spans[k].classList.toggle('past', k < i); }
-    var el = spans[i];
-    if (el) Engine.subEl.scrollTop = Math.max(0, el.offsetTop - Engine.subEl.offsetTop - 4);
-  };
-
   function pulseZoom() {
-    Engine.zoomEl.classList.remove('attention'); void Engine.zoomEl.offsetWidth; Engine.zoomEl.classList.add('attention');
+    var b = $('#btn-zoom');
+    b.classList.remove('attention'); void b.offsetWidth; b.classList.add('attention');
+    toggleZoomMenu(true);
   }
 
   var toastTimer = 0;
@@ -919,8 +1334,11 @@
     var root = Engine.meta('overview');
     var curId = Engine.cur && Engine.cur.id;
     function chip(m, cls) {
-      var b = h('button', 'mchip ' + (cls || '') + (m.id === curId ? ' cur' : '') + (Engine.visited[m.id] ? ' seen' : ''),
-        '<i>L' + m.level + '</i>' + esc(m.title));
+      /* the same two facts the Progress panel shows: steps played (ring + first number) and steps learned (green) */
+      var s = chamberStats(m.id), ps = s.n && s.played === s.n ? 2 : (s.played || s.part ? 1 : 0);
+      var b = h('button', 'mchip ' + (cls || '') + (m.id === curId ? ' cur' : ''),
+        '<i>L' + m.level + '</i><span class="mt">' + esc(m.title) + '</span><span class="mstat"><span class="pr pr' + ps + '" title="' + s.played + ' of ' + s.n + ' steps played"></span>' +
+        '<span class="mp" title="steps played">' + s.played + '/' + s.n + '</span><span class="ml' + (s.n && s.learned === s.n ? ' all' : (s.learned ? ' some' : '')) + '" title="steps marked learned">' + s.learned + '/' + s.n + '</span></span>');
       b.style.setProperty('--c', m.colorHex);
       b.title = m.summary;
       var hit = !q || (m.title + ' ' + m.summary + ' ' + m.kicker).toLowerCase().indexOf(q) >= 0;
@@ -941,7 +1359,7 @@
       (function walk(id, depth) {
         Engine.children(id).forEach(function (k) {
           var c = chip(k, 'l' + k.level);
-          c.style.marginLeft = (depth * 14) + 'px';
+          c.style.marginLeft = (depth * 14) + 'px'; c.style.width = 'calc(100% - ' + (depth * 14) + 'px)';
           sub.appendChild(c);
           walk(k.id, depth + 1);
         });
@@ -949,81 +1367,24 @@
       card.appendChild(sub);
       grid.appendChild(card);
     });
-    var n = Object.keys(Engine.visited).length;
-    $('#map-progress').textContent = n + ' of ' + Engine.order.length + ' chambers explored';
+    var tot = 0, pl = 0, le = 0;
+    Engine.order.forEach(function (m) { var s = chamberStats(m.id); tot += s.n; pl += s.played; le += s.learned; });
+    $('#map-progress').textContent = 'Played ' + pl + ' of ' + tot + ' steps · learned ' + le + ' of ' + tot + ' (the same counts as the Progress panel)';
   }
 
-  /* pausing narration while a full-screen page is open */
-  function hold() {
-    if (Engine._held) return;
-    Engine._held = true;
-    clearTimer(); N.stop();
-    Engine._stepToken++;
-    if (Engine.cur && Engine.cur.bt) flushWaiters(Engine.cur.bt, Infinity);
+  /* the map covers the stage, so narration pauses while it is open */
+  function openMap() {
+    if (!Engine._held) { Engine._held = true; if (Engine.isPlaying()) { Engine._heldWasPlaying = true; Engine.pausePlayback(); } else Engine._heldWasPlaying = false; }
+    renderMap(); $('#map').classList.remove('hidden'); setTimeout(function () { $('#map-filter').focus(); }, 60);
   }
-  function release() {
+  function closeMap(navigating) {
+    $('#map').classList.add('hidden');
     if (!Engine._held) return;
     Engine._held = false;
-    if (Engine.cur && !Engine._busy) Engine.replay();
+    if (!navigating && Engine._heldWasPlaying) Engine.resumePlayback();
   }
-
-  function openMap() { hold(); renderMap(); $('#map').classList.remove('hidden'); setTimeout(function () { $('#map-filter').focus(); }, 60); }
-  function closeMap(noRelease) { $('#map').classList.add('hidden'); if (!noRelease) release(); else Engine._held = false; }
   Engine.openMap = openMap; Engine.closeMap = closeMap;
-
-  /* ---------------- references page ---------------- */
-  function scholarUrl(e) {
-    var m = /<i>(.*?)<\/i>/i.exec(e.html);
-    var q = m ? strip(m[1]) : e.text.slice(0, 110);
-    return 'https://scholar.google.com/scholar?q=' + encodeURIComponent(q);
-  }
-
-  function renderRefs(hl) {
-    var q = ($('#refs-filter').value || '').toLowerCase();
-    var list = $('#refs-list');
-    list.innerHTML = '';
-    var shown = 0;
-    Engine.refList.forEach(function (e) {
-      if (q && e.text.toLowerCase().indexOf(q) < 0) return;
-      shown++;
-      var row = h('div', 'ref' + (hl === e.n ? ' hl' : ''));
-      row.id = 'ref-' + e.n;
-      row.appendChild(h('div', 'n', '[' + e.n + ']'));
-      var t = h('div', 't', e.html);
-      var meta = h('div', 'meta');
-      var a = h('a', '', 'Find online ↗'); a.href = scholarUrl(e); a.target = '_blank'; a.rel = 'noopener';
-      meta.appendChild(a);
-      e.scenes.forEach(function (sid) {
-        var m = Engine.meta(sid);
-        var b = h('button', '', esc(m.title));
-        b.onclick = function () { closeRefs(true); Engine.tour = null; Engine.go(sid); };
-        meta.appendChild(b);
-      });
-      t.appendChild(meta);
-      row.appendChild(t);
-      list.appendChild(row);
-    });
-    $('#refs-count').textContent = shown + ' of ' + Engine.refList.length + ' references · numbers match the Sources chips in each chamber';
-    if (hl) { var el = $('#ref-' + hl); if (el) setTimeout(function () { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 80); }
-  }
-
-  function openRefs(n) {
-    hold();
-    Engine._refsFrom = Engine.cur ? location.hash : '';
-    $('#refs-filter').value = '';
-    renderRefs(n);
-    $('#refs-page').classList.remove('hidden');
-    history.replaceState(null, '', '#/refs' + (n ? '/' + n : ''));
-    Engine._ownHash = location.hash;
-  }
-  function closeRefs(noRelease) {
-    var pg = $('#refs-page');
-    if (pg.classList.contains('hidden')) return;
-    pg.classList.add('hidden');
-    writeHash();
-    if (!noRelease) release(); else Engine._held = false;
-  }
-  Engine.openRefs = openRefs; Engine.closeRefs = closeRefs;
+  Engine.closeRefs = function () {};
 
   /* ---------------- routing ---------------- */
   function writeHash() {
@@ -1033,59 +1394,78 @@
   }
 
   function readHash() {
-    var r = /^#\/refs(?:\/(\d+))?/.exec(location.hash || '');
-    if (r) return { refs: r[1] ? parseInt(r[1], 10) : 0, isRefs: true };
     var m = /^#\/([\w-]+)(?:\/(\d+))?/.exec(location.hash || '');
     if (!m || !Engine.meta(m[1])) return null;
     return { id: m[1], step: m[2] ? parseInt(m[2], 10) - 1 : 0 };
   }
 
   /* ---------------- layout ---------------- */
-  function placeCards(wide) {
-    var rs = $('#rail-step'), cards = Engine.cardsEl;
-    var host = wide ? $('#rail-left') : $('#cards-strip');
-    if (rs.parentNode !== host) { host.appendChild(rs); host.appendChild(cards); }
-  }
-
+  /* Layout. The stage is the star: one slim top bar, a left panel (narration box + callout cards) and the
+   * deep-dive panel on the right. The deep dive sits inline only when the stage can still be >= 1180px wide
+   * with it; on smaller windows it becomes a slide-over drawer (button / key D) so the stage keeps the room.
+   * Focus mode (F) hides every panel. On very narrow windows the left panel moves below the stage. */
+  var MIN_STAGE_WITH_DEEP = 1180;
   function fit() {
-    var main = $('#main'), st = $('#stage');
+    var main = $('#main'), st = $('#stage'), body = document.body;
     var cs = getComputedStyle(main);
     var padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight), padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
     var innerW = main.clientWidth - padX, innerH = main.clientHeight - padY;
-    var narrow = window.innerWidth < 820;
-    var railsOff = document.body.classList.contains('rails-off');
-    var gap = 18;
-    var rightMin = window.innerWidth < 1100 ? 320 : 380, leftMin = 290;
-    var wide = !railsOff && !narrow && innerW >= 1660;
-    document.body.classList.toggle('layout-wide', wide);
-    placeCards(wide);
-    var stripH = (!wide && !railsOff) ? Math.max(120, Math.min(176, Math.round(innerH * 0.2))) : 0;
-    document.documentElement.style.setProperty('--strip-h', stripH + 'px');
-    var availW;
-    if (railsOff || narrow) availW = innerW;
-    else if (wide) availW = innerW - leftMin - rightMin - 2 * gap;
-    else availW = innerW - rightMin - gap;
-    var availH = innerH - (stripH ? stripH + 14 : 0);
-    var w = Math.max(320, Math.min(availW, availH * 16 / 9));
+    var narrow = window.innerWidth < 900;
+    var focus = !Engine.settings.rails;
+    var gap = 14;
+    var L = innerW < 1300 ? 250 : 280, Rw = 340;
+    var maxW = innerH * 16 / 9;
+    var w, inline = false, cols = '';
+    body.classList.toggle('narrow', narrow);
+    if (focus) {
+      w = Math.min(innerW, maxW);
+      cols = '1fr';
+    } else if (narrow) {
+      w = Math.min(innerW, innerH * 0.62 * 16 / 9);
+      cols = '1fr';
+    } else {
+      var wBoth = Math.min(innerW - L - Rw - 2 * gap, maxW);
+      var fits = wBoth >= MIN_STAGE_WITH_DEEP;
+      /* deep: null = automatic (inline when it fits, otherwise closed drawer); true / false = the user's choice */
+      var wantDeep = Engine.settings.deep === null || Engine.settings.deep === undefined ? fits : Engine.settings.deep;
+      inline = wantDeep && fits;
+      Engine._deepOpen = wantDeep;
+      if (inline) {
+        w = wBoth;
+        var extra = Math.max(0, innerW - 2 * gap - w - L - Rw);        /* height-limited stage: share the spare width */
+        var leftW = Math.min(400, L + extra * 0.4);
+        cols = Math.floor(leftW) + 'px ' + Math.floor(w) + 'px 1fr';
+      } else {
+        w = Math.min(innerW - L - gap, maxW);
+        var leftW2 = Math.min(460, L + Math.max(0, innerW - gap - w - L));
+        cols = Math.floor(leftW2) + 'px ' + Math.floor(w) + 'px';
+      }
+    }
+    w = Math.max(320, w);
+    body.classList.toggle('deep-inline', inline);
+    body.classList.toggle('deep-open', !focus && !inline && !!Engine._deepOpen);
+    body.classList.toggle('layout-focus', focus);
     st.style.width = Math.floor(w) + 'px';
     st.style.height = Math.floor(w * 9 / 16) + 'px';
-    $('#cards-strip').style.width = stripH ? Math.floor(w) + 'px' : '';
-    if (railsOff || narrow) main.style.gridTemplateColumns = '';
-    else if (wide) main.style.gridTemplateColumns = 'minmax(' + leftMin + 'px,1fr) ' + Math.floor(w) + 'px minmax(' + rightMin + 'px,1.25fr)';
-    else main.style.gridTemplateColumns = Math.floor(w) + 'px minmax(' + rightMin + 'px,1fr)';
-    if (window.__atlasFit) window.__atlasFit();
-  }
-  Engine.fit = fit;
+    main.style.gridTemplateColumns = cols;
+    main.style.justifyContent = 'center';
+    $('#btn-deep').classList.toggle('on', !focus && !!Engine._deepOpen);
+  }  Engine.fit = fit;
 
   function setRails(on) {
     Engine.settings.rails = on;
-    document.body.classList.toggle('rails-off', !on);
     saveSettings(); syncControls();
-    setTimeout(fit, 0);
+    fit();
+  }
+  /* deep dive: inline column when there is room, slide-over drawer otherwise */
+  function setDeep(on) {
+    Engine.settings.deep = !!on;
+    saveSettings(); syncControls();
+    fit();
   }
 
   /* ---------------- theme / settings ---------------- */
-  function saveSettings() { store('atlas.settings', Engine.settings); }
+  function saveSettings() { store(SETTINGS_KEY, Engine.settings); }
 
   function setTheme(t) {
     Engine.settings.theme = t;
@@ -1095,15 +1475,15 @@
     applyAccent(Engine.cur && Engine.cur.meta);
     saveSettings(); syncControls();
   }
-
   Engine.setTheme = function (t) { setTheme(t); };
   Engine.setRails = function (on) { setRails(on); };
+  Engine.setDeep = function (on) { setDeep(on); };
+  Engine.setCaptions = function (on) { Engine.settings.captions = !!on; applyCaptionSettings(); saveSettings(); syncControls(); };
 
   function applyVoiceSettings() {
     var s = Engine.settings;
     N.rate = s.rate;
-    N.mode = s.voiceMode;
-    N.enabled = s.voiceMode !== 'off';
+    N.setEnabled(s.voiceMode !== 'off');
     Engine.speed = Math.max(1, s.rate);
     if (s.voiceName) N.setVoiceByName(s.voiceName);
   }
@@ -1114,7 +1494,7 @@
       function sc(v) { return (/natural|neural|online/i.test(v.name) ? 0 : 2) + (/^en[-_]US/i.test(v.lang) ? 0 : 1); }
       return sc(a) - sc(b) || a.name.localeCompare(b.name);
     });
-    sel.innerHTML = vs.map(function (v) { return '<option value="' + esc(v.name) + '">' + esc(v.name.replace(/^Microsoft /, '')) + '</option>'; }).join('') || '<option>(none available)</option>';
+    sel.innerHTML = vs.map(function (v) { return '<option value="' + esc(v.name) + '">' + (/natural|neural|online/i.test(v.name) ? '★ ' : '') + esc(v.name.replace(/^Microsoft /, '')) + '</option>'; }).join('') || '<option>(none available)</option>';
     var want = Engine.settings.voiceName || (N.voice && N.voice.name) || '';
     if (want) sel.value = want;
   }
@@ -1122,23 +1502,23 @@
   function bindSettings() {
     var pan = $('#settings');
     function toggle(force) { var open = force === undefined ? pan.classList.contains('hidden') : force; pan.classList.toggle('hidden', !open); $('#btn-settings').classList.toggle('on', open); }
-    $('#btn-settings').onclick = function (e) { e.stopPropagation(); toggle(); };
-    document.addEventListener('click', function (e) { if (!pan.classList.contains('hidden') && !e.target.closest('#settings') && !e.target.closest('#btn-settings')) toggle(false); });
+    $('#btn-settings').onclick = function (e) { e.stopPropagation(); toggleZoomMenu(false); closeProgress(); toggle(); };
+    document.addEventListener('click', function (e) {
+      if (!pan.classList.contains('hidden') && !e.target.closest('#settings') && !e.target.closest('#btn-settings')) toggle(false);
+      if (!$('#zoom-menu').classList.contains('hidden') && !e.target.closest('#zoom-menu') && !e.target.closest('#btn-zoom')) toggleZoomMenu(false);
+    });
     $$('#set-mode button, #intro-mode-seg button, #mode-seg button').forEach(function (b) {
-      b.onclick = function () { Engine.setMode(b.getAttribute('data-v') || (b.id === 'mode-step' ? 'step' : 'auto')); };
+      b.onclick = function () { Engine.setMode(b.getAttribute('data-v')); };
     });
     $$('#set-theme button').forEach(function (b) { b.onclick = function () { setTheme(b.getAttribute('data-v')); }; });
     $('#set-rate').onchange = function (e) { Engine.settings.rate = parseFloat(e.target.value); applyVoiceSettings(); saveSettings(); };
     $('#set-pause').onchange = function (e) { Engine.settings.pause = parseFloat(e.target.value); saveSettings(); };
-    $('#set-voice-mode').onchange = function (e) {
-      Engine.settings.voiceMode = e.target.value; applyVoiceSettings(); saveSettings();
-      if (!N.enabled) N.stop();
-      if (Engine.cur && !Engine._busy) Engine.replay();
-    };
+    $('#set-voice-mode').onchange = function (e) { Engine.setMuted(e.target.value === 'off'); };
     $('#set-voice').onchange = function (e) {
       Engine.settings.voiceName = e.target.value; N.setVoiceByName(e.target.value); saveSettings();
       if (Engine.cur && !Engine._busy) Engine.replay();
     };
+    $('#set-cc').onchange = function (e) { Engine.setCaptions(e.target.value === 'on'); };
     if (N.supported) { var prevCb = window.speechSynthesis.onvoiceschanged; window.speechSynthesis.onvoiceschanged = function () { if (prevCb) prevCb(); fillVoices(); }; }
     fillVoices();
   }
@@ -1158,16 +1538,13 @@
     bg.innerHTML = '<rect x="-800" y="-450" width="3200" height="1800" fill="url(#fx-grid)"/><rect x="-800" y="-450" width="3200" height="1800" fill="url(#fx-grid-big)"/>';
   }
 
-  function anyOverlayOpen() {
-    return !$('#map').classList.contains('hidden') || !$('#refs-page').classList.contains('hidden') || !$('#intro').classList.contains('hidden');
-  }
-
   function bindUi() {
-    $('#btn-pause').onclick = function () { Engine.setPlaying(!Engine.playing); };
+    $('#btn-voice-play').onclick = Engine.togglePlay;
     $('#btn-prev').onclick = Engine.prev;
     $('#btn-next').onclick = Engine.next;
     $('#btn-replay').onclick = Engine.replay;
-    $('#btn-up').onclick = Engine.up;
+    $('#btn-zoom').onclick = function (e) { e.stopPropagation(); $('#settings').classList.add('hidden'); toggleZoomMenu(); };
+    $('#btn-cc').onclick = function () { Engine.setCaptions(!Engine.settings.captions); };
     $('#btn-map').onclick = openMap;
     $('#map-close').onclick = function () { closeMap(); };
     $('#map').onclick = function (e) { if (e.target.id === 'map') closeMap(); };
@@ -1176,36 +1553,56 @@
     $('#tour-deep').onclick = function () { Engine.startTour('deep'); };
     $('#btn-tour').onclick = function () { Engine.startTour('bigpicture'); };
     $('#btn-refs').onclick = function () { openRefs(); };
-    $('#refs-close').onclick = function () { closeRefs(); };
-    $('#refs-back').onclick = function () { closeRefs(); };
-    $('#refs-page').onclick = function (e) { if (e.target.id === 'refs-page') closeRefs(); };
-    $('#refs-filter').oninput = function () { renderRefs(); };
+    $('#btn-home').onclick = Engine.home;
+    $('#btn-restart').onclick = Engine.restart;
+    $('#btn-up').onclick = function () { Engine.tour = null; var m = Engine.cur && Engine.meta(Engine.cur.id); if (m && m.parent) Engine.up(); else Engine.home(); };
+    $('.brand').onclick = Engine.home;
+    $('#btn-mute').onclick = function () { Engine.setMuted(Engine.settings.voiceMode !== 'off'); };
+    $('#btn-progress').onclick = function (ev) { ev.stopPropagation(); toggleProgress(); };
+    $('#prog-close').onclick = closeProgress;
+    $('#prog-map').onclick = function () { closeProgress(); openMap(); };
+    $('#map-progress-btn').onclick = function () { closeMap(true); openProgress(); };
+    $('#prog-expand').onclick = function () { Engine.order.forEach(function (m) { progOpen[m.id] = true; }); progRender(); };
+    $('#prog-collapse').onclick = function () { Engine.order.forEach(function (m) { progOpen[m.id] = false; }); progRender(); };
+    $('#prog-filter').onclick = function () { progHideLearned = !progHideLearned; progRender(); };
+    $('#prog-reset-p').onclick = function () { if (window.confirm('Forget which steps you have played? (Your learned checkmarks stay.)')) { Engine.progress.p = {}; progSave(); progRender(); } };
+    $('#prog-reset-l').onclick = function () { if (window.confirm('Clear all learned checkmarks? (Played history stays.)')) { Engine.progress.l = {}; progSave(); progRender(); } };
     $('#btn-rails').onclick = function () { setRails(!Engine.settings.rails); };
+    $('#btn-deep').onclick = function () { if (!Engine.settings.rails) Engine.settings.rails = true; setDeep(!Engine._deepOpen); };
+    $('#deep-close').onclick = function () { setDeep(false); };
     $('#btn-theme').onclick = function () { setTheme(Engine.settings.theme === 'dark' ? 'light' : 'dark'); };
     window.addEventListener('keydown', function (e) {
       var tg = e.target && e.target.tagName;
-      if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') { if (e.key === 'Escape') { closeMap(); closeRefs(); } return; }
+      if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') { if (e.key === 'Escape') closeMap(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       var k = e.key;
-      if (!$('#intro').classList.contains('hidden')) return;
-      var mapOpen = !$('#map').classList.contains('hidden'), refsOpen = !$('#refs-page').classList.contains('hidden');
-      if (k === 'Escape' && (mapOpen || refsOpen)) { closeMap(); closeRefs(); return; }
+      if (!$('#intro').classList.contains('hidden')) { if (k === 'Escape' && Engine.cur) leaveHome(); return; }
+      if (k === 'Escape' && !$('#prog').classList.contains('hidden')) { closeProgress(); return; }
+      var mapOpen = !$('#map').classList.contains('hidden');
+      if (k === 'Escape' && mapOpen) { closeMap(); return; }
+      if (k === 'Escape' && !$('#zoom-menu').classList.contains('hidden')) { toggleZoomMenu(false); return; }
       if (k === 'm' || k === 'M') { mapOpen ? closeMap() : openMap(); e.preventDefault(); return; }
-      if (mapOpen || refsOpen) return;
+      if (mapOpen) return;
       if (k === 'ArrowRight' || k === 'PageDown') { Engine.next(); e.preventDefault(); }
       else if (k === 'ArrowLeft' || k === 'PageUp') { Engine.prev(); e.preventDefault(); }
-      else if (k === ' ') { if (Engine.settings.mode === 'auto') Engine.setPlaying(!Engine.playing); else Engine.next(); e.preventDefault(); }
+      else if (k === ' ') { if (Engine.settings.mode === 'auto' || (Engine.cur && Engine.cur.pending)) Engine.togglePlay(); else Engine.next(); e.preventDefault(); }
+      else if (k === 'p' || k === 'P') { Engine.togglePlay(); }
       else if (k === 'Escape' || k === 'Backspace' || k === 'ArrowUp') { Engine.tour = null; Engine.up(); e.preventDefault(); }
-      else if (k === 'd' || k === 'D') { setRails(!Engine.settings.rails); }
+      else if (k === 'd' || k === 'D') { if (!Engine.settings.rails) Engine.settings.rails = true; setDeep(!Engine._deepOpen); }
+      else if (k === 'f' || k === 'F') { setRails(!Engine.settings.rails); }
       else if (k === 'r' || k === 'R') { Engine.replay(); }
       else if (k === 't' || k === 'T') { setTheme(Engine.settings.theme === 'dark' ? 'light' : 'dark'); }
-      else if (k === 's' || k === 'S') { Engine.setMode(Engine.settings.mode === 'auto' ? 'step' : 'auto'); }
+      else if (k === 's' || k === 'S') { var order = ['step', 'topic', 'auto']; Engine.setMode(order[(order.indexOf(Engine.settings.playMode) + 1) % 3]); }
+      else if (k === 'c' || k === 'C') { Engine.setCaptions(!Engine.settings.captions); }
+      else if (k === 'z' || k === 'Z') { toggleZoomMenu(); }
+      else if (k === 'v' || k === 'V') { Engine.setMuted(Engine.settings.voiceMode !== 'off'); }
+      else if (k === 'l' || k === 'L') { toggleProgress(); }
+      else if (k === 'h' || k === 'H') { Engine.home(); }
     });
     window.addEventListener('resize', fit);
     window.addEventListener('hashchange', function () {
       if (location.hash === Engine._ownHash) return;
       var r = readHash();
-      if (r && r.isRefs) { openRefs(r.refs); return; }
       if (r && (!Engine.cur || r.id !== Engine.cur.id)) Engine.go(r.id, { step: r.step });
     });
     bindSettings();
@@ -1213,13 +1610,15 @@
   }
 
   Engine.boot = function () {
+    try { window.name = 'atlas-app'; } catch (e) { /* ignore */ }
     initCatalog();
-    buildRefs();
+    Engine.refList = R.build(Engine.order, Engine.scenes);
     buildGlossary();
-    Engine.settings = Object.assign({}, DEFAULTS, store('atlas.settings') || {});
-    var hasStudio = window.ATLAS_AUDIO && Object.keys(window.ATLAS_AUDIO).length > 0;
-    if (!hasStudio && Engine.settings.voiceMode === 'studio') Engine.settings.voiceMode = 'browser';
+    Engine.settings = Object.assign({}, DEFAULTS, store(SETTINGS_KEY) || {});
+    derivePlayMode(Engine.settings);
     Engine.visited = store('atlas.visited') || {};
+    progLoad();
+    posLoad();
     Engine.svg = $('#svg');
     Engine.defs = $('#defs');
     Engine.bgEl = $('#bg');
@@ -1227,21 +1626,18 @@
     Engine.canvasHost = $('#canvas-host');
     Engine.crumbsEl = $('#crumbs');
     Engine.timelineEl = $('#timeline');
-    Engine.subEl = $('#subtitle');
-    Engine.dockEl = $('#dock');
-    Engine.zoomEl = $('#zoom-chips');
+    Engine.subEl = $('#narr-text');
+    Engine.captionEl = $('#narr');
     Engine.flashEl = $('#flash');
     Engine.hudMetric = $('#hud-metric');
+    Engine.cardsHost = $('#cards-host');
     Engine.cardsEl = $('#cards');
     Engine.blocksEl = $('#deep-blocks');
-    if (!hasStudio) { var opt = $('#set-voice-mode option[value="studio"]'); if (opt) { opt.disabled = true; opt.textContent = 'Studio voice (not installed)'; } }
     buildDefs(Engine.defs);
     buildBg(Engine.bgEl);
-    Engine.playing = Engine.settings.mode === 'auto';
-    document.body.classList.toggle('rails-off', !Engine.settings.rails);
-    if (window.innerWidth < 820) { Engine.settings.rails = false; document.body.classList.add('rails-off'); }
     document.documentElement.setAttribute('data-theme', Engine.settings.theme);
     applyVoiceSettings();
+    applyCaptionSettings();
     bindUi();
     syncControls();
     fit();
@@ -1252,9 +1648,12 @@
     Engine.order.forEach(function (m) { (Engine.impl(m.id).steps || []).forEach(function (st) { nBeats += beatsOf(st).length; }); });
     $('#intro-beats').textContent = nBeats.toLocaleString('en-US');
     function start(fn) { $('#intro').classList.add('hidden'); fn(); }
-    $('#intro-go').onclick = function () { start(function () { var r = readHash(); if (r && r.isRefs) { Engine.go('overview'); openRefs(r.refs); } else Engine.go(r ? r.id : 'overview', { step: r ? r.step : 0 }); }); };
+    $('#intro-resume').onclick = function () { if (Engine.cur) leaveHome(); else start(function () { Engine.go(Engine._last); }); };
+    $('#intro-resume').style.display = Engine._last && Engine.meta(Engine._last) ? '' : 'none';
+    $('#intro-go').onclick = function () { start(function () { var r = readHash(); Engine.go(r ? r.id : 'overview', { step: r ? r.step : 0 }); }); };
     $('#intro-tour').onclick = function () { start(function () { Engine.startTour('bigpicture'); }); };
-    $('#intro-map').onclick = function () { start(function () { Engine.setMode('step'); Engine.go('overview').then(function () { openMap(); }); }); };
+    $('#intro-map').onclick = function () { start(function () { Engine.go('overview').then(function () { openMap(); }); }); };
+    $('#start-btn').onclick = function () { Engine.startPending(); };
   };
 
   window.Atlas = {

@@ -1,15 +1,11 @@
-/* English narration. Two voices:
- *   studio  — pre-rendered neural-TTS clips (audio/manifest.js, built by tools/gen_audio.py), played with
- *             <audio>; sentence timings drive the subtitle highlight; speed via playbackRate (pitch kept).
- *   browser — the Web Speech API, chunked per sentence.
- * A clip is used only if its stored text hash matches the current narration text, so edited narration
- * silently falls back to the browser voice until the audio is regenerated.
- * When narration is off the narrator still "plays" on a reading-speed clock so pacing and subtitle
- * highlighting behave identically. */
+/* English narration through the browser's Web Speech API, chunked per sentence (Chrome truncates long
+ * utterances). Supports pause / resume (the sentence in progress restarts from its beginning, which is the
+ * only behaviour that works the same in every engine). When narration is off the narrator still "plays" on a
+ * reading-speed clock so pacing and captions behave identically. */
 (function () {
   'use strict';
 
-  /* Sentence split for TTS chunks and subtitles. A sentence ends at . ! ? ; (plus closing quotes /
+  /* Sentence split for TTS chunks and captions. A sentence ends at . ! ? ; (plus closing quotes /
    * brackets) only when followed by whitespace or the end, so "Qwen2.5-VL" or "0.5 s" stay intact. */
   function splitSentences(text) {
     var s = String(text || '').replace(/\s+/g, ' ').trim();
@@ -23,26 +19,19 @@
     return out.map(function (x) { return x.trim(); }).filter(Boolean);
   }
 
-  /* FNV-1a (32 bit) over the UTF-8 bytes of the whitespace-normalised text. tools/gen_audio.py uses the
-   * identical function, so hashes match across the two. */
-  function hashText(text) {
-    var s = unescape(encodeURIComponent(String(text || '').replace(/\s+/g, ' ').trim()));
-    var h = 0x811c9dc5;
-    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 0x01000193) >>> 0; }
-    return ('00000000' + h.toString(16)).slice(-8);
-  }
-
   function Narrator() {
     this.enabled = true;
-    this.mode = 'studio';         /* 'studio' | 'browser' | 'off' (enabled=false) */
-    this.rate = 1.0;
+    this.rate = 0.9;
     this.voice = null;
     this.supported = typeof window.speechSynthesis !== 'undefined';
+    this.active = false;          /* a speak() promise is unresolved */
+    this.paused = false;
     this._token = 0;
     this._timer = null;
-    this._audio = null;
-    this._preloaded = {};
-    this.onSentence = null; /* (index, sentences) */
+    this._resumeFn = null;
+    this._pauseHook = null;
+    this.onSentence = null;       /* (index, sentences) */
+    this.onState = null;          /* () => void, whenever active / paused changes */
     var self = this;
     if (this.supported) {
       var pick = function () {
@@ -60,6 +49,8 @@
     }
   }
 
+  Narrator.prototype._state = function () { if (this.onState) { try { this.onState(); } catch (e) { /* ignore */ } } };
+
   /* English voices available in this browser (for the settings picker) */
   Narrator.prototype.voices = function () {
     if (!this.supported) return [];
@@ -70,93 +61,97 @@
     if (v) { this.voice = v; this.pinned = name; }
   };
 
-  /* pre-rendered clip for this narration text, or null */
-  Narrator.prototype.clip = function (key, text) {
-    var A = window.ATLAS_AUDIO;
-    if (!A || !key) return null;
-    var e = A[key];
-    return e && e.h === hashText(text) ? e : null;
-  };
-  Narrator.prototype.hasStudio = function () { return !!window.ATLAS_AUDIO && Object.keys(window.ATLAS_AUDIO).length > 0; };
-
-  /* warm the cache for an upcoming clip */
-  Narrator.prototype.preload = function (key, text) {
-    var c = this.clip(key, text);
-    if (!c || this._preloaded[c.f]) return;
-    try { var a = new Audio(); a.preload = 'auto'; a.src = c.f; this._preloaded[c.f] = a; } catch (e) { /* ignore */ }
-  };
-
   Narrator.prototype.stop = function () {
     this._token++;
     clearTimeout(this._timer);
-    if (this._audio) { try { this._audio.pause(); } catch (e) { /* ignore */ } this._audio.onended = this._audio.onerror = this._audio.ontimeupdate = null; }
+    this._resumeFn = null; this._pauseHook = null;
+    var was = this.active || this.paused;
+    this.active = false; this.paused = false;
     if (this.supported) { try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+    if (was) this._state();
   };
 
-  /* Speak `text`; resolves true when finished, false when stopped/superseded.
-   * opts.key selects a pre-rendered clip ('scene/step/beat'). */
-  Narrator.prototype.speak = function (text, opts) {
+  /* Switch between spoken and silent (reading-clock) narration without losing the place:
+   * the sentence in progress restarts in the new mode. */
+  Narrator.prototype.setEnabled = function (on) {
+    on = !!on;
+    if (this.enabled === on) return;
+    var live = this.active && !this.paused;
+    if (live) this.pause();
+    this.enabled = on;
+    if (live) this.resume();
+    this._state();
+  };
+
+  /* Freeze narration. The speak() promise stays pending until resume(). */
+  Narrator.prototype.pause = function () {
+    if (!this.active || this.paused) return;
+    this.paused = true;
+    clearTimeout(this._timer);
+    if (this._pauseHook) this._pauseHook();
+    if (this.supported) { try { window.speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+    this._state();
+  };
+
+  Narrator.prototype.resume = function () {
+    if (!this.paused) return;
+    this.paused = false;
+    var f = this._resumeFn;
+    this._resumeFn = null;
+    this._state();
+    if (f) f();
+  };
+
+  /* Speak `text`; resolves true when finished, false when stopped/superseded. */
+  Narrator.prototype.speak = function (text) {
     this.stop();
     var token = this._token;
     var self = this;
     var sentences = splitSentences(text);
-    var clip = (this.enabled && this.mode === 'studio') ? this.clip(opts && opts.key, text) : null;
-    return new Promise(function (resolve) {
-      if (clip) { playClip(self, clip, sentences, token, resolve, function () { speakSentences(self, sentences, token, resolve); }); return; }
+    this.active = true;
+    this._state();
+    return new Promise(function (resolve0) {
+      function resolve(v) {
+        if (token === self._token) { self.active = false; self.paused = false; self._resumeFn = null; self._pauseHook = null; self._state(); }
+        resolve0(v);
+      }
       speakSentences(self, sentences, token, resolve);
     });
   };
 
-  function playClip(self, clip, sentences, token, resolve, fallback) {
-    var a = self._audio || (self._audio = new Audio());
-    a.onended = a.onerror = a.ontimeupdate = null;
-    var cached = self._preloaded[clip.f];
-    a.src = cached ? cached.src : clip.f;
-    try { a.preservesPitch = true; a.mozPreservesPitch = true; a.webkitPreservesPitch = true; } catch (e) { /* ignore */ }
-    a.playbackRate = self.rate;
-    var starts = clip.s && clip.s.length ? clip.s : [0];
-    var lastIdx = -1, done = false, wd;
-    function finish(ok) { if (done) return; done = true; clearTimeout(wd); a.onended = a.onerror = a.ontimeupdate = null; if (ok === 'fallback') fallback(); else resolve(ok); }
-    a.ontimeupdate = function () {
-      if (token !== self._token) return;
-      var t = a.currentTime, idx = 0;
-      for (var i = 0; i < starts.length; i++) if (t + 0.05 >= starts[i]) idx = i;
-      if (idx !== lastIdx) { lastIdx = idx; if (self.onSentence) self.onSentence(Math.min(idx, sentences.length - 1), sentences); }
-    };
-    a.onended = function () { finish(token === self._token); };
-    a.onerror = function () { finish(token === self._token ? 'fallback' : false); };
-    wd = setTimeout(function () { finish(token === self._token ? true : false); }, (clip.d / Math.max(0.3, self.rate)) * 1000 + 4000);
-    if (self.onSentence) self.onSentence(0, sentences);
-    var p;
-    try { p = a.play(); } catch (e) { p = null; }
-    if (p && p.catch) p.catch(function () { finish(token === self._token ? 'fallback' : false); });
-  }
-
   function speakSentences(self, sentences, token, resolve) {
-    var i = 0;
+    var i = 0, cur = null;
+    /* pause() calls this synchronously: abandon the sentence in progress so it restarts on resume */
+    self._pauseHook = function () {
+      if (cur && !cur.finished) { cur.finished = true; i--; }
+      cur = null;
+      self._resumeFn = next;
+    };
     function next() {
       if (token !== self._token) { resolve(false); return; }
+      if (self.paused) { self._resumeFn = next; return; }
       if (i >= sentences.length) { resolve(true); return; }
       var s = sentences[i];
+      var st = { finished: false };
+      cur = st;
       if (self.onSentence) self.onSentence(i, sentences);
       i++;
       var words = s.split(' ').length;
       var readMs = Math.max(1200, (words / (2.55 * self.rate)) * 1000);
+      var done = function () { if (st.finished) return; st.finished = true; clearTimeout(self._timer); cur = null; next(); };
       if (self.enabled && self.supported) {
         var u = new SpeechSynthesisUtterance(s);
         if (self.voice) u.voice = self.voice;
         u.lang = (self.voice && self.voice.lang) || 'en-US';
         u.rate = self.rate;
         u.pitch = 1.0;
-        var finished = false;
-        var done = function () { if (finished) return; finished = true; clearTimeout(self._timer); next(); };
         u.onend = done;
         u.onerror = done;
         /* watchdog: some engines never fire onend */
         self._timer = setTimeout(done, readMs * 2.2 + 2500);
         try { window.speechSynthesis.speak(u); } catch (e) { done(); }
       } else {
-        self._timer = setTimeout(next, readMs);
+        self._timer = setTimeout(done, readMs);
       }
     }
     next();
@@ -164,5 +159,4 @@
 
   window.AtlasNarrator = new Narrator();
   window.AtlasNarrator.splitSentences = splitSentences;
-  window.AtlasNarrator.hashText = hashText;
 })();

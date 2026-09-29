@@ -92,7 +92,7 @@ Atlas.register({
         var S = ctx.state;
         ctx.fade([S.prompt, S.att, S.enter], 0.3, 500);
         S.client = ctx.node({ x: 265, y: 430, w: 160, h: 64, title: 'Client App', sub: 'web · mobile', icon: 'phone', color: 'cyan' });
-        S.gw = ctx.node({ x: 455, y: 430, w: 170, h: 64, title: 'Edge + Gateway', sub: 'TLS · auth · quota', icon: 'shield', color: 'blue', titleSize: 15 });
+        S.gw = ctx.node({ x: 462, y: 430, w: 190, h: 64, title: 'Edge + Gateway', sub: 'TLS · auth · quota', icon: 'shield', color: 'blue', titleSize: 15 });
         S.l1 = ctx.link(S.user, S.client, { color: 'cyan' });
         S.l2 = ctx.link(S.client, S.gw, { color: 'blue', label: 'HTTPS / QUIC', labelDy: 50 });
         S.back = ctx.link(S.gw, S.client, { color: 'cyan', from: 't', to: 't', bend: { x: 360, y: 340 }, dash: '3 5', label: 'SSE: progress events', labelDy: -12 });

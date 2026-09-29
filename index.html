@@ -6,32 +6,63 @@
 <title>Genesis Atlas</title>
 <meta name="description" content="An interactive, narrated, zoomable deep dive into the full architecture of a multimodal AI agent system that creates videos.">
 <meta name="theme-color" content="#000000">
-<script>try { var t = JSON.parse(localStorage.getItem('atlas.settings') || '{}').theme; if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;650;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>try { var t = JSON.parse(localStorage.getItem('atlas.settings.v2') || '{}').theme; if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+<link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/atlas.css">
 </head>
 <body>
 <div id="app">
   <header id="topbar">
-    <div class="brand"><span class="logo"></span>Genesis <em>Atlas</em></div>
+    <div class="brand" title="Home"><span class="logo"></span>Genesis <em>Atlas</em></div>
+    <button class="tbtn" id="btn-home" title="Home: back to the start page (H)"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 10v10h4v-6h4v6h4V10"/></svg></button>
+    <button class="tbtn back" id="btn-up" title="Back to the level above (Esc)"><svg viewBox="0 0 24 24"><path d="M10 6l-6 6 6 6M4 12h11a5 5 0 0 1 5 5v1"/></svg><span class="lbl" id="up-label">Back</span></button>
+    <button class="tbtn" id="btn-restart" title="Start over: forget your place here and begin this topic again"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v4h4"/></svg><span class="lbl">Start over</span></button>
     <nav id="crumbs"></nav>
+
+    <div id="playbar">
+      <button class="cbtn" id="btn-prev" title="Previous point (&larr;)"><svg viewBox="0 0 24 24"><path d="M17 5v14L7 12zM5 5h2v14H5z"/></svg></button>
+      <button class="cbtn" id="btn-voice-play" title="Pause narration (Space)"><svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+      <button id="btn-next" title="Next point (&rarr;)"><span id="next-label">Next</span><span class="k" id="next-count"></span><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 4l12 8-12 8z"/></svg></button>
+      <button class="cbtn" id="btn-replay" title="Replay this point (R)"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+      <button class="cbtn" id="btn-mute" title="Mute narration and read instead (V)"></button>
+      <div id="pips"></div>
+      <div class="seg" id="mode-seg" title="Step: one point at a time. Topic: press Play once and the topic plays through. Auto: plays everything, opens topics by itself (S)">
+        <button id="mode-step" data-v="step">Step</button><button id="mode-topic" data-v="topic">Topic</button><button id="mode-auto" data-v="auto">Auto</button>
+      </div>
+    </div>
+
     <div class="top-actions">
+      <div class="menuwrap">
+        <button class="tbtn" id="btn-zoom" title="Zoom into a component (Z)"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5M11 8v6M8 11h6"/></svg><span class="lbl">Zoom</span><span class="badge" id="zoom-count"></span></button>
+        <div id="zoom-menu" class="menu hidden"></div>
+      </div>
+      <button class="tbtn" id="btn-cc" title="Narration text box (C)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 11.5a2 2 0 1 0 0 1.5M15.5 11.5a2 2 0 1 0 0 1.5"/></svg></button>
+      <button class="tbtn" id="btn-progress" title="Learning progress (L)"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg><span class="lbl">Progress</span></button>
       <button class="tbtn" id="btn-map" title="System map (M)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="lbl">Map</span></button>
       <button class="tbtn" id="btn-tour" title="Guided tour"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg><span class="lbl">Tour</span></button>
-      <button class="tbtn" id="btn-refs" title="All references"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"/></svg><span class="lbl">References</span></button>
-      <button class="tbtn" id="btn-rails" title="Show / hide side panels (D)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg><span class="lbl">Panels</span></button>
+      <button class="tbtn" id="btn-refs" title="References (opens in a new tab)"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"/></svg><span class="lbl">References</span></button>
+      <button class="tbtn" id="btn-deep" title="Deep dive panel (D)"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg><span class="lbl">Deep dive</span></button>
+      <button class="tbtn" id="btn-rails" title="Focus mode: hide all side panels (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <button class="tbtn" id="btn-theme" title="Dark / light (T)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-      <button class="tbtn" id="btn-settings" title="Playback settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg><span class="lbl">Settings</span></button>
+      <button class="tbtn" id="btn-settings" title="Playback settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
     </div>
+    <div id="timeline"></div>
   </header>
 
   <main id="main">
     <aside id="rail-left" class="rail">
-      <div class="rail-head"><b>Key ideas</b><span>appear as the story unfolds</span></div>
       <div id="rail-step"></div>
-      <div class="rail-scroll" id="cards"></div>
+      <div id="narr">
+        <div class="narr-head"><span>Narration</span></div>
+        <div id="narr-text" class="narr-scroll"></div>
+      </div>
+      <div id="cards-host">
+        <div id="cards">
+          <div id="card-new"></div>
+          <details id="card-hist" class="hist"><summary></summary><div id="hist-list"></div></details>
+        </div>
+      </div>
     </aside>
 
     <section id="stage-wrap">
@@ -40,6 +71,7 @@
           <svg id="svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
             <defs id="defs"></defs>
             <g id="bg"></g>
+            <g id="poster"></g>
             <g id="cam"></g>
             <rect id="vignette" x="0" y="0" width="1600" height="900" fill="url(#fx-vignette)" pointer-events="none"/>
           </svg>
@@ -49,16 +81,17 @@
           <div id="hud-level"></div>
           <div id="hud-kicker"></div>
           <div id="hud-title"></div>
+          <div id="hud-step"></div>
         </div>
         <div id="hud-metric"></div>
         <div id="flash"></div>
+        <div id="start" class="hidden"><div class="start-sum" id="start-sum"></div><button id="start-btn"><svg viewBox="0 0 24 24"><path d="M8 4l12 8-12 8z"/></svg><span>Play this topic</span></button><div class="start-sub">or press <kbd>Space</kbd> / <kbd>&rarr;</kbd></div></div>
         <div id="toast"></div>
       </div>
-      <div id="cards-strip"></div>
     </section>
 
     <aside id="rail-right" class="rail">
-      <div class="rail-head"><b>Deep dive</b><span>for the engineer who wants the math</span></div>
+      <div class="rail-head"><b>Deep dive</b><button class="x sm" id="deep-close" title="Close (D)">&#10005;</button><span>for the engineer who wants the math</span></div>
       <div class="rail-scroll" id="deep">
         <div id="deep-scene"></div>
         <div id="deep-blocks"></div>
@@ -67,36 +100,27 @@
     </aside>
   </main>
 
-  <footer id="dock">
-    <div id="zoom-chips"></div>
-    <div class="dock-row">
-      <div class="controls">
-        <button class="cbtn" id="btn-up" title="Zoom out (Esc)"><svg viewBox="0 0 24 24"><path d="M6 16l6-8 6 8z" transform="rotate(-45 12 12)"/></svg></button>
-        <button class="cbtn" id="btn-prev" title="Previous point (&larr;)"><svg viewBox="0 0 24 24"><path d="M17 5v14L7 12zM5 5h2v14H5z"/></svg></button>
-        <button class="cbtn" id="btn-pause" title="Pause / resume autoplay (Space)"><svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
-        <button id="btn-next" title="Next point (&rarr;)"><span id="next-label">Next</span><span class="k" id="next-count"></span><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 4l12 8-12 8z"/></svg></button>
-        <button class="cbtn" id="btn-replay" title="Replay this point (R)"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
-      </div>
-      <div class="seg" id="mode-seg" title="Auto: keeps going with pauses. Step: one idea at a time, you press Next (S)">
-        <button id="mode-auto" class="on">Auto</button><button id="mode-step">Step</button>
-      </div>
-      <div id="subtitle" aria-live="polite"></div>
-      <div id="hud-step"></div>
-      <div id="pips"></div>
-    </div>
-    <div id="timeline"></div>
-  </footer>
-
   <div id="settings" class="hidden">
     <h4>Playback</h4>
-    <div class="srow"><label>Mode<span class="hint">Auto keeps going; Step waits for you</span></label><div class="seg" id="set-mode"><button data-v="auto">Auto</button><button data-v="step">Step</button></div></div>
-    <div class="srow"><label>Speech speed</label><select id="set-rate"><option value="0.5">0.5&times;</option><option value="0.6">0.6&times;</option><option value="0.7">0.7&times;</option><option value="0.8">0.8&times;</option><option value="0.9">0.9&times;</option><option value="1">1.0&times;</option><option value="1.15">1.15&times;</option><option value="1.3">1.3&times;</option></select></div>
+    <div class="srow"><label>Play mode<span class="hint">Step: one point per press. Topic: press Play once, it plays through. Auto: opens and plays every topic itself.</span></label><div class="seg" id="set-mode"><button data-v="step">Step</button><button data-v="topic">Topic</button><button data-v="auto">Auto</button></div></div>
+    <div class="srow"><label>Speech speed</label><select id="set-rate"><option value="0.5">0.5&times;</option><option value="0.6">0.6&times;</option><option value="0.7">0.7&times;</option><option value="0.8">0.8&times;</option><option value="0.9">0.9&times; (default)</option><option value="1">1.0&times;</option><option value="1.15">1.15&times;</option><option value="1.3">1.3&times;</option></select></div>
     <div class="srow"><label>Pauses<span class="hint">time to read the callouts</span></label><select id="set-pause"><option value="0.5">Short</option><option value="1">Normal</option><option value="1.8">Long</option><option value="3">Very long</option></select></div>
-    <div class="srow"><label>Narration</label><select id="set-voice-mode"><option value="studio">Studio voice</option><option value="browser">Browser voice</option><option value="off">Off (subtitles only)</option></select></div>
-    <div class="srow" id="row-voice"><label>Browser voice</label><select id="set-voice"></select></div>
+    <div class="srow"><label>Narration</label><select id="set-voice-mode"><option value="browser">Voice on</option><option value="off">Off (captions only)</option></select></div>
+    <div class="srow"><label>Voice</label><select id="set-voice"></select></div>
+    <div class="srow"><label>Narration text box<span class="hint">left panel, scrolls if long</span></label><select id="set-cc"><option value="on">Shown</option><option value="off">Hidden</option></select></div>
+    <h4 class="sub">Appearance</h4>
     <div class="srow"><label>Theme</label><div class="seg" id="set-theme"><button data-v="dark">Dark</button><button data-v="light">Light</button></div></div>
-    <div class="keys"><span><kbd>&rarr;</kbd>next point</span><span><kbd>&larr;</kbd>previous</span><span><kbd>Space</kbd>pause / next</span><span><kbd>Esc</kbd>zoom out</span><span><kbd>S</kbd>auto / step</span><span><kbd>M</kbd>map</span><span><kbd>D</kbd>panels</span><span><kbd>T</kbd>theme</span></div>
+    <div class="keys"><span><kbd>&rarr;</kbd>next point</span><span><kbd>&larr;</kbd>previous</span><span><kbd>Space</kbd>pause / next</span><span><kbd>Esc</kbd>zoom out</span><span><kbd>Z</kbd>zoom menu</span><span><kbd>S</kbd>auto / step</span><span><kbd>C</kbd>narration box</span><span><kbd>M</kbd>map</span><span><kbd>D</kbd>deep dive</span><span><kbd>F</kbd>focus mode</span><span><kbd>T</kbd>theme</span></div>
   </div>
+
+  <aside id="prog" class="hidden">
+    <div class="prog-head"><div><div class="dk">Progress</div><h3>Your learning path</h3></div><button class="x sm" id="prog-close" title="Close (Esc)">&#10005;</button></div>
+    <div id="prog-sum"></div>
+    <div class="prog-legend"><span><i class="pr pr2"></i>played: recorded automatically</span><span><i class="ck on"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></i>learned: you tick it</span></div>
+    <div class="prog-tools"><button id="prog-expand">Expand all</button><button id="prog-collapse">Collapse all</button><button id="prog-filter">Hide learned</button><button id="prog-map">Open map</button></div>
+    <div id="prog-scroll"><div id="prog-tree"></div></div>
+    <div class="prog-foot"><button id="prog-reset-p">Reset played</button><button id="prog-reset-l">Reset learned</button></div>
+  </aside>
 
   <div id="pop"></div>
 
@@ -110,31 +134,14 @@
         </div>
         <div class="sheet-actions">
           <input id="map-filter" placeholder="Filter: attention, KV cache, scheduler…" autocomplete="off">
+          <button class="pill" id="map-progress-btn">Progress</button>
           <button class="pill" id="tour-big">Big-picture tour</button>
           <button class="pill" id="tour-deep">Full deep tour</button>
           <button class="x" id="map-close" title="Close">&#10005;</button>
         </div>
       </div>
       <div id="map-grid"></div>
-      <div class="map-foot">L0 system &rarr; L1 subsystem &rarr; L2 component &rarr; L3 primitive. Click any chamber to fly there. In the stage, dashed rings mark components you can zoom into.</div>
-    </div>
-  </div>
-
-  <div id="refs-page" class="overlay hidden">
-    <div class="sheet">
-      <div class="sheet-head">
-        <div>
-          <div class="dk">References</div>
-          <h2>Papers, specs and systems cited</h2>
-          <div class="sub" id="refs-count"></div>
-        </div>
-        <div class="sheet-actions">
-          <input class="search" id="refs-filter" placeholder="Search title, author, venue…" autocomplete="off">
-          <button class="pill" id="refs-back">&larr; Back</button>
-          <button class="x" id="refs-close" title="Close">&#10005;</button>
-        </div>
-      </div>
-      <div id="refs-list"></div>
+      <div class="map-foot">L0 system &rarr; L1 subsystem &rarr; L2 component &rarr; L3 primitive. Click any chamber to fly there: it opens where you left off. Ring and first number = steps played, green number = steps you marked learned. In the stage, dashed rings with a “+” mark components you can zoom into.</div>
     </div>
   </div>
 
@@ -145,21 +152,22 @@
       <p>An interactive, narrated teardown of a state-of-the-art multimodal AI video system, from a keystroke in the browser to the GPU warp that computes a single neuron.</p>
       <div class="intro-stats"><div><b id="intro-count">41</b>zoomable chambers</div><div><b>4</b>levels of depth</div><div><b id="intro-beats">300+</b>narrated points</div></div>
       <div class="intro-actions">
+        <button id="intro-resume" class="pill primary" style="display:none">Continue where I left off</button>
         <button id="intro-tour" class="pill primary">Start the guided tour</button>
         <button id="intro-go" class="pill">Explore freely</button>
         <button id="intro-map" class="pill">Open the map</button>
       </div>
-      <div class="intro-mode"><span>Play as</span><div class="seg" id="intro-mode-seg"><button data-v="auto" class="on">Auto</button><button data-v="step">Step by step</button></div><span>Narration works best in Edge or Chrome.</span></div>
+      <div class="intro-mode"><span>Play mode</span><div class="seg" id="intro-mode-seg"><button data-v="step">Step by step</button><button data-v="topic">Play a topic</button><button data-v="auto">Autoplay</button></div><span>Narration works best in Edge or Chrome.</span></div>
     </div>
   </div>
 </div>
 
 <script src="js/core/catalog.js"></script>
 <script src="js/core/glossary.js"></script>
+<script src="js/core/refs.js"></script>
 <script src="js/core/ctx.js"></script>
 <script src="js/core/narrator.js"></script>
 <script src="js/core/engine.js"></script>
-<script src="audio/manifest.js"></script>
 <!-- scenes (one file per chamber; a missing file falls back to a placeholder) -->
 <script src="js/scenes/00-overview.js"></script>
 <script src="js/scenes/10-client.js"></script>

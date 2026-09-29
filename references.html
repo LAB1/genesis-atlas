@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>References · Genesis Atlas</title>
+<meta name="theme-color" content="#000000">
+<script>try { var t = JSON.parse(localStorage.getItem('atlas.settings.v2') || '{}').theme; if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/refs.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="index.html"><span class="logo"></span>Genesis <em>Atlas</em></a>
+  <div class="bar-actions">
+    <button class="pill" id="theme" title="Dark / light">◐ Theme</button>
+    <a class="pill" id="back" href="index.html">&larr; Back to the atlas</a>
+    <button class="pill" id="close" title="Close this tab">Close tab</button>
+  </div>
+</header>
+<main>
+  <div class="dk">References</div>
+  <h1>Papers, specs and systems cited</h1>
+  <div class="sub" id="count"></div>
+  <div class="controls">
+    <input class="search" id="q" placeholder="Search title, author, venue…" autocomplete="off">
+    <select id="chamber"></select>
+  </div>
+  <div id="list"></div>
+</main>
+
+<script>window.__scenes = {}; window.Atlas = { register: function (d) { if (d && d.id) window.__scenes[d.id] = d; } };</script>
+<script src="js/core/catalog.js"></script>
+<script src="js/core/refs.js"></script>
+<script>ATLAS_CATALOG.forEach(function (m) { document.write('<script src="js/scenes/' + m.file + '"><\/script>'); });</script>
+<script>
+(function () {
+  var R = window.AtlasRefs;
+  var cat = window.ATLAS_CATALOG, byId = {};
+  cat.forEach(function (m) { byId[m.id] = m; });
+  var list = R.build(cat, window.__scenes);
+  var COLORS = { cyan: '#22e4ff', blue: '#4d8dff', magenta: '#ff3fd2', violet: '#9b7bff', amber: '#ffbf3a', lime: '#8dff5a', orange: '#ff8a3d', red: '#ff4d6d', teal: '#2bf5c4', pink: '#ff7eb6' };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  var $ = function (s) { return document.querySelector(s); };
+
+  var sel = $('#chamber');
+  var counts = {};
+  list.forEach(function (e) { e.scenes.forEach(function (s) { counts[s] = (counts[s] || 0) + 1; }); });
+  sel.innerHTML = '<option value="">All chambers</option>' + cat.filter(function (m) { return counts[m.id]; }).map(function (m) { return '<option value="' + m.id + '">' + esc(m.title) + ' (' + counts[m.id] + ')</option>'; }).join('');
+
+  function render() {
+    var q = ($('#q').value || '').toLowerCase(), ch = sel.value;
+    var box = $('#list'); box.innerHTML = '';
+    var shown = 0;
+    list.forEach(function (e) {
+      if (q && e.text.toLowerCase().indexOf(q) < 0) return;
+      if (ch && e.scenes.indexOf(ch) < 0) return;
+      shown++;
+      var row = document.createElement('div');
+      row.className = 'ref'; row.id = 'ref-' + e.n;
+      var chips = e.scenes.map(function (sid) {
+        var m = byId[sid];
+        return '<a href="index.html#/' + sid + '/1" style="--c:' + (COLORS[m.color] || m.color || '#2997ff') + '">' + esc(m.title) + '</a>';
+      }).join('');
+      row.innerHTML = '<div class="n">[' + e.n + ']</div><div class="t">' + e.html +
+        '<div class="meta"><a class="find" target="_blank" rel="noopener" href="' + R.scholarUrl(e) + '">Find online ↗</a>' + chips + '</div></div>';
+      box.appendChild(row);
+    });
+    $('#count').textContent = shown + ' of ' + list.length + ' references · the numbers match the Sources chips inside each chamber';
+    highlight();
+  }
+
+  function highlight() {
+    var m = /^#ref-(\d+)$/.exec(location.hash);
+    document.querySelectorAll('.ref.hl').forEach(function (e) { e.classList.remove('hl'); });
+    if (!m) return;
+    var el = document.getElementById('ref-' + m[1]);
+    if (el) { el.classList.add('hl'); setTimeout(function () { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); }
+  }
+
+  $('#q').oninput = render; sel.onchange = render;
+  window.addEventListener('hashchange', highlight);
+  $('#close').onclick = function () { window.close(); setTimeout(function () { location.href = 'index.html'; }, 250); };
+  $('#theme').onclick = function () {
+    var t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    try { var s = JSON.parse(localStorage.getItem('atlas.settings.v2') || '{}'); s.theme = t; localStorage.setItem('atlas.settings.v2', JSON.stringify(s)); } catch (e) {}
+  };
+  render();
+})();
+</script>
+</body>
+</html>

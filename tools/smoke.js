@@ -37,6 +37,8 @@
     var E = window.Atlas.engine;
     window.AtlasNarrator.enabled = false;
     E.speed = 60;
+    E._forceAutoStart = true;      /* tests drive topics themselves; the wait-for-Play gate is tested separately in nav */
+    E._forceFresh = true;          /* ... and never restore saved positions unless a test asks for it */
     var intro = document.getElementById('intro');
     intro.classList.add('hidden'); intro.style.display = 'none';   /* never let it into a screenshot */
     var th = param('theme');
@@ -173,6 +175,7 @@
     var o = 1;
     for (var n = el; n && n !== root.parentNode; n = n.parentNode) {
       if (n.nodeType !== 1) break;
+      if (n.classList && n.classList.contains('hotspot-hint')) return 0;      /* hidden by CSS until hover */
       var a = n.getAttribute && n.getAttribute('opacity');
       if (a !== null && a !== undefined && a !== '') o *= parseFloat(a);
       var cs = n.style;
@@ -217,7 +220,10 @@
       var b = it.b;
       if (!camActive && (b.x < -2 || b.y < -2 || b.x + b.w > 1602 || b.y + b.h > 902)) issues.push({ type: 'offscreen', a: it.str.slice(0, 40), at: [Math.round(b.x), Math.round(b.y)], size: [Math.round(b.w), Math.round(b.h)] });
       if (!camActive) {
-        var hud1 = { x: 0, y: 0, w: 860, h: 150 }, hud2 = { x: 1150, y: 0, w: 450, h: 66 };
+        /* the REAL rendered title block at this viewport (it scales with the stage, but measure, don't assume) */
+        var hr = document.getElementById('hud').getBoundingClientRect();
+        var hud1 = toBox(hr); hud1.w += 8; hud1.h += 8;
+        var hud2 = { x: 1150, y: 0, w: 450, h: 66 };
         var ib = inner(b);
         if (inter(ib, hud1) > 0 || inter(ib, hud2) > 0) issues.push({ type: 'hud-collision', a: it.str.slice(0, 40), at: [Math.round(b.x), Math.round(b.y)] });
       }
@@ -303,6 +309,7 @@
   function nav() {
     var E = prep();
     var N = window.AtlasNarrator;
+    var realSpeak = N.speak;
     N.speak = function () { return new Promise(function (r) { setTimeout(function () { r(true); }, 25); }); };
     E.setMode('step');
     var log = [];
@@ -362,8 +369,120 @@
     }).then(function () {
       E.tour = null;
       E.openMap(); E.closeMap(true);
-      E.openRefs(3); E.closeRefs(true);
       if (!E.refList.length) errs.push({ scene: 'refs', msg: 'no references indexed' });
+      /* narration play / pause button, captions, zoom menu */
+      cur = 'controls';
+      E.go('overview', { step: 1, transition: 'none' });
+      return sleep(300).then(function () {
+        N.speak = realSpeak; N.enabled = false; N.rate = 0.6;     /* real narrator, muted reading clock */
+        E.setMode('auto');
+        E.next(); return sleep(120);
+      }).then(function () {
+        E.togglePlay();
+        if (!E.voicePaused) errs.push({ scene: cur, msg: 'togglePlay did not pause' });
+        var b = document.getElementById('btn-voice-play');
+        if (!b || !/M8 4l12 8/.test(b.innerHTML)) errs.push({ scene: cur, msg: 'play button should show a play icon while paused' });
+        E.togglePlay();
+        if (E.voicePaused) errs.push({ scene: cur, msg: 'togglePlay did not resume' });
+        E.setCaptions(false); E.setCaptions(true);
+        document.getElementById('btn-zoom').click();
+        var menuOpen = !document.getElementById('zoom-menu').classList.contains('hidden');
+        if (!menuOpen) errs.push({ scene: cur, msg: 'zoom menu did not open' });
+        document.getElementById('btn-zoom').click();
+        /* a newly opened topic waits for Play unless the user chose Auto */
+        cur = 'wait-for-play';
+        E._forceAutoStart = false; E.setMode('topic');
+        E.go('llm', { transition: 'none' });
+        return sleep(500);
+      }).then(function () {
+        if (!E.cur || E.cur.id !== 'llm') { errs.push({ scene: cur, msg: 'did not open llm' }); return; }
+        if (!E.cur.pending) errs.push({ scene: cur, msg: 'a newly opened topic should wait for Play' });
+        if (N.active) errs.push({ scene: cur, msg: 'narration started by itself' });
+        if (document.getElementById('start').classList.contains('hidden')) errs.push({ scene: cur, msg: 'start prompt is not shown' });
+        E.next();
+        return sleep(250).then(function () {
+          if (E.cur.pending) errs.push({ scene: cur, msg: 'Next did not start the waiting topic' });
+          if (E.cur.beatIdx !== 0) errs.push({ scene: cur, msg: 'first beat did not start' });
+          E.setMode('auto');
+          E.go('overview', { transition: 'none' });
+          return sleep(500);
+        }).then(function () {
+          if (!E.cur || E.cur.pending) errs.push({ scene: cur, msg: 'Auto mode must start new topics by itself' });
+          E._forceAutoStart = false; E.setMode('topic');
+          cur = 'chrome';
+          E.go('llm', { transition: 'none' });
+          return sleep(1000);
+        }).then(function () {
+          /* backdrop = complete system diagram while the topic waits */
+          var g = document.getElementById('poster');
+          if (!E.cur || !E.cur.pending) errs.push({ scene: cur, msg: 'llm should be waiting for Play' });
+          if (!g.classList.contains('show') || !g.getElementsByTagName('text').length) errs.push({ scene: cur, msg: 'pending topic has no system-diagram backdrop' });
+          /* back button goes to the parent chamber */
+          document.getElementById('btn-up').click();
+          return sleep(1000);
+        }).then(function () {
+          if (!E.cur || E.cur.id !== 'overview') errs.push({ scene: cur, msg: 'Back did not return to the parent (got ' + (E.cur && E.cur.id) + ')' });
+          /* home shows the start page and can resume */
+          E.home();
+          var intro = document.getElementById('intro');
+          if (intro.classList.contains('hidden')) errs.push({ scene: cur, msg: 'Home did not show the start page' });
+          if (document.getElementById('intro-resume').style.display === 'none') errs.push({ scene: cur, msg: 'start page lacks Continue button' });
+          document.getElementById('intro-resume').click();
+          if (!intro.classList.contains('hidden')) errs.push({ scene: cur, msg: 'Continue did not close the start page' });
+          /* mute = reading mode */
+          E.setMuted(true);
+          if (N.enabled) errs.push({ scene: cur, msg: 'mute left narration enabled' });
+          if (!document.getElementById('btn-mute').classList.contains('muted')) errs.push({ scene: cur, msg: 'mute button not shown as muted' });
+          E.setMuted(false);
+          if (!N.enabled) errs.push({ scene: cur, msg: 'unmute did not re-enable narration' });
+          /* progress: two separate marks, jump */
+          E.openProgress();
+          var prog = document.getElementById('prog');
+          if (prog.classList.contains('hidden')) errs.push({ scene: cur, msg: 'progress panel did not open' });
+          if (document.querySelectorAll('#prog-tree .pc').length < 10) errs.push({ scene: cur, msg: 'progress tree is too short' });
+          E.setLearned('overview', 0, true);
+          if (!E.progress.l['overview/0']) errs.push({ scene: cur, msg: 'learned mark not stored' });
+          if (E.progress.p['overview/0'] === E.progress.l['overview/0'] && E.progress.p['overview/0'] === 1) { /* same object is fine; the maps are separate */ }
+          E.setLearned('overview', 0, false);
+          E.jumpTo('llm', 1);
+          return sleep(1000);
+        }).then(function () {
+          if (!E.cur || E.cur.id !== 'llm' || E.cur.step !== 1) errs.push({ scene: cur, msg: 'jumpTo did not open llm step 2 (got ' + (E.cur && E.cur.id) + '/' + (E.cur && E.cur.step) + ')' });
+          if (!document.getElementById('prog').classList.contains('hidden')) errs.push({ scene: cur, msg: 'progress panel should close after a jump' });
+          /* saved position: leave a chamber mid-way, come back, land in the same picture; Start over resets */
+          cur = 'restore';
+          E._forceFresh = false; E._forceAutoStart = false; E.setMode('topic');
+          E.go('overview', { step: 3, transition: 'none' });
+          return sleep(700);
+        }).then(function () {
+          E.next(); return sleep(300);            /* start the waiting topic: point 1 */
+        }).then(function () {
+          E.next(); return sleep(300);            /* point 2 */
+        }).then(function () {
+          if (!E.pos.overview || E.pos.overview.s !== 3 || E.pos.overview.b !== 1) errs.push({ scene: cur, msg: 'position not recorded: ' + JSON.stringify(E.pos.overview) });
+          E.zoomInto('llm', { x: 700, y: 400, w: 200, h: 100 });
+          return sleep(1300);
+        }).then(function () {
+          if (!E.cur || E.cur.id !== 'llm') errs.push({ scene: cur, msg: 'did not zoom into llm' });
+          document.getElementById('btn-up').click();
+          return sleep(1600);
+        }).then(function () {
+          var c2 = E.cur;
+          if (!c2 || c2.id !== 'overview') { errs.push({ scene: cur, msg: 'Back did not return to overview' }); return; }
+          if (c2.step !== 3 || c2.beatIdx !== 1) errs.push({ scene: cur, msg: 'returned to step ' + c2.step + ' point ' + c2.beatIdx + ', expected step 3 point 1' });
+          if (c2.pending) errs.push({ scene: cur, msg: 'returning should restore the picture, not wait at the start' });
+          if (!document.querySelectorAll('#card-new .card, #hist-list .card').length) errs.push({ scene: cur, msg: 'restored page lost its callout cards' });
+          if (!document.getElementById('poster').classList.contains('show') === false && document.getElementById('poster').children.length) errs.push({ scene: cur, msg: 'poster should not show on a restored page' });
+          document.getElementById('btn-restart').click();
+          return sleep(900);
+        }).then(function () {
+          var c3 = E.cur;
+          if (!c3 || c3.step !== 0 || !c3.pending) errs.push({ scene: cur, msg: 'Start over did not return to a waiting first step' });
+          if (E.pos.overview) errs.push({ scene: cur, msg: 'Start over should forget the saved position' });
+          E._forceFresh = true;
+          E._forceAutoStart = true; E.setMode('step');
+        });
+      });
     });
     chain.then(function () {
       finish([{ id: 'navigation', steps: log.length, elementsAnimated: log.length + ' zoom round-trips, ' + E.refList.length + ' references', status: errs.length ? 'ERROR' : 'ok', errors: errs.map(function (x) { return x.scene + ': ' + x.msg; }) }]);
@@ -376,8 +495,20 @@
     var parts = spec.split(':');
     var size = param('size');
     E.setMode('step');
+    if (has('pending')) E._forceAutoStart = false;     /* show the wait-for-Play state of a freshly opened topic */
     window.AtlasNarrator.rate = 40;
     E.go(parts[0], { step: Math.max(0, parseInt(parts[1] || '1', 10) - 1), beat: Math.max(0, parseInt(parts[2] || '1', 10) - 1), transition: 'none' });
+    var op = param('open');      /* &open=progress|home|zoom: show a panel in the screenshot */
+    if (has('dbgstyle')) setTimeout(function () {
+      var c = document.querySelector('.mchip'), cs = c && getComputedStyle(c), mt = c && c.querySelector('.mt'), ms = mt && getComputedStyle(mt);
+      var pre = document.createElement('pre'); pre.id = 'dbg';
+      var r = c && c.getBoundingClientRect(), hit = r && document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      var mp = document.querySelector('#map'), mcs = getComputedStyle(mp);
+      var pp = document.querySelector('.mcard p'), pcs = pp && getComputedStyle(pp);
+      pre.textContent = 'DBG ' + JSON.stringify(c ? { vis: cs.visibility, mapVis: mcs.visibility, mapOp: mcs.opacity, mapCls: mp.className, pVis: pcs.visibility, rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], hit: hit && (hit.tagName + '.' + hit.className), mtColor: ms.color, mtOverflow: ms.overflow, mtTF: ms.transform } : 'no chip') + ' DBG';
+      document.body.appendChild(pre);
+    }, 20000);
+    if (op) setTimeout(function () { if (op === 'progress') E.openProgress(); else if (op === 'home') E.home(); else if (op === 'map') E.openMap(); else if (op === 'zoom') document.getElementById('btn-zoom').click(); }, 1200);
   }
 
   document.addEventListener('DOMContentLoaded', function () {

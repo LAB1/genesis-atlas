@@ -113,9 +113,14 @@ deduplicated across chambers by text. Write each reference in a stable canonical
 ("Authors, <i>Title</i>, Venue Year") and reuse the exact same string when two chambers cite the same work.
 
 ## Canvas / layout rules
-* Scene coordinates: **1600 × 900** (SVG viewBox). The chamber title (level, kicker, title) is an HTML overlay in the
-  top-left: **keep x < 860, y < 150 free**; the optional metric chip (`ctx.hud`) uses x > 1150, y < 70. Everything else is yours.
-* Minimum font size 11; body labels 12–16; headings 18–26.
+* Scene coordinates: **1600 × 900** (SVG viewBox). The chamber title (level, kicker, title, step) is a small HTML overlay in the
+  top-left that scales with the stage: **keep x < 860, y < 150 free**; the optional metric chip (`ctx.hud`) uses x > 1150, y < 70.
+  Everything else is yours. There is no caption overlay: narration text lives in a fixed box in the left panel, callout cards
+  below it, the deep dive in the right panel; nothing HTML covers the stage except the title and the "Play this topic" prompt.
+* **Text scale:** every SVG text (`ctx.text`, node titles, labels, ...) is drawn at **1.14 ×** the size you pass, never below
+  12.5 px (`AtlasCtx.TEXT`), so the stage stays legible on small windows. Write sizes as before (11–26); check that boxes and
+  pills still hold the text at that scale (`ctx.label` pill widths already account for it). The layout audit runs at the shipped scale.
+* Font sizes you pass: 11–16 for labels and body, 18–26 for headings.
 * No overlaps: text must never overlap other text, spill out of its node or pill, sit behind an opaque node, or leave
   the canvas. `python tools/smoke.py --layout <id>` audits the end state of **every beat** (text-overlap, hud-collision,
   offscreen, node-overflow, pill-overflow, text-occluded) and must print `LAYOUT: 0 issue(s)`.
@@ -134,6 +139,11 @@ deduplicated across chambers by text. Write each reference in a stable canonical
 * Every child scene of your scene (see catalog `parent`) **must** be reachable by a hotspot on the element
   that represents it: `ctx.hotspot(nodeEl, 'child-id')`. Only hotspot to your own children.
 * Add the hotspot in the step/beat where that element first appears.
+* `ctx.hotspot` automatically adds a dashed ring and a small pulsing "+" badge centered on the element's **top-right corner**
+  (about 12 units of radius, its ripple reaches ~30). Keep that corner free of text, and give hotspot elements a bit of room above
+  them (the hover label "ZOOM" appears there). A chamber opened from a hotspot starts paused ("Play this topic") behind the
+  chamber's complete system diagram, which the engine builds by silently replaying your steps and picking the fullest picture,
+  so make sure some step shows the whole system at once.
 
 ## Content standard
 * Audience: CS/EE PhD engineers. Precise and state-of-the-art (2025–2026): real algorithms, equations, tensor shapes,
@@ -221,8 +231,10 @@ Utilities: `ctx.rng(seed)` → deterministic `() => [0,1)`; `ctx.clamp(v,a,b)`; 
 1. `python tools/check.py js/scenes/<file>.js` must print `OK` (fix all ERRORs; address WARNs).
 2. `python tools/smoke.py <scene-id>` builds every step instantly, replays animated with beat gates, and checks seek/resume
    consistency. Must print `SMOKE OK`.
-3. `python tools/smoke.py --layout <scene-id>` must print `LAYOUT: 0 issue(s)`.
+3. `python tools/smoke.py --layout <scene-id>` must print `LAYOUT: 0 issue(s)`. Run it at several window sizes, because the title
+   block and panels are laid out per viewport: `--viewport 1366x680`, `--viewport 1536x730`, `--viewport 1920x950` (all must be clean).
 4. `python tools/shot.py <scene-id> <step> <beat>` (1-based) writes `tools/shots/…png`; view it with the Read tool. Look at the
-   **last beat of every step** in dark (`--size 1920x1080` shows the wide layout with the left card rail) and at least
-   one step per scene with `--theme light`. Check the stage AND the cards / deep panel text. Fix and re-shoot until clean.
+   **last beat of every step** in dark, at `--size 1536x730` (a typical 125%-scaled laptop: left panel + big stage, deep dive as a
+   drawer) and now and then at `--size 1920x950` (three columns), plus at least one step per scene with `--theme light`.
+   Check the stage AND the left panel (narration box, cards) and the deep panel text. Fix and re-shoot until clean.
 Do not start dev servers, do not install packages, do not open other browsers.

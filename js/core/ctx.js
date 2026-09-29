@@ -14,6 +14,11 @@
     panel2: '#101b33', bg: '#05080f'
   };
 
+  /* Global scale for every piece of SVG text (drawn size = size * scale, never below min). One knob to make the
+   * stage more legible on small screens; layout audits are run at the shipped value. */
+  var TEXT = { scale: 1.14, min: 12.5 };
+  function ts(size) { return Math.max(TEXT.min, (size || 16) * TEXT.scale); }
+
   var Ease = {
     linear: function (t) { return t; },
     in: function (t) { return t * t * t; },
@@ -362,7 +367,7 @@
     if (o.pre && (fnt === 'mono' || fnt === 'sans')) fnt = 'code';   /* column-aligned text needs a real monospace */
     var fam = { sans: 'f-sans', mono: 'f-mono', display: 'f-display', code: 'f-code', serif: 'f-serif' }[fnt] || 'f-sans';
     var e = this.el('text', {
-      x: x, y: y, fill: colorOf(o.color || C.text), 'font-size': o.size || 16,
+      x: x, y: y, fill: colorOf(o.color || C.text), 'font-size': o.raw ? (o.size || 16) : ts(o.size),
       'text-anchor': o.anchor || 'start', 'font-weight': o.weight || 400, 'class': fam,
       'dominant-baseline': o.baseline || 'middle', 'letter-spacing': o.spacing
     }, o.parent);
@@ -383,7 +388,7 @@
   P.para = function (x, y, lines, o) {
     o = o || {};
     var g = this.group({ parent: o.parent });
-    var lh = o.lh || (o.size || 16) * 1.4;
+    var lh = (o.lh || (o.size || 16) * 1.4) * TEXT.scale;
     for (var i = 0; i < lines.length; i++) {
       this.text(x, y + i * lh, lines[i], Object.assign({}, o, { parent: g, opacity: undefined, glow: undefined }));
     }
@@ -395,7 +400,7 @@
   P.label = function (x, y, str, o) {
     o = o || {};
     var col = colorOf(o.color || C.cyan);
-    var size = o.size || 13;
+    var size = ts(o.size || 13);
     var w = o.w || Math.max(24, String(str).length * size * 0.62 + 18);
     var h = size + 12;
     var anchor = o.anchor || 'middle';
@@ -403,7 +408,7 @@
     var g = this.group({ parent: o.parent });
     var bgFill = o.bg ? colorOf(o.bg) : hexA(col, o.bgAlpha === undefined ? 0.14 : o.bgAlpha);
     var rectEl = this.rect(x0, y - h / 2, w, h, { rx: h / 2, fill: bgFill, stroke: hexA(col, 0.7), sw: 1, parent: g });
-    var textEl = this.text(x0 + w / 2, y + 0.5, str, { size: size, color: o.textColor || col, anchor: 'middle', font: o.font || 'mono', weight: o.weight || 500, parent: g });
+    var textEl = this.text(x0 + w / 2, y + 0.5, str, { size: size, color: o.textColor || col, anchor: 'middle', font: o.font || 'mono', weight: o.weight || 500, parent: g, raw: true });
     g.w = w; g.h = h;
     g.rectEl = rectEl; g.textEl = textEl;
     /* change the text and (unless a fixed w was given) resize the pill around its anchor */
@@ -955,8 +960,15 @@
     var bb = el.box || safeBBox(el);
     var col = colorOf(o.color || el.color || meta.colorHex);
     var ring = this.rect(bb.x - 5, bb.y - 5, bb.w + 10, bb.h + 10, { rx: 12, stroke: col, sw: 1.4, dash: '3 6', parent: el, cls: 'hotspot-ring' });
-    var hint = this.label(bb.x + bb.w - 6, bb.y - 4, o.hint || 'ZOOM ⤢', { color: col, size: 10, anchor: 'end', parent: el });
+    var hint = this.label(bb.x + bb.w - 6, bb.y - 22, o.hint || 'ZOOM ⤢', { color: col, size: 10, anchor: 'end', parent: el });
     hint.classList.add('hotspot-hint');
+    /* a small breathing "+" badge on the top-right corner, with a soft ripple, says: you can click here */
+    var bxp = bb.x + bb.w - 3, byp = bb.y + 3;
+    var badge = this.group({ parent: el, cls: 'hotspot-badge' });
+    this.circle(bxp, byp, 12, { stroke: col, sw: 2, parent: badge, cls: 'hotspot-ripple' });
+    this.circle(bxp, byp, 12, { stroke: col, sw: 2, parent: badge, cls: 'hotspot-ripple r2' });
+    this.circle(bxp, byp, 11, { fill: col, parent: badge, cls: 'hotspot-dot' });
+    this.path('M' + (bxp - 4.5) + ',' + byp + ' H' + (bxp + 4.5) + ' M' + bxp + ',' + (byp - 4.5) + ' V' + (byp + 4.5), { stroke: '#050b16', sw: 2.2, parent: badge });
     var tip = document.createElementNS(NS, 'title');
     tip.textContent = 'Zoom into: ' + meta.title;
     el.appendChild(tip);
@@ -999,5 +1011,5 @@
   /* notify the engine/drawer of a key metric or callout (shown in the HUD) */
   P.hud = function (str) { this.engine.setHud(str); };
 
-  window.AtlasCtx = { SceneCtx: SceneCtx, C: C, Ease: Ease, ICONS: ICONS, hexA: hexA, mix: mix, W: W, H: H, rng: rng };
+  window.AtlasCtx = { TEXT: TEXT, SceneCtx: SceneCtx, C: C, Ease: Ease, ICONS: ICONS, hexA: hexA, mix: mix, W: W, H: H, rng: rng };
 })();

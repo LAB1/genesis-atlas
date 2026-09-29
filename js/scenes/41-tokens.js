@@ -1,5 +1,6 @@
 /* L2 — Tokenization & Embeddings. Bytes, pre-tokenization, BPE training and encoding, special tokens and
- * chat templates, embedding lookup, geometry of the residual stream, multimodal tokens. */
+ * chat templates, embedding lookup, geometry of the residual stream, multimodal tokens.
+ * Every step is a sequence of beats (see docs/SCENE_API.md). */
 (function () {
   var LINE = ['A', ' fox', ' astronaut', ' crash', '-', 'lands', ' on', ' a', ' glowing', ' ice', ' moon', '.', ' \u51b0', '\u6708'];
   var PRE = ['A', ' fox', ' astronaut', ' crash', '-lands', ' on', ' a', ' glowing', ' ice', ' moon', '.', ' \u51b0\u6708'];
@@ -22,8 +23,8 @@
   function hex(b) { return (b < 16 ? '0' : '') + b.toString(16).toUpperCase(); }
   function nbytes(s) { var n = 0; for (var i = 0; i < s.length; i++) n += utf8(s.charAt(i)).length; return n; }
   function vis(s) { return s.replace(/ /g, '\u00b7'); }
-  /* the mono font turns "<|" and "|>" into arrow ligatures; putting the pipe in a different font face (bold)
-   * splits the shaping run, so special tokens render literally in the deep panel */
+  /* the deep panel keeps special tokens literal: putting the pipe in a different face (bold) splits the
+   * shaping run, so "<|" and "|>" never turn into arrow ligatures */
   function nolig(html) { return html.replace(/&lt;\|/g, '&lt;<b>|</b>').replace(/\|&gt;/g, '<b>|</b>&gt;'); }
 
   function card(ctx, parent, x, y, w, h, color, title) {
@@ -60,6 +61,19 @@
     var sorted = list.slice().sort(function (a, b) { return b[1] - a[1] || order.indexOf(a[0]) - order.indexOf(b[0]); });
     return { best: best, top: sorted.slice(0, 6) };
   }
+  /* the six merges learned from the toy corpus, in rank order; encoding replays them on any word */
+  var TOY_MERGES = ['e s', 'es t', 'l o', 'lo w', 'n e', 'ne w'];
+  function encodeSteps(word) {
+    var sy = word.split(''), steps = [{ s: sy.slice(), rule: '' }];
+    TOY_MERGES.forEach(function (m, r) {
+      var ab = m.split(' '), out = [], hit = false;
+      for (var i = 0; i < sy.length; i++) {
+        if (i < sy.length - 1 && sy[i] === ab[0] && sy[i + 1] === ab[1]) { out.push(ab[0] + ab[1]); i++; hit = true; } else out.push(sy[i]);
+      }
+      if (hit) { sy = out; steps.push({ s: sy.slice(), rule: 'rule ' + (r + 1) + ': ' + m }); }
+    });
+    return steps;
+  }
   function applyMerge(corpus, pair) {
     var ab = pair.split(' ');
     corpus.forEach(function (wd) {
@@ -76,8 +90,8 @@
     refs: [
       'Sennrich, Haddow &amp; Birch, <i>Neural Machine Translation of Rare Words with Subword Units</i> (BPE), ACL 2016',
       'Radford et al., <i>Language Models are Unsupervised Multitask Learners</i> (GPT-2 byte-level BPE), 2019',
-      'Kudo &amp; Richardson, <i>SentencePiece</i>, EMNLP 2018; OpenAI <i>tiktoken</i> (cl100k_base, o200k_base)',
-      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024 (128K vocabulary, chat template, special tokens)',
+      'Kudo &amp; Richardson, <i>SentencePiece</i>, EMNLP 2018; OpenAI <i>tiktoken</i> (cl100k_base, o200k_base); Singh &amp; Strouse, <i>Tokenization counts: the impact of tokenization on arithmetic in frontier LLMs</i>, 2024; Pagnoni et al., <i>Byte Latent Transformer: Patches Scale Better Than Tokens</i>, 2024',
+      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
       'Mikolov et al., <i>Linguistic Regularities in Continuous Space Word Representations</i>, NAACL 2013; Park et al., <i>The Linear Representation Hypothesis</i>, ICML 2024',
       'Elhage et al., <i>Toy Models of Superposition</i>, Transformer Circuits 2022',
       'Press &amp; Wolf, <i>Using the Output Embedding to Improve Language Models</i> (weight tying), EACL 2017',
@@ -87,31 +101,64 @@
       /* ------------------------------------------------------------ 1 */
       {
         title: 'Text is bytes',
-        say: 'Before a model can read the fox astronaut prompt, the text must become a sequence of integers. Underneath, text is just UTF-8 bytes: one byte per English letter, three bytes for each of the two Chinese characters at the end. Feeding raw bytes would make sequences long, and attention cost grows with the square of length. Whole words would need an unbounded vocabulary. Byte level BPE sits in between: frequent chunks become single tokens, and anything unseen still falls back to bytes.',
-        deep: '<p>The tokenizer is a <b>lossless, invertible</b> map between byte strings and id sequences. Three design points:</p>' +
-          '<table><tr><th>Unit</th><th>|V|</th><th>T for our prompt</th><th>Problem</th></tr>' +
-          '<tr><td>bytes</td><td>256</td><td>145</td><td>T² attention, weak units</td></tr>' +
-          '<tr><td>words</td><td>&gt;10<sup>6</sup></td><td>25</td><td>OOV, huge softmax</td></tr>' +
-          '<tr><td>byte-level BPE</td><td>32k–256k</td><td>≈ 34</td><td>tokenization artifacts</td></tr></table>' +
-          '<p>With a 128k vocabulary, English prose compresses to ≈ 4 bytes (≈ 0.75 words) per token. CJK characters are 3 UTF-8 bytes each; a vocabulary with enough CJK merges maps most common characters to one token.</p>' +
-          '<div class="eq">cost(attention) ∝ T², &nbsp; (145 / 34)² ≈ 18× more attention FLOPs for raw bytes</div>' +
-          '<p class="muted">Token boundaries shown for the Llama-3-style tokenizer are illustrative.</p>',
+        beats: [
+          {
+            say: 'Before a model can read the fox astronaut prompt, the text must become a sequence of integers. Start from what we see: a line of characters, including two Chinese characters at the end.',
+            card: { tag: 'KEY IDEA', title: 'Text must become integers', body: 'A model only computes on numbers. Everything downstream depends on how the text is cut into pieces.' },
+            deep: '<p>The tokenizer is a <b>lossless, invertible</b> map between byte strings and id sequences, so it starts from what a file really contains: Unicode text stored as bytes.</p>' +
+              '<p>A <i>character</i> here is a Unicode code point (U+0041 for A, U+51B0 for 冰). What a reader sees as one glyph, a <i>grapheme</i>, can be several code points (accents, emoji sequences). Tokenizers ignore graphemes and work on bytes.</p>' +
+              '<p class="muted">The shaded line is illustrative: 53 characters, of which two are CJK.</p>'
+          },
+          {
+            say: 'Underneath, characters are just UTF eight bytes: one byte per English letter, three bytes for each of the two Chinese characters. The line grows from fifty three characters to fifty seven bytes.',
+            card: { tag: 'NUMBERS', title: 'Bytes per character', stat: { v: '3', u: 'bytes', l: 'per CJK character in UTF-8, versus 1 byte for each English letter' }, more: '<p>UTF-8 layout: <code>0xxxxxxx</code> (1 byte), <code>110xxxxx 10xxxxxx</code> (2), <code>1110xxxx 10xxxxxx 10xxxxxx</code> (3), and four bytes for emoji. 冰 = U+51B0 = 0101 0001 1011 0000, which packs into E5 86 B0.</p>' },
+            deep: '<p>UTF-8 encodes code points in 1 to 4 bytes: ASCII takes 1, most Latin, Greek and Cyrillic take 2, most CJK take 3, emoji take 4. The byte alphabet has only 256 symbols, so a byte-level vocabulary can never hit an out-of-vocabulary error.</p>' +
+              '<div class="eq">冰 = U+51B0 → E5 86 B0, &nbsp; 月 = U+6708 → E6 9C 88</div>' +
+              '<p>Non-English text therefore pays a byte tax before any merge: a Chinese character is 3 raw symbols where an English letter is 1.</p>'
+          },
+          {
+            say: 'Byte level byte pair encoding then merges frequent byte sequences into tokens. The same line collapses to just fourteen tokens, and each token becomes one integer id.',
+            card: { tag: 'NUMBERS', title: 'Bytes become tokens', stat: { v: '14', u: 'tokens', l: 'from 57 bytes on this line: about 4 bytes per token' } },
+            deep: '<p>Byte-level BPE merges frequent byte sequences into single tokens. On this line, 57 bytes collapse into 14 tokens. Each Chinese character stays one token here: a vocabulary with enough CJK merges maps most common characters to a single token, while rarer ones fall back to their three raw bytes.</p>' +
+              '<p class="muted">Token boundaries shown for the Llama-3-style tokenizer are illustrative.</p>'
+          },
+          {
+            say: 'Why not stop at bytes? Sequences would be over four times longer, and attention cost grows with the square of length, about eighteen times more for our prompt. Whole words fail differently: the vocabulary explodes, and crash-lands would still be out of vocabulary.',
+            card: { tag: 'TRADE-OFF', title: 'Bytes long, words huge', body: 'Bytes never fail but make T 4× longer and attention 18× dearer. Words are short but need a million-entry, brittle table.' },
+            deep: '<table><tr><th>Unit</th><th>|V|</th><th>T for our prompt</th><th>Problem</th></tr>' +
+              '<tr><td>bytes</td><td>256</td><td>145</td><td>T² attention, weak units</td></tr>' +
+              '<tr><td>words</td><td>&gt;10<sup>6</sup></td><td>25</td><td>OOV, huge softmax</td></tr>' +
+              '<tr><td>byte-level BPE</td><td>32k–256k</td><td>≈ 34</td><td>tokenization artifacts</td></tr></table>' +
+              '<div class="eq">cost(attention) ∝ T², &nbsp; (145 / 34)² ≈ 18× more attention FLOPs for raw bytes</div>' +
+              '<p>Raw bytes also make each embedding a weak semantic unit, pushing related information further apart in the sequence.</p>'
+          },
+          {
+            say: 'Byte level BPE sits in between. Frequent chunks become single tokens, and anything unseen still falls back to bytes. Our prompt takes about thirty four tokens, at a vocabulary of one hundred twenty eight thousand entries.',
+            card: { tag: 'KEY IDEA', title: 'The middle path', body: 'Learned merges keep sequences short; the byte fallback guarantees nothing is ever out of vocabulary.' },
+            deep: '<p>With a 128k vocabulary, English prose compresses to ≈ 4 bytes (≈ 0.75 words) per token, or ≈ 1.3 tokens per word. CJK characters are 3 UTF-8 bytes each; a vocabulary with enough CJK merges maps most common characters to one token.</p>' +
+              '<p>Design space: the vocabulary size V trades sequence length T against embedding size V·d and softmax cost. Alternatives: SentencePiece Unigram LM, and tokenizer-free byte models such as the Byte Latent Transformer with entropy-based patches.</p>' +
+              '<details><summary>Go deeper</summary><p>Because V changes T, per-token loss and perplexity are not comparable across tokenizers. Compare models in bits per byte:</p>' +
+              '<div class="eq">BPB = T · L<sub>nats/token</sub> / (N<sub>bytes</sub> · ln 2)</div>' +
+              '<p>At 4 bytes per token, 2.0 nats per token is 2.0 / (4 · ln 2) = 0.72 bits per byte. The same 0.72 bits per byte is 2.5 nats per token for a tokenizer that packs 5 bytes into each token, so per-token numbers only compare within one tokenizer.</p></details>' +
+              '<p class="muted">Token boundaries shown for the Llama-3-style tokenizer are illustrative.</p>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           S.top = ctx.group();
-          ctx.text(BX - 10, 200, 'text', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: S.top });
-          ctx.text(BX - 10, 250, 'UTF-8', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: S.top });
-          ctx.text(BX - 10, 302, 'BPE', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: S.top });
+          var lblT = ctx.text(BX - 10, 200, 'text', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: S.top, opacity: 0 });
+          var lblB = ctx.text(BX - 10, 250, 'UTF-8', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: S.top, opacity: 0 });
+          var lblK = ctx.text(BX - 10, 302, 'BPE', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: S.top, opacity: 0 });
           var txt = LINE.join('');
           var x = BX, chars = [], bytes = [];
           for (var i = 0; i < txt.length; i++) {
             var ch = txt.charAt(i), bs = utf8(ch), w = bs.length * BW;
-            var cg = ctx.group({ parent: S.top });
+            var cg = ctx.group({ parent: S.top, opacity: 0 });
             ctx.rect(x + 1, 182, w - 2, 36, { rx: 4, fill: ctx.alpha(bs.length > 1 ? 'violet' : 'cyan', 0.1), stroke: ctx.alpha(bs.length > 1 ? 'violet' : 'cyan', 0.45), sw: 1, parent: cg });
             ctx.text(x + w / 2, 200.5, ch === ' ' ? '\u00b7' : ch, { size: 17, font: 'mono', anchor: 'middle', color: ch === ' ' ? 'dim' : 'white', parent: cg });
             chars.push(cg);
             bs.forEach(function (b, k) {
-              var bg = ctx.group({ parent: S.top });
+              var bg = ctx.group({ parent: S.top, opacity: 0 });
               ctx.rect(x + k * BW + 1, 236, BW - 2, 28, { rx: 3, fill: ctx.alpha(bs.length > 1 ? 'violet' : 'teal', 0.12), parent: bg });
               ctx.text(x + k * BW + BW / 2, 250.5, hex(b), { size: 12, font: 'mono', anchor: 'middle', color: bs.length > 1 ? 'violet' : 'teal', parent: bg });
               bytes.push(bg);
@@ -122,7 +169,7 @@
           x = BX;
           LINE.forEach(function (t, i) {
             var w = nbytes(t) * BW, col = i % 2 ? 'amber' : 'orange';
-            var tg = ctx.group({ parent: S.top });
+            var tg = ctx.group({ parent: S.top, opacity: 0 });
             ctx.rect(x + 1, 284, w - 2, 36, { rx: 6, fill: ctx.alpha(col, 0.2), stroke: col, sw: 1.2, parent: tg });
             ctx.text(x + w / 2, 302.5, vis(t), { size: 14, font: 'mono', anchor: 'middle', color: 'white', parent: tg });
             S.toks.push(tg);
@@ -133,72 +180,103 @@
           S.cN = ctx.text(BX, 350, '', { size: 14, font: 'mono', color: 'cyan', parent: st });
           S.bN = ctx.text(BX + 170, 350, '', { size: 14, font: 'mono', color: 'teal', parent: st });
           S.tN = ctx.text(BX + 340, 350, '', { size: 14, font: 'mono', color: 'amber', weight: 700, parent: st });
-
-          /* why subwords: three strategies over the full trailer prompt */
-          S.why = ctx.group();
-          var words = FULL.split(' ').length, nb = FULL.length, nt = 34;
-          var opts = [
-            ['BYTES / CHARACTERS', 'teal', nb, '|V| = 256 \u00b7 never out-of-vocab', 'units carry little meaning'],
-            ['WHOLE WORDS', 'cyan', words, '|V| > 1,000,000 \u00b7 "crash-lands" OOV', 'huge embedding + softmax'],
-            ['BYTE-LEVEL BPE', 'amber', nt, '|V| = 128,256 (Llama 3)', 'frequent chunks + byte fallback']
-          ];
-          S.whyBars = [];
-          opts.forEach(function (o, i) {
-            var cx = 60 + i * 500;
-            var c = card(ctx, S.why, cx, 396, 480, 290, o[1], o[0]);
-            ctx.text(cx + 16, 446, o[3], { size: 13, font: 'mono', color: 'text', parent: c });
-            ctx.text(cx + 16, 470, o[4], { size: 13, font: 'mono', color: 'dim', parent: c });
-            ctx.text(cx + 16, 522, 'T', { size: 13, font: 'mono', color: 'dim', parent: c });
-            ctx.text(cx + 16, 598, 'T\u00b2', { size: 13, font: 'mono', color: 'dim', parent: c });
-            var b1 = ctx.rect(cx + 44, 510, 0, 24, { rx: 3, fill: ctx.alpha(o[1], 0.55), stroke: o[1], sw: 1, parent: c });
-            var b2 = ctx.rect(cx + 44, 586, 0, 24, { rx: 3, fill: ctx.alpha(o[1], 0.3), stroke: o[1], sw: 1, parent: c });
-            ctx.text(cx + 44, 550, (i === 2 ? '\u2248 ' : '') + o[2] + ' tokens for the full prompt', { size: 12, font: 'mono', color: o[1], parent: c });
-            ctx.text(cx + 44, 626, 'attention cost ' + (i === 2 ? '1\u00d7' : ((o[2] / nt) * (o[2] / nt)).toFixed(1) + '\u00d7'), { size: 11, font: 'mono', color: o[1], parent: c });
-            S.whyBars.push([b1, 410 * o[2] / nb, b2, 410 * Math.min(1, (o[2] / nb) * (o[2] / nb))]);
-          });
-          ctx.text(60, 722, 'full prompt: "' + FULL.slice(0, 84) + '\u2026"', { size: 13, font: 'mono', color: 'dim', parent: S.why });
-          ctx.text(60, 748, nb + ' bytes \u00b7 ' + words + ' words \u00b7 \u2248 ' + nt + ' BPE tokens (\u2248 1.3 tokens / word)', { size: 12, font: 'mono', color: 'amber', parent: S.why });
-
+          /* beat 0: characters */
+          ctx.reveal(lblT, {});
           ctx.reveal(chars, { from: 'down', stagger: 18, dur: 300 });
-          bytes.forEach(function (b) { b.setAttribute('opacity', 0); });
-          S.toks.forEach(function (b) { b.setAttribute('opacity', 0); });
-          ctx.reveal(S.why, { from: 'up', delay: 400 });
-          return ctx.counter(S.cN, 0, txt.length, 900, function (v) { return Math.round(v) + ' chars'; }).then(function () {
+          return ctx.counter(S.cN, 0, txt.length, 900, function (v) { return Math.round(v) + ' chars'; }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: UTF-8 bytes */
+            ctx.reveal(lblB, {});
             ctx.reveal(bytes, { from: 'down', stagger: 14, dur: 250 });
             return ctx.counter(S.bN, 0, nbytes(txt), 900, function (v) { return Math.round(v) + ' bytes'; });
-          }).then(function () {
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: BPE tokens */
+            ctx.reveal(lblK, {});
             ctx.reveal(S.toks, { from: 'down', stagger: 70, dur: 300 });
             return ctx.counter(S.tN, 0, LINE.length, 1000, function (v) { return Math.round(v) + ' tokens'; });
-          }).then(function () {
-            return Promise.all(S.whyBars.map(function (b, i) {
-              return Promise.all([ctx.animate(b[0], { width: [0, b[1]] }, 700, 'out', i * 150), ctx.animate(b[2], { width: [0, b[3]] }, 700, 'out', 300 + i * 150)]);
-            }));
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: why not raw bytes, why not whole words */
+            S.why = ctx.group();
+            var words = FULL.split(' ').length, nb = FULL.length, nt = 34;
+            var opts = [
+              ['BYTES / CHARACTERS', 'teal', nb, '|V| = 256 \u00b7 never out-of-vocab', 'units carry little meaning'],
+              ['WHOLE WORDS', 'cyan', words, '|V| > 1,000,000 \u00b7 "crash-lands" OOV', 'huge embedding + softmax'],
+              ['BYTE-LEVEL BPE', 'amber', nt, '|V| = 128,256 (Llama 3)', 'frequent chunks + byte fallback']
+            ];
+            S.whyBars = [];
+            S.wc = [];
+            opts.forEach(function (o, i) {
+              var cx = 60 + i * 500;
+              var c = card(ctx, S.why, cx, 396, 480, 290, o[1], o[0]);
+              ctx.text(cx + 16, 446, o[3], { size: 13, font: 'mono', color: 'text', parent: c });
+              ctx.text(cx + 16, 470, o[4], { size: 13, font: 'mono', color: 'dim', parent: c });
+              ctx.text(cx + 16, 522, 'T', { size: 13, font: 'mono', color: 'dim', parent: c });
+              ctx.text(cx + 16, 598, 'T\u00b2', { size: 13, font: 'mono', color: 'dim', parent: c });
+              var b1 = ctx.rect(cx + 44, 510, 0, 24, { rx: 3, fill: ctx.alpha(o[1], 0.55), stroke: o[1], sw: 1, parent: c });
+              var b2 = ctx.rect(cx + 44, 586, 0, 24, { rx: 3, fill: ctx.alpha(o[1], 0.3), stroke: o[1], sw: 1, parent: c });
+              ctx.text(cx + 44, 550, (i === 2 ? '\u2248 ' : '') + o[2] + ' tokens for the full prompt', { size: 12, font: 'mono', color: o[1], parent: c });
+              ctx.text(cx + 44, 626, 'attention cost ' + (i === 2 ? '1\u00d7' : ((o[2] / nt) * (o[2] / nt)).toFixed(1) + '\u00d7'), { size: 11, font: 'mono', color: o[1], parent: c });
+              S.whyBars.push([b1, 410 * o[2] / nb, b2, 410 * Math.min(1, (o[2] / nb) * (o[2] / nb))]);
+              S.wc.push(c);
+            });
+            S.foot = ctx.group({ parent: S.why, opacity: 0 });
+            ctx.text(60, 722, 'full prompt: "' + FULL.slice(0, 84) + '\u2026"', { size: 13, font: 'mono', color: 'dim', parent: S.foot });
+            ctx.text(60, 748, nb + ' bytes \u00b7 ' + words + ' words \u00b7 \u2248 ' + nt + ' BPE tokens (\u2248 1.3 tokens / word)', { size: 12, font: 'mono', color: 'amber', parent: S.foot });
+            S.wc[2].setAttribute('opacity', 0);
+            S.growBars = function (i) {
+              var b = S.whyBars[i];
+              return Promise.all([ctx.animate(b[0], { width: [0, b[1]] }, 700, 'out', 0), ctx.animate(b[2], { width: [0, b[3]] }, 700, 'out', 300)]);
+            };
+            ctx.reveal([S.wc[0], S.wc[1]], { from: 'up', stagger: 250 });
+            return ctx.wait(300).then(function () { return Promise.all([S.growBars(0), S.growBars(1)]); });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: byte-level BPE, the middle path */
+            ctx.reveal([S.wc[2], S.foot], { from: 'up', stagger: 200 });
+            return ctx.wait(300).then(function () { return S.growBars(2); }).then(function () { return ctx.pulse(S.wc[2], { color: 'amber', dur: 700 }); });
           });
         }
       },
       /* ------------------------------------------------------------ 2 */
       {
         title: 'Pre-tokenization',
-        say: 'Before any merging, a regular expression chops the text into pre-tokens. Words keep their leading space, so space fox and fox are different tokens. Punctuation is separated, and digits are split into groups of at most three, so nineteen twenty becomes one nine two, then zero. Merges are never allowed to cross these boundaries, which keeps tokens linguistically sane and makes the vocabulary far more efficient.',
-        deep: '<p>Llama 3 uses the tiktoken <code>cl100k</code>-style split pattern (shown on the left, one alternative per line). Key effects:</p>' +
-          '<ul><li><b>Leading space attaches to the word</b>: <code>" fox"</code> and <code>"fox"</code> are different ids; the model sees word starts explicitly.</li>' +
-          '<li><b>Digits in groups of ≤ 3</b> (<code>\\p{N}{1,3}</code>): <code>1920</code> → <code>192</code>,<code>0</code>. More regular number handling than arbitrary merged digit strings; some models go further and split every digit.</li>' +
-          '<li>One optional non-letter prefix: <code>-lands</code> is a single pre-token; BPE may still split it.</li>' +
-          '<li><b>Byte fallback</b>: after pre-tokenization, every chunk is a byte string over a 256-symbol base alphabet, so encoding never fails (<code>冰</code> = <code>E5 86 B0</code>).</li></ul>' +
-          '<div class="note">SentencePiece (Llama 2, Gemma) instead treats the input as a raw stream with <code>▁</code> marking spaces and no regex; tiktoken-style byte BPE (GPT-4, Llama 3) splits first, then merges.</div>',
+        beats: [
+          {
+            say: 'Before any merging, a regular expression chops the text into pre-tokens. The magenta cuts show where, and merges are never allowed to cross them.',
+            card: { tag: 'KEY IDEA', title: 'Split, then merge', body: 'A regular expression cuts the text into pre-tokens. BPE merges happen only inside a pre-token.' },
+            deep: '<p>Llama 3 uses the tiktoken <code>cl100k</code>-style split pattern (shown on the left, one alternative per line). It runs <i>before</i> BPE, so a merge such as <code>"e" + " "</code> can never appear: no token straddles a word boundary.</p>' +
+              '<div class="note">SentencePiece (Llama 2, Gemma) instead treats the input as a raw stream with <code>▁</code> marking spaces and no regex; tiktoken-style byte BPE (GPT-4, Llama 3) splits first, then merges.</div>'
+          },
+          {
+            say: 'Words keep their leading space, so space fox and fox are different tokens. Punctuation is separated from words, and a hyphen can stay attached to the word that follows.',
+            card: { tag: 'HOW IT WORKS', title: 'Spaces stick to words', body: '" fox" and "fox" are different ids, so the model sees word starts explicitly.' },
+            deep: '<ul><li><b>Leading space attaches to the word</b>: <code>" fox"</code> and <code>"fox"</code> are different ids; the model sees word starts explicitly. Capitalisation changes the id too: <code>" Fox"</code> is a third token.</li>' +
+              '<li>One optional non-letter prefix: <code>-lands</code> is a single pre-token; BPE may still split it.</li>' +
+              '<li>Contractions such as <code>\'s</code> and <code>\'ll</code> are split off as their own pre-tokens.</li></ul>'
+          },
+          {
+            say: 'Digits are split into groups of at most three, so nineteen twenty becomes one nine two, then zero. Numbers get a regular structure instead of arbitrary merged digit strings.',
+            card: { tag: 'NUMBERS', title: 'Digit groups', stat: { v: '≤ 3', u: 'digits', l: 'per pre-token: 1920 becomes 192 and 0' } },
+            deep: '<ul><li><b>Digits in groups of ≤ 3</b> (<code>\\p{N}{1,3}</code>): <code>1920</code> → <code>192</code>,<code>0</code>. More regular number handling than arbitrary merged digit strings; some models go further and split every digit (Llama 1/2, Gemma, DeepSeek).</li>' +
+              '<li>Grouping direction matters for arithmetic: left-to-right chunking misaligns place values, and right-to-left grouping measurably helps frontier models on addition (Singh &amp; Strouse 2024).</li></ul>'
+          },
+          {
+            say: 'After pre-tokenization every chunk is a byte string, so nothing is ever out of vocabulary. Even a Chinese character with no learned merge falls back to its three raw bytes.',
+            card: { tag: 'PITFALL', title: 'Mid-character tokens', body: 'A token may end inside a UTF-8 character, so streaming decoders must buffer bytes before printing.' },
+            deep: '<ul><li><b>Byte fallback</b>: after pre-tokenization, every chunk is a byte string over a 256-symbol base alphabet, so encoding never fails (<code>冰</code> = <code>E5 86 B0</code>).</li>' +
+              '<li>A typo like <code>" foxx"</code> becomes <code>" fox"</code> + <code>"x"</code>; a rare emoji becomes up to four byte tokens.</li>' +
+              '<li>Decoding must <b>buffer</b>: a token can end mid-character, so a streaming detokeniser waits until the bytes form valid UTF-8.</li></ul>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut(S.why, 400, true);
-          /* pre-token boundaries on the byte rows */
+          /* beat 0: pre-token boundaries on the byte rows, and the split pattern */
           S.bounds = ctx.group();
           var x = BX;
           PRE.forEach(function (p, i) {
             x += nbytes(p) * BW;
             if (i < PRE.length - 1) ctx.rect(x - 1.5, 174, 3, 154, { rx: 1, fill: 'magenta', parent: S.bounds, glow: true });
           });
-          ctx.text(1540, 350, 'magenta = pre-token cut', { size: 12, font: 'mono', color: 'magenta', anchor: 'end', parent: S.bounds });
-          ctx.reveal(S.bounds, { delay: 300 });
-
+          ctx.label(1420, 352, 'magenta = pre-token cut', { size: 12, color: 'magenta', parent: S.bounds });
           S.pre = ctx.group();
           var pat = [["(?i:'s|'t|'re|'ve|'m|'ll|'d)", 'contractions'], ['|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+', 'word + 1 prefix char'], ['|\\p{N}{1,3}', 'digits, groups <= 3'],
             ['| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*', 'punctuation runs'], ['|\\s*[\\r\\n]+', 'newlines'], ['|\\s+(?!\\S)', 'trailing spaces'], ['|\\s+', 'other whitespace']];
@@ -208,14 +286,16 @@
             return s + '# ' + p[1];
           }) });
           keepWS(code);
+          /* example card and byte-fallback card wait for later beats */
           var c2 = card(ctx, S.pre, 760, 388, 780, 176, 'cyan', "PRE-TOKENIZE('30-second trailer at 1920x1080')");
+          c2.setAttribute('opacity', 0);
           var ex = ['30', '-second', ' trailer', ' at', ' ', '192', '0', 'x', '108', '0'];
           var ex2 = [];
           var xx = 780;
           ex.forEach(function (p) {
             var col = /^[0-9]+$/.test(p) ? 'amber' : (p === ' ' ? 'dim' : 'cyan');
             var w = Math.max(26, p.length * 8.1 + 14);
-            var g = ctx.group({ parent: c2 });
+            var g = ctx.group({ parent: c2, opacity: 0 });
             ctx.rect(xx, 440, w, 30, { rx: 6, fill: ctx.alpha(col, 0.15), stroke: col, sw: 1.2, parent: g });
             ctx.text(xx + w / 2, 455.5, vis(p), { size: 13, font: 'mono', anchor: 'middle', color: 'white', parent: g });
             ex2.push(g);
@@ -224,25 +304,73 @@
           ctx.text(780, 504, 'amber = \\p{N}{1,3} digit groups   cyan = words with prefix', { size: 12, font: 'mono', color: 'dim', parent: c2 });
           ctx.text(780, 528, 'note: the space before 1920 is its own pre-token', { size: 12, font: 'mono', color: 'dim', parent: c2 });
           var c3 = card(ctx, S.pre, 60, 598, 1480, 272, 'violet', 'BYTE FALLBACK \u00b7 nothing is ever out-of-vocabulary');
+          c3.setAttribute('opacity', 0);
           ctx.para(80, 648, ['base alphabet = 256 byte tokens  \u2192  any UTF-8 string encodes', 'merges learned on top: "\u00b7fox" is 1 token, a typo like "\u00b7foxx" becomes "\u00b7fox" + "x"', '\u51b0 = E5 86 B0: one token if the merge exists, else 3 byte tokens', 'decode must buffer: a token can end mid-character (stream carefully)', 'leading space is part of the token: "\u00b7fox" \u2260 "fox" \u2260 "\u00b7Fox"'], { size: 14, font: 'mono', color: 'text', lh: 38, parent: c3 });
-          ctx.reveal(S.pre, { from: 'up', delay: 200 });
-          ex2.forEach(function (e) { e.setAttribute('opacity', 0); });
-          return ctx.wait(900).then(function () {
-            return ctx.reveal(ex2, { from: 'down', stagger: 110, dur: 300 });
-          }).then(function () {
-            return ctx.pulse(S.toks[4], { color: 'magenta', dur: 600 });
+          /* highlight frames on the pattern lines (fixed geometry: independent of font loading) */
+          function lineBox(i, color) {
+            var y = 388 + 46 + i * 18.6;
+            return ctx.rect(68, y - 9.5, 644, 19, { rx: 4, stroke: color, sw: 1.6, dash: '5 4', parent: S.pre, opacity: 0 });
+          }
+          ctx.reveal(S.bounds, { delay: 200 });
+          return ctx.reveal(code, { from: 'up', dur: 500 }).then(function () {
+            return ctx.wait(300);
+          }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: the leading space belongs to the word */
+            var h1 = ctx.highlight(S.toks[1], { color: 'amber', pad: 4, parent: S.top });
+            ctx.reveal(lineBox(1, 'magenta'), { dur: 300 });
+            S.spaceLbl = ctx.label(196, 164, 'space + fox = one token', { color: 'amber', size: 11, parent: S.top, opacity: 0 });
+            return Promise.all([ctx.reveal(S.spaceLbl, { from: 'down', dur: 400 }), ctx.pulse(S.toks[1], { color: 'amber', dur: 700 })]);
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: digits in groups of at most three */
+            ctx.reveal(c2, { from: 'up', dur: 500 });
+            ctx.reveal(lineBox(2, 'amber'), { dur: 300 });
+            return ctx.wait(500).then(function () { return ctx.reveal(ex2, { from: 'down', stagger: 110, dur: 300 }); });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: byte fallback */
+            ctx.reveal(c3, { from: 'up', dur: 500 });
+            return ctx.wait(500).then(function () {
+              ctx.pulse(S.toks[12], { color: 'violet', dur: 600 });
+              return ctx.pulse(S.toks[13], { color: 'violet', dur: 600 });
+            });
           });
         }
       },
       /* ------------------------------------------------------------ 3 */
       {
         title: 'Training BPE',
-        say: 'How is the vocabulary learned? Byte pair encoding is a greedy compression algorithm. Start with single symbols, count every adjacent pair across the corpus weighted by word frequency, merge the most frequent pair into a new symbol, and repeat. Here e and s merge first, then e s and t form est, then l and o, then low, then n e and new. A production tokenizer runs this for over a hundred thousand merges on a large sample of the training corpus.',
-        deep: '<pre>vocab  = 256 byte symbols\nmerges = []\nwhile len(vocab) &lt; V:\n  counts = Σ_w freq(w)·pairs(w)\n  a, b = argmax(counts)\n  merges.append((a, b))  # rank\n  replace a,b → ab everywhere\n  vocab.add(ab)</pre>' +
-          '<p>Toy corpus (Sennrich et al.): <code>low×5, lower×2, newest×6, widest×3</code>. First merges: <code>e s</code> (9), <code>es t</code> (9), <code>l o</code> (7), <code>lo w</code> (7), <code>n e</code> (6), <code>ne w</code> (6).</p>' +
-          '<ul><li>Real training: pre-tokenized text, pair counts over unique pre-tokens × frequency, incremental count updates with a priority queue: O(N log N) instead of recounting.</li>' +
-          '<li>Vocabulary size is a hyper-parameter: 32k (Llama 2) → 128,256 (Llama 3) → 200k (o200k) → 262k (Gemma 3). Bigger V shortens sequences but costs V·d embedding parameters and a bigger softmax.</li>' +
-          '<li>Alternatives: <b>Unigram LM</b> (SentencePiece), tokenizer-free byte models (e.g. Byte Latent Transformer with entropy-based patches).</li></ul>',
+        beats: [
+          {
+            say: 'How is the vocabulary learned? Byte pair encoding is a greedy compression algorithm. Take a toy corpus, split it into single symbols, and count every adjacent pair, weighted by how often each word occurs.',
+            card: { tag: 'KEY IDEA', title: 'Greedy compression', body: 'Repeatedly replace the most frequent adjacent pair with a new symbol. Frequent chunks earn short codes.' },
+            deep: '<p>Toy corpus (Sennrich et al.): <code>low×5, lower×2, newest×6, widest×3</code>. Every word starts as a sequence of single symbols; pair counts are weighted by word frequency.</p>' +
+              '<p>Initial top pairs: <code>e s</code> (6 in newest + 3 in widest = 9), <code>s t</code> (9), <code>l o</code> (7), <code>o w</code> (7), <code>w e</code> (8). Ties are broken by first occurrence, so <code>e s</code> wins.</p>'
+          },
+          {
+            say: 'Merge the most frequent pair into a new symbol, and repeat. Here e and s occur together nine times, in newest and widest, so they become the first merge rule.',
+            card: { tag: 'NUMBERS', title: 'The top pair wins', more: '<p>Recounting all pairs each round costs O(N) over the corpus, so V merges cost O(V·N). Real implementations keep an index from each pair to the words that contain it and a max-heap of counts, and update only the affected words after each merge, which is close to O(N log V) in practice.</p>', stat: { v: '9', u: 'times', l: 'e s occurs 6 times in newest and 3 in widest: the top pair' } },
+            deep: '<pre>vocab  = 256 byte symbols\nmerges = []\nwhile len(vocab) &lt; V:\n  counts = Σ_w freq(w)·pairs(w)\n  a, b = argmax(counts)\n  merges.append((a, b))  # rank\n  replace a,b → ab everywhere\n  vocab.add(ab)</pre>' +
+              '<p>The rank of a merge is its position in this list; it is what encoding will use later to decide which merge to apply first.</p>'
+          },
+          {
+            say: 'Repeat. Now es and t always occur together, so they merge into est. Then l and o merge, and lo and w merge, so the whole word low becomes a single symbol.',
+            card: { tag: 'HOW IT WORKS', title: 'Merges build on merges', body: 'Later rules reuse earlier ones: e s, then es t, then est. Rank order is the order learned.' },
+            deep: '<p>Merges 2–4: <code>es t</code> (9), <code>l o</code> (7), <code>lo w</code> (7). After merge 1 the pair <code>es t</code> has count 9 (6 + 3), so <b>est</b> becomes a symbol; <code>low</code> becomes a single symbol after rules 3 and 4.</p>' +
+              '<ul><li>Real training: pre-tokenized text, pair counts over unique pre-tokens × frequency, incremental count updates with a priority queue: O(N log N) instead of recounting.</li></ul>'
+          },
+          {
+            say: 'Next n and e merge, then ne and w give new. Each rule is stored with its rank, and that ordered list of merges is the tokenizer.',
+            card: { tag: 'KEY IDEA', title: 'The ranks are the model', body: 'Encoding replays the rules in rank order. Six merges here; Llama 3 has over a hundred thousand.' },
+            deep: '<p>Merges 5–6: <code>n e</code> (6), <code>ne w</code> (6). The final list is <code>e s, es t, l o, lo w, n e, ne w</code>: six rules, six new symbols on top of the byte alphabet.</p>' +
+              '<p>Two things ship with the tokenizer: the ordered merge list (the ranks) and the vocabulary file mapping each symbol to an integer id. Change either, and every trained model that used the old tokenizer breaks.</p>'
+          },
+          {
+            say: 'A production tokenizer runs this loop for over a hundred thousand merges on a large sample of the training corpus, until the vocabulary reaches its target size.',
+            card: { tag: 'NUMBERS', title: 'Production scale', more: '<p>Vocabulary arithmetic for Llama 3: 128,000 base tokens (256 raw bytes plus 127,744 learned merges, built on the 100k tiktoken vocabulary with 28k multilingual additions) and 256 reserved special tokens make 128,256. Priority-queue BPE training over a large sample takes hours to days on CPU; SentencePiece and HF tokenizers use the same idea.</p>', stat: { v: '128k', u: 'tokens', l: 'Llama 3: 256 bytes + 127,744 merges, plus 256 special tokens' } },
+            deep: '<ul><li>Vocabulary size is a hyper-parameter: 32k (Llama 2) → 128,256 (Llama 3) → 200k (o200k) → 262k (Gemma 3). Bigger V shortens sequences but costs V·d embedding parameters and a bigger softmax.</li>' +
+              '<li>The training sample matters: a tokenizer trained on mostly English gives non-English users longer sequences (and higher API bills), and tokens that were frequent in tokenizer training but rare in model training become undertrained "glitch" tokens.</li>' +
+              '<li>Alternatives: <b>Unigram LM</b> (SentencePiece), tokenizer-free byte models (e.g. Byte Latent Transformer with entropy-based patches).</li></ul>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut([S.top, S.bounds], 400, true);
@@ -253,6 +381,9 @@
           var c2 = card(ctx, S.bpe, 800, 180, 740, 320, 'magenta', 'ADJACENT PAIR COUNTS (weighted)');
           var c3 = card(ctx, S.bpe, 60, 530, 700, 340, 'lime', 'MERGE RULES  (rank = order learned)');
           var c4 = card(ctx, S.bpe, 800, 530, 740, 340, 'cyan', 'ALGORITHM');
+          S.bc = [c1, c2, c3, c4];
+          c3.setAttribute('opacity', 0);
+          c4.setAttribute('opacity', 0);
           S.rowG = ctx.group({ parent: c1 });
           S.rowY = [240, 305, 370, 435];
           S.corpus.forEach(function (wd, i) { ctx.text(90, S.rowY[i], '\u00d7' + wd.n, { size: 15, font: 'mono', weight: 700, color: 'amber', parent: c1 }); });
@@ -269,6 +400,8 @@
             '    vocab.add(a + b)'
           ] });
           keepWS(code);
+          S.scaleTxt = ctx.para(822, 812, ['toy corpus : 6 merges,       V = 256 + 6 = 262', 'Llama 3    : 127,744 merges, V = 128,000 + 256 special'], { size: 13, font: 'code', color: 'amber', lh: 28, parent: c4, opacity: 0 });
+          keepWS(S.scaleTxt);
           S.nMerges = 0;
           function drawRows(hotPair, newSym) {
             while (S.rowG.firstChild) S.rowG.removeChild(S.rowG.firstChild);
@@ -298,7 +431,6 @@
           }
           drawRows(null, null);
           drawPairs(countPairs(S.corpus).top);
-          ctx.reveal(S.bpe, { from: 'up' });
           function oneMerge() {
             var cp = countPairs(S.corpus), best = cp.best;
             drawPairs(cp.top);
@@ -318,36 +450,126 @@
               return ctx.wait(450);
             });
           }
-          var chain = ctx.wait(700);
-          for (var m = 0; m < 6; m++) chain = chain.then(oneMerge);
-          return chain.then(function () { drawPairs(countPairs(S.corpus).top); });
+          /* beat 0: the corpus and its pair counts */
+          return ctx.reveal([c1, c2], { from: 'up', stagger: 150 }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: the algorithm, and the first merge */
+            ctx.reveal([c3, c4], { from: 'up', stagger: 150 });
+            return ctx.wait(500).then(oneMerge);
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: est, lo, low */
+            return oneMerge().then(oneMerge).then(oneMerge);
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: ne, new */
+            return oneMerge().then(oneMerge).then(function () { drawPairs(countPairs(S.corpus).top); });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: production scale */
+            ctx.reveal(S.scaleTxt, { from: 'up', dur: 500 });
+            ctx.pulse(code.lineEls[1], { color: 'cyan', times: 2, dur: 500 });
+            return ctx.counter(S.vocabTxt, 6, 127744, 1600, function (v) { return 'vocab = 256 bytes + ' + Math.round(v).toLocaleString('en-US') + ' merges'; });
+          });
         }
       },
       /* ------------------------------------------------------------ 4 */
       {
         title: 'Encoding',
-        say: 'Encoding new text replays the learned merges in rank order. Take a word the toy corpus never contained: lowest. Split it into symbols, apply rule one, e s, then rule two, es t, then l o, then lo w. It ends as two tokens, low and est, both learned pieces. The real tokenizer does exactly this on our prompt line: twelve tokens for nine words. Each token then maps to an integer id, the only thing the model ever sees.',
-        deep: '<p>Encoding a pre-token: repeatedly find the adjacent pair with the <b>lowest merge rank</b> and merge it, until no pair is in the merge table.</p>' +
-          '<pre>def encode_chunk(sym):\n  while len(sym) &gt; 1:\n    r, i = min((rank.get(p, ∞), i)\n               for i, p in pairs(sym))\n    if r == ∞: break\n    sym[i:i+2] = [sym[i] + sym[i+1]]\n  return [ids[s] for s in sym]</pre>' +
-          '<p>Production encoders (tiktoken in Rust, HF tokenizers) cache pre-token results; throughput is tens of MB/s per core, negligible next to the model.</p>' +
-          '<ul><li><b>Rates</b>: ≈ 1.3 tokens per English word at 128k; Meta reports Llama 3\'s tokenizer yields up to 15% fewer tokens than Llama 2\'s.</li>' +
-          '<li><b>Artifacts</b>: tokens that were frequent in tokenizer training but rare in model training stay undertrained ("glitch tokens"); letter counting and spelling are hard because the model sees ids, not characters.</li></ul>' +
-          '<p class="muted">ids for <code>A</code>, <code>-</code>, <code> on</code>, <code> a</code>, <code>.</code> match cl100k/Llama 3; the others are illustrative.</p>',
+        beats: [
+          {
+            say: 'Encoding new text replays the learned merges in rank order. Take a word the toy corpus never contained: lowest.',
+            card: { tag: 'KEY IDEA', title: 'Replay the merges', body: 'Encoding applies the learned rules in rank order to any new word, even one never seen in training.' },
+            deep: '<p>Encoding a pre-token: repeatedly find the adjacent pair with the <b>lowest merge rank</b> and merge it, until no pair is in the merge table.</p>' +
+              '<pre>def encode_chunk(sym):\n  while len(sym) &gt; 1:\n    r, i = min((rank.get(p, ∞), i)\n               for i, p in pairs(sym))\n    if r == ∞: break\n    sym[i:i+2] = [sym[i] + sym[i+1]]\n  return [ids[s] for s in sym]</pre>'
+          },
+          {
+            say: 'Split it into symbols, then apply rule one, e s, then rule two, es t, then l o, then lo w. It ends as two tokens, low and est, both learned pieces.',
+            card: { tag: 'NUMBERS', title: 'Six symbols, two tokens', more: '<p>Rank order matters: BPE is deterministic only if merges are applied in the order they were learned. Here two independent chains (e s, then es t; and l o, then lo w) never touch each other, so their relative order is immaterial, but within a chain, and in general, the order changes the result. A mismatched merge list between training and inference silently changes token ids.</p>', stat: { v: '4', u: 'merges', l: 'collapse l-o-w-e-s-t into low + est' } },
+            deep: '<p>Each round scans the current pairs for the rule with the smallest rank: for <code>l o w e s t</code> that is <code>e s</code> (rank 1), then <code>es t</code> (rank 2), <code>l o</code> (rank 3), and <code>lo w</code> (rank 4). No further pair is in the table, so encoding stops with <code>low</code> + <code>est</code>.</p>' +
+              '<p>Word never seen in training, yet fully covered: this is why BPE handles morphology (<i>-est</i>) and new words gracefully. Byte fallback guarantees termination for anything.</p>'
+          },
+          {
+            say: 'Now try it yourself. Click a word chip to encode it with the same six merges. Slowest reuses low and est, newer builds new and then stops because e r was never learned, and widest keeps w, i and d apart.',
+            card: { tag: 'TRY IT', title: 'Encode your own word', body: 'Click lowest, newer, slowest or widest. The same six rules apply: familiar pieces merge, unfamiliar letters stay apart.' },
+            deep: '<p>Encoding depends only on the word and the merge table, and it is local: shared pieces recur across words (<code>low</code> in lowest and slowest, <code>est</code> in lowest, slowest and widest). That reuse gives the model sub-word units it has seen many times.</p>' +
+              '<ul><li><code>newer</code> ends as <code>new</code> · <code>e</code> · <code>r</code>: the pair <code>e r</code> occurred only twice in the toy corpus and never made the top six.</li>' +
+              '<li><code>widest</code> keeps <code>w</code> · <code>i</code> · <code>d</code> apart: those pairs occurred three times each, below every learned rule.</li></ul>' +
+              '<p class="muted">Production tokenizers run the same procedure with over 100,000 merges, so a frequent word is one token and a rare word a handful of pieces.</p>'
+          },
+          {
+            say: 'The real tokenizer does exactly this on our prompt line: twelve tokens for nine words. Each token then maps to an integer id, the only thing the model ever sees.',
+            card: { tag: 'NUMBERS', title: 'Tokens per word', stat: { v: '1.33', l: 'tokens per word on this line: 12 tokens for 9 words at a 128k vocabulary' } },
+            deep: '<p>Production encoders (tiktoken in Rust, HF tokenizers) cache pre-token results; throughput is a few MB/s per core, negligible next to the model.</p>' +
+              '<ul><li><b>Rates</b>: ≈ 1.3 tokens per English word at 128k; Meta reports Llama 3\'s tokenizer yields up to 15% fewer tokens than Llama 2\'s.</li>' +
+              '<li>The ids are the only thing the model ever sees: the same words with a different tokenizer give an entirely different id sequence.</li></ul>' +
+              '<p class="muted">ids for <code>A</code>, <code>-</code>, <code> on</code>, <code> a</code>, <code>.</code> match cl100k/Llama 3; the others are illustrative.</p>'
+          },
+          {
+            say: 'Vocabulary size is a trade-off: a bigger table shortens sequences, but costs embedding parameters and leaves rare tokens undertrained. And because the model sees ids, not letters, counting the r letters in strawberry is genuinely hard.',
+            card: { tag: 'PITFALL', title: 'The model sees ids', body: 'Spelling, counting letters and character puzzles are hard because a token is an id, not a string of letters.' },
+            deep: '<ul><li><b>Artifacts</b>: tokens that were frequent in tokenizer training but rare in model training stay undertrained ("glitch tokens", e.g. SolidGoldMagikarp); letter counting and spelling are hard because the model sees ids, not characters.</li>' +
+              '<li>Bigger V → shorter T → fewer FLOPs per text and more text per context, but V·d embedding and unembedding parameters, a bigger softmax and rarer tokens.</li>' +
+              '<li>Tokenization also fixes cost: users are billed per token, so a language with worse compression pays more for the same content.</li></ul>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           /* keep the merge table; replace the rest */
-          var kids = Array.prototype.slice.call(S.bpe.childNodes);
-          ctx.fadeOut([kids[0], kids[1], kids[3]], 400, true);
+          ctx.fadeOut([S.bc[0], S.bc[1], S.bc[3]], 400, true);
+          S.vocabTxt.textContent = 'toy vocab = 256 bytes + 6 merges';
           S.enc = ctx.group();
-          var c1 = card(ctx, S.enc, 60, 180, 700, 330, 'lime', 'ENCODE UNSEEN WORD "lowest" \u00b7 rank order');
-          var steps = [[['l', 'o', 'w', 'e', 's', 't'], ''], [['l', 'o', 'w', 'es', 't'], 'rule 1: e s'], [['l', 'o', 'w', 'est'], 'rule 2: es t'], [['lo', 'w', 'est'], 'rule 3: l o'], [['low', 'est'], 'rule 4: lo w']];
-          S.ladder = steps.map(function (st, i) {
-            var g = ctx.group({ parent: c1 }), x = 90, y = 244 + i * 54;
-            st[0].forEach(function (s) { var b = sym(ctx, g, x, y, s, i === 4 ? 'lime' : 'amber', i === 4); x += b.w + 8; });
-            if (st[1]) ctx.text(480, y, st[1], { size: 13, font: 'mono', color: 'lime', parent: g });
-            if (i === 4) ctx.text(600, y, '\u2192 2 tokens', { size: 13, font: 'mono', weight: 700, color: 'white', parent: g });
-            return g;
+          var c1 = card(ctx, S.enc, 60, 180, 700, 330, 'lime', '');
+          S.encTitle = ctx.text(76, 200, '', { size: 13, font: 'mono', weight: 700, color: 'lime', parent: c1, spacing: 1 });
+          S.ladderG = ctx.group({ parent: c1 });
+          S.encRun = 0;
+          /* draw the rank-order ladder for one word; mode 'all' shows every row, 'hidden' only the first, 'anim' plays them in turn */
+          S.encWord = function (word, mode) {
+            var run = ++S.encRun;
+            while (S.ladderG.firstChild) S.ladderG.removeChild(S.ladderG.firstChild);
+            S.encTitle.textContent = 'ENCODE "' + word + '" \u00b7 rank order';
+            var st = encodeSteps(word), rows = [];
+            st.forEach(function (stp, i) {
+              var last = i > 0 && i === st.length - 1, g = ctx.group({ parent: S.ladderG, opacity: (i && mode !== 'all') ? 0 : 1 }), x = 90, y = 240 + i * 46;
+              stp.s.forEach(function (s) { var b = sym(ctx, g, x, y, s, last ? 'lime' : 'amber', last); x += b.w + 8; });
+              if (stp.rule) ctx.text(480, y, stp.rule, { size: 13, font: 'mono', color: 'lime', parent: g });
+              if (last) ctx.text(610, y, '\u2192 ' + stp.s.length + ' tokens', { size: 13, font: 'mono', weight: 700, color: 'white', parent: g });
+              rows.push(g);
+            });
+            S.ladder = rows;
+            if (mode !== 'anim') return Promise.resolve();
+            var chain = ctx.wait(150);
+            rows.forEach(function (g, i) {
+              if (i === 0) return;
+              chain = chain.then(function () { if (run !== S.encRun) return null; return ctx.reveal(g, { from: 'down', dur: 380 }).then(function () { return ctx.wait(220); }); });
+            });
+            return chain;
+          };
+          S.encWord('lowest', 'hidden');
+          /* word chips (beat 2): the same six merges encode any word */
+          var WORDS = ['lowest', 'newer', 'slowest', 'widest'];
+          S.chipG = ctx.group({ parent: c1, opacity: 0 });
+          ctx.text(76, 474, 'try:', { size: 13, font: 'mono', color: 'dim', parent: S.chipG });
+          S.chips = WORDS.map(function (w) {
+            var c = ctx.label(176 + WORDS.indexOf(w) * 112, 474, w, { color: 'lime', size: 13, w: 98, parent: S.chipG });
+            c.style.cursor = 'pointer';
+            c.addEventListener('click', function (ev) { ev.stopPropagation(); S.pickWord(w); });
+            return c;
           });
+          /* summary of all four words, side by side (beat 2 only) */
+          S.cmp = card(ctx, S.enc, 800, 180, 740, 250, 'lime', 'SAME SIX MERGES, ANY WORD');
+          S.cmp.setAttribute('opacity', 0);
+          S.cmpHi = WORDS.map(function (w, i) {
+            var st = encodeSteps(w), fin = st[st.length - 1].s, y = 252 + i * 46;
+            var hi = ctx.rect(812, y - 21, 716, 42, { rx: 8, fill: ctx.alpha('lime', 0), parent: S.cmp });
+            ctx.text(830, y, w, { size: 15, font: 'code', weight: 700, color: 'white', parent: S.cmp });
+            ctx.text(950, y, '→', { size: 15, font: 'mono', color: 'dim', parent: S.cmp });
+            var x = 980;
+            fin.forEach(function (s) { var b = sym(ctx, S.cmp, x, y, s, 'lime', false); x += b.w + 8; });
+            ctx.text(1512, y, fin.length + ' tokens', { size: 13, font: 'mono', color: 'dim', anchor: 'end', parent: S.cmp });
+            return hi;
+          });
+          S.pickWord = function (w) {
+            S.chips.forEach(function (c, i) { c.firstChild.setAttribute('fill', ctx.alpha('lime', WORDS[i] === w ? 0.45 : 0.12)); });
+            S.cmpHi.forEach(function (h, i) { h.setAttribute('fill', ctx.alpha('lime', WORDS[i] === w ? 0.16 : 0)); });
+            return S.encWord(w, 'anim');
+          };
           var code = ctx.code({ x: 800, y: 180, w: 740, lang: 'py', size: 13, color: 'amber', parent: S.enc, title: 'python   (ids partly illustrative, see panel)', typing: true, lines: [
             '>>> ids = tok.encode("A fox astronaut crash-lands on a glowing ice moon.")',
             '>>> len(ids)          # 9 words -> 12 tokens (1.33 per word)',
@@ -357,45 +579,107 @@
             '>>> [tok.decode([i]) for i in ids[:4]]',
             "['A', ' fox', ' astronaut', ' crash']"
           ] });
+          code.setAttribute('opacity', 0);
           keepWS(code);
           var c3 = card(ctx, S.enc, 800, 400, 740, 470, 'orange', 'VOCABULARY SIZE IS A TRADE-OFF');
-          ctx.para(820, 462, ['bigger V  \u2192  shorter T  \u2192  fewer FLOPs per text,', '             more text fits in the context', 'bigger V  \u2192  V\u00b7d embedding + unembedding params,', '             bigger softmax, rarer tokens', '             under-trained ("glitch tokens")', 'ids, not letters: spelling and counting', 'the r\'s in "strawberry" is genuinely hard'], { size: 15, font: 'mono', color: 'text', lh: 44, parent: c3 });
+          ctx.para(820, 462, ['bigger V  \u2192  shorter T  \u2192  fewer FLOPs per text,', '             more text fits in the context', 'bigger V  \u2192  V\u00b7d embedding + unembedding params,', '             bigger softmax, rarer tokens', '             under-trained ("glitch tokens")', 'ids, not letters: spelling and counting', 'the r\'s in "strawberry" is genuinely hard'], { size: 15, font: 'code', color: 'text', lh: 44, parent: c3 });
           keepWS(c3);
-          S.ladder.forEach(function (g) { g.setAttribute('opacity', 0); });
-          ctx.reveal(S.enc, { from: 'up' });
-          var chain = ctx.wait(500);
-          S.ladder.forEach(function (g, i) {
-            chain = chain.then(function () { return ctx.reveal(g, { from: 'down', dur: 380 }).then(function () { return ctx.wait(220); }); });
+          c3.setAttribute('opacity', 0);
+          /* beat 0: the unseen word */
+          return ctx.reveal(S.enc, { from: 'up' }).then(function () {
+            return ctx.pulse(S.ladder[0], { color: 'amber', dur: 700 });
+          }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: the merges, in rank order (replay the ladder that was drawn hidden) */
+            var chain = ctx.wait(200);
+            S.ladder.forEach(function (g, i) {
+              if (i === 0) return;
+              chain = chain.then(function () { return ctx.reveal(g, { from: 'down', dur: 380 }).then(function () { return ctx.wait(220); }); });
+            });
+            return chain;
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: try other words: the chips appear and one example plays */
+            ctx.reveal([S.chipG, S.cmp], { from: 'up', dur: 400 });
+            return ctx.wait(500).then(function () { return S.pickWord('slowest'); });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: the real tokenizer on the prompt line */
+            ctx.fadeOut(S.cmp, 300, true);
+            ctx.reveal(code, { from: 'up', dur: 400 });
+            return ctx.wait(300).then(function () { return code.typeAll(); });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: vocabulary size is a trade-off */
+            return ctx.reveal(c3, { from: 'up', dur: 500 }).then(function () { return ctx.pulse(c3, { color: 'orange', dur: 700 }); });
           });
-          return chain.then(function () { return code.typeAll(); });
         }
-      },
+      }
+      ,
       /* ------------------------------------------------------------ 5 */
       {
         title: 'Special tokens',
-        say: 'Some tokens are not text at all. Special tokens mark structure: begin of text, the start and end of each role header, end of turn, and a tag that announces a tool call. The chat template wraps every message of our director agent in these markers, and the model learned during fine tuning what each one means. They are reserved ids that user or tool text can never produce, so a pasted document cannot forge a role switch. That is one line of defence against prompt injection, not a complete one.',
-        deep: nolig('<p>A <b>chat template</b> is a deterministic serialisation of a list of messages into one token stream. Llama 3 format:</p>' +
-          '<pre>&lt;|begin_of_text|&gt;\n&lt;|start_header_id|&gt;system\n&lt;|end_header_id|&gt;\\n\\n\n{system}&lt;|eot_id|&gt;\n&lt;|start_header_id|&gt;user\n&lt;|end_header_id|&gt;\\n\\n\n{prompt}&lt;|eot_id|&gt;\n&lt;|start_header_id|&gt;assistant\n&lt;|end_header_id|&gt;\\n\\n</pre>' +
-          '<p class="muted">(line breaks added for display; the real stream has none between special tokens)</p>' +
-          '<ul><li>Generation stops when the model emits <code>&lt;|eot_id|&gt;</code> (128009) — a <i>learned</i> stop signal.</li>' +
-          '<li>Tool calls: Llama 3.1 emits a JSON function call (or <code>&lt;|python_tag|&gt;</code> … <code>&lt;|eom_id|&gt;</code> for built-in tools); results return in an <code>ipython</code> role. Other families use <code>&lt;tool_call&gt;</code> tags or structured content blocks.</li>' +
-          '<li><b>Security</b>: user and tool text is encoded with special tokens <i>disallowed</i>, so a document containing the literal string <code>&lt;|eot_id|&gt;</code> becomes ordinary text tokens, not a role switch.</li>' +
-          '<li>Template mismatches (a missing newline, wrong role header) measurably degrade instruction following.</li></ul>'),
+        beats: [
+          {
+            say: 'Some tokens are not text at all. Special tokens mark structure: begin of text, the start and end of each role header, end of turn, and a tag that announces a tool call.',
+            card: { tag: 'KEY IDEA', title: 'Tokens that are not text', body: 'A block of reserved ids marks roles and turns. No string of ordinary text ever maps to them.' },
+            deep: nolig('<p>Llama 3 reserves 256 special ids at the top of the vocabulary (128000–128255). The ones that matter for an agent:</p>' +
+              '<ul><li><code>&lt;|begin_of_text|&gt;</code> (128000) starts every sequence.</li>' +
+              '<li><code>&lt;|start_header_id|&gt;</code> … <code>&lt;|end_header_id|&gt;</code> wrap the role name (system, user, assistant, ipython).</li>' +
+              '<li><code>&lt;|eot_id|&gt;</code> ends a turn; <code>&lt;|eom_id|&gt;</code> ends a message that expects a tool result.</li>' +
+              '<li><code>&lt;|python_tag|&gt;</code> announces a built-in tool call.</li></ul>')
+          },
+          {
+            say: 'The chat template wraps every message of our director agent in these markers: a system message with the tools, the user request, and the assistant reply, here a tool call.',
+            card: { tag: 'HOW IT WORKS', title: 'One token stream', body: 'A deterministic template turns a list of messages into a single token stream. Fine-tuning taught the model this exact format.' },
+            deep: nolig('<p>A <b>chat template</b> is a deterministic serialisation of a list of messages into one token stream. Llama 3 format:</p>' +
+              '<pre>&lt;|begin_of_text|&gt;\n&lt;|start_header_id|&gt;system\n&lt;|end_header_id|&gt;\\n\\n\n{system}&lt;|eot_id|&gt;\n&lt;|start_header_id|&gt;user\n&lt;|end_header_id|&gt;\\n\\n\n{prompt}&lt;|eot_id|&gt;\n&lt;|start_header_id|&gt;assistant\n&lt;|end_header_id|&gt;\\n\\n</pre>' +
+              '<p class="muted">(line breaks added for display; the real stream has none between special tokens)</p>' +
+              '<p>Every serving stack must reproduce this exact serialisation: the tokenizer configuration ships the template, so fine-tuning data, inference and evaluation all format conversations identically.</p>')
+          },
+          {
+            say: 'The model learned during fine tuning what each marker means. Emitting the end of turn token is a learned stop signal, and that is how generation ends.',
+            card: { tag: 'NUMBERS', title: 'The stop signal', stat: { v: '128009', l: 'the id of the end-of-turn token: when the model samples it, generation stops' } },
+            deep: nolig('<ul><li>Generation stops when the model emits <code>&lt;|eot_id|&gt;</code> (128009): a <i>learned</i> stop signal, not a length rule.</li>' +
+              '<li>Tool calls: Llama 3.1 emits a JSON function call (or <code>&lt;|python_tag|&gt;</code> … <code>&lt;|eom_id|&gt;</code> for built-in tools); results return in an <code>ipython</code> role. Other families use <code>&lt;tool_call&gt;</code> tags or structured content blocks.</li>' +
+              '<li>Template mismatches (a missing newline, a wrong role header) measurably degrade instruction following, which is why serving stacks apply the template shipped in the tokenizer config instead of hand-writing prompts, and why fine-tuning data must use the identical format.</li></ul>')
+          },
+          {
+            say: 'These ids are reserved, and a careful serving stack encodes user and tool text so that it can never produce them. Then a pasted document cannot forge a role switch. That is one line of defence against prompt injection, not a complete one.',
+            card: { tag: 'PITFALL', title: 'Blocking role forgery', body: 'Encode user text with special tokens disallowed and a literal end-of-turn string is just text. Some libraries parse them by default. Semantic injection still works.' },
+            deep: nolig('<ul><li><b>Security</b>: user and tool text should be encoded with special tokens <i>disallowed</i>, so a document containing the literal string <code>&lt;|eot_id|&gt;</code> becomes ordinary text tokens, not a role switch.</li>' +
+              '<li><b>Configuration matters</b>: tiktoken raises an error on special-token strings unless they are explicitly allowed, and Meta’s reference code encodes them as plain text, but Hugging Face tokenizers turn them into the real special ids by default (unless <code>split_special_tokens</code> is set): a known chat-template injection vector.</li>' +
+              '<li>That closes the <i>syntactic</i> hole only. A page that says "ignore previous instructions" is still fluent text the model may follow: privilege separation, provenance tags and output filtering are needed on top.</li></ul>')
+          },
+          {
+            say: 'Vocabularies keep growing, from thirty two thousand entries in Llama two to over two hundred sixty thousand in Gemma three. Bigger tables buy shorter sequences at the cost of more embedding parameters.',
+            card: { tag: 'NUMBERS', title: 'Vocabularies grow', stat: { v: '262k', u: 'tokens', l: 'Gemma 3 vocabulary, versus 32k in Llama 2: an 8× larger table' } },
+            deep: '<p>n_vocab across families: 32,000 (Llama 2, SentencePiece), 50,257 (GPT-2), 100,277 (cl100k), 128,256 (Llama 3), 129,280 (DeepSeek-V3), 151,665 (Qwen2.5), 200,019 (o200k), 262,144 (Gemma 3).</p>' +
+              '<p>The trend is driven by multilingual and code efficiency. The cost: at d = 8,192, every extra 100k tokens adds 0.82 B parameters to the embedding and, if untied, another 0.82 B to the unembedding, plus a wider softmax at every decode step.</p>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut([S.bpe, S.enc], 400, true);
           S.sp = ctx.group();
-          var c1 = card(ctx, S.sp, 60, 180, 960, 300, 'magenta', 'CHAT TEMPLATE \u00b7 director agent turn (Llama 3 format)');
+          /* reserved ids on the left */
+          var c2 = card(ctx, S.sp, 60, 180, 480, 300, 'magenta', 'RESERVED IDS (Llama 3)');
+          var ids = [['<|begin_of_text|>', 128000], ['<|end_of_text|>', 128001], ['<|start_header_id|>', 128006], ['<|end_header_id|>', 128007], ['<|eom_id|>', 128008], ['<|eot_id|>', 128009], ['<|python_tag|>', 128010]];
+          S.idRows = ids.map(function (r, i) {
+            var y = 226 + i * 34, rg = ctx.group({ parent: c2 });
+            ctx.text(80, y, r[0], { size: 13, font: 'code', color: 'magenta', parent: rg }).style.fontVariantLigatures = 'none';
+            ctx.text(520, y, String(r[1]), { size: 13, font: 'mono', color: 'white', anchor: 'end', parent: rg });
+            return rg;
+          });
+          /* chat template on the right (beat 1) */
+          var c1 = card(ctx, S.sp, 580, 180, 960, 300, 'magenta', 'CHAT TEMPLATE · director agent turn (Llama 3 format)');
+          c1.setAttribute('opacity', 0);
           var lines = [
-            '<|begin_of_text|><|start_header_id|>system<|end_header_id|>\u23ce\u23ce',
+            '<|begin_of_text|><|start_header_id|>system<|end_header_id|>⏎⏎',
             'You are the Director agent. Tools: render_shot, search_assets.<|eot_id|>',
-            '<|start_header_id|>user<|end_header_id|>\u23ce\u23ce',
+            '<|start_header_id|>user<|end_header_id|>⏎⏎',
             '30-second trailer: fox astronaut, glowing ice moon.<|eot_id|>',
-            '<|start_header_id|>assistant<|end_header_id|>\u23ce\u23ce',
+            '<|start_header_id|>assistant<|end_header_id|>⏎⏎',
             '{"name": "search_assets", "parameters": {"query": "fox sketch"}}<|eot_id|>'
           ];
           S.tplLines = lines.map(function (ln, i) {
-            var t = ctx.text(80, 230 + i * 38, '', { size: 13, font: 'mono', color: 'text', parent: c1 });
+            var t = ctx.text(600, 230 + i * 38, '', { size: 13, font: 'code', color: 'text', parent: c1, opacity: 0 });
             t.style.fontVariantLigatures = 'none';
             ln.split(/(<\|[a-z_]+\|>)/).forEach(function (part) {
               if (!part) return;
@@ -404,14 +688,9 @@
             });
             return t;
           });
-          var c2 = card(ctx, S.sp, 1060, 180, 480, 300, 'magenta', 'RESERVED IDS (Llama 3)');
-          var ids = [['<|begin_of_text|>', 128000], ['<|end_of_text|>', 128001], ['<|start_header_id|>', 128006], ['<|end_header_id|>', 128007], ['<|eom_id|>', 128008], ['<|eot_id|>', 128009], ['<|python_tag|>', 128010]];
-          ids.forEach(function (r, i) {
-            var y = 226 + i * 34;
-            ctx.text(1080, y, r[0], { size: 13, font: 'mono', color: 'magenta', parent: c2 }).style.fontVariantLigatures = 'none';
-            ctx.text(1520, y, String(r[1]), { size: 13, font: 'mono', color: 'white', anchor: 'end', parent: c2 });
-          });
+          /* vocabulary sizes (beat 4) */
           var c3 = card(ctx, S.sp, 60, 510, 1480, 360, 'amber', 'VOCABULARY SIZES (n_vocab)');
+          c3.setAttribute('opacity', 0);
           var vs = [['Llama 2 (SentencePiece)', 32000], ['GPT-2 (byte BPE)', 50257], ['GPT-4 cl100k_base', 100277], ['Llama 3 / 3.1', 128256], ['DeepSeek-V3', 129280], ['Qwen2.5', 151665], ['GPT-4o o200k_base', 200019], ['Gemma 3', 262144, '≈ 262k']];
           S.vBars = vs.map(function (v, i) {
             var y = 556 + i * 38;
@@ -420,53 +699,97 @@
             ctx.text(436 + 960 * v[1] / 262144 + 8, y, v[2] || v[1].toLocaleString('en-US'), { size: 12, font: 'mono', color: 'amber', parent: c3 });
             return [b, 960 * v[1] / 262144];
           });
-          ctx.reveal(S.sp, { from: 'up' });
-          S.tplLines.forEach(function (t) { t.setAttribute('opacity', 0); });
-          var chain = ctx.wait(400);
-          S.tplLines.forEach(function (t) { chain = chain.then(function () { return ctx.reveal(t, { from: 'left', dur: 300 }); }); });
-          return chain.then(function () {
-            return Promise.all(S.vBars.map(function (b, i) { return ctx.animate(b[0], { width: [0, b[1]] }, 600, 'out', i * 90); }));
+          /* security note (beat 3) */
+          S.secG = ctx.group({ parent: S.sp, opacity: 0 });
+          ctx.icon('shield', 646, 455, 22, 'pink', { parent: S.secG });
+          ctx.label(670, 455, 'careful stack: user text with a literal <|eot_id|> is encoded as plain text, no role switch', { color: 'pink', size: 12, anchor: 'start', parent: S.secG });
+          /* beat 0: the reserved ids */
+          return ctx.reveal(S.sp, { from: 'up' }).then(function () {
+            return ctx.reveal(S.idRows, { from: 'left', stagger: 90, dur: 300 });
+          }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: the chat template */
+            ctx.reveal(c1, { from: 'up', dur: 400 });
+            var chain = ctx.wait(400);
+            S.tplLines.forEach(function (t) { chain = chain.then(function () { return ctx.reveal(t, { from: 'left', dur: 300 }); }); });
+            return chain;
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: end of turn is a learned stop signal */
+            var h = ctx.highlight(S.idRows[5], { color: 'lime', pad: 6, parent: S.sp });
+            return ctx.pulse(S.idRows[5], { color: 'lime', times: 2, dur: 600 }).then(function () {
+              return ctx.pulse(S.tplLines[5], { color: 'lime', dur: 700 });
+            });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: reserved ids cannot be forged by user text */
+            return ctx.reveal(S.secG, { from: 'up', dur: 500 }).then(function () { return ctx.pulse(S.secG, { color: 'pink', dur: 700 }); });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: vocabulary sizes */
+            ctx.reveal(c3, { from: 'up', dur: 500 });
+            return ctx.wait(400).then(function () {
+              return Promise.all(S.vBars.map(function (b, i) { return ctx.animate(b[0], { width: [0, b[1]] }, 600, 'out', i * 90); }));
+            });
           });
         }
       },
       /* ------------------------------------------------------------ 6 */
       {
         title: 'Embedding lookup',
-        say: 'Now ids become vectors. Formally, the id is a one hot vector of length one hundred twenty eight thousand, multiplied by the embedding matrix. The product simply selects one row. So the implementation is a gather: copy sixteen kilobytes for each token. That table holds over a billion parameters for a seventy billion model. Small models often tie it to the output layer, reusing the same matrix transposed to turn the final vector back into logits.',
-        deep: '<div class="eq">e = onehot(id)ᵀ E = E[id, :] &nbsp;&nbsp; E ∈ ℝ<sup>V×d</sup></div>' +
-          '<table><tr><th>Model</th><th>V × d</th><th>params</th><th>share</th></tr>' +
-          '<tr><td>Llama 3 70B (untied)</td><td>128,256 × 8,192</td><td>2 × 1.05 B</td><td>3%</td></tr>' +
-          '<tr><td>Llama 3 8B (untied)</td><td>128,256 × 4,096</td><td>2 × 0.53 B</td><td>13%</td></tr>' +
-          '<tr><td>Llama 3.2 1B (tied)</td><td>128,256 × 2,048</td><td>0.26 B</td><td>21%</td></tr></table>' +
-          '<ul><li><b>Cost</b>: a gather moves d × 2 bytes = 16 KiB per token (BF16, d = 8,192); no FLOPs.</li>' +
-          '<li><b>Gradient</b>: ∂L/∂E is non-zero only on rows present in the batch → sparse updates; with tensor parallelism E is sharded along V (vocab-parallel embedding + all-reduce).</li>' +
-          '<li><b>Tying</b> W<sub>U</sub> = Eᵀ (Press &amp; Wolf 2017) saves V·d params — decisive at 1B scale, negligible at 70B, and it forces input and output geometry to agree.</li>' +
-          '<li>Some models scale embeddings by √d (Gemma) to match residual-stream magnitudes.</li></ul>',
+        beats: [
+          {
+            say: 'Now ids become vectors. Formally, the id is a one hot vector of length one hundred twenty eight thousand, multiplied by the embedding matrix.',
+            card: { tag: 'KEY IDEA', title: 'A one-hot times a table', body: 'One hot vector of length V times the matrix E: a single 1 selects a single row of E.' },
+            deep: '<div class="eq">e = onehot(id)ᵀ E = E[id, :] &nbsp;&nbsp; E ∈ ℝ<sup>V×d</sup></div>' +
+              '<p>Only 18 of the 128,256 rows and 16 of the 8,192 columns fit on the stage; the highlighted row is token <code>·fox</code> (id 39935, illustrative). The matrix is learned: at initialisation its rows are near-random, and training moves them so that useful neighbours form.</p>'
+          },
+          {
+            say: 'The product simply selects one row. So the implementation is a gather: copy sixteen kilobytes for each token, with no multiplication at all.',
+            card: { tag: 'NUMBERS', title: 'A gather is free', more: '<p>16 KiB per token is d × 2 B = 8,192 × 2 B. A batch of 4,096 tokens gathers 64 MiB, a rounding error next to the ≈ 141 GB of weights read by the transformer stack. The output projection, a real GEMM, is where the vocabulary costs FLOPs.</p>', stat: { v: '16', u: 'KiB', l: 'copied per token from HBM: 8,192 numbers in BF16, and zero FLOPs' } },
+            deep: '<ul><li><b>Cost</b>: a gather moves d × 2 bytes = 16 KiB per token (BF16, d = 8,192); no FLOPs. A dense one-hot matmul would cost 2·V·d = 2.1 GFLOP per token.</li>' +
+              '<li><b>Gradient</b>: ∂L/∂E is non-zero only on rows present in the batch → sparse updates; with tensor parallelism E is sharded along V (vocab-parallel embedding + all-reduce).</li></ul>'
+          },
+          {
+            say: 'That table holds over a billion parameters, about two gigabytes, for a seventy billion parameter model. The output layer needs another table of the same size.',
+            card: { tag: 'NUMBERS', title: 'Size of the table', stat: { v: '1.05', u: 'B params', l: '128,256 × 8,192 = 2.1 GB in BF16, and 2.1 GB more for W_U' } },
+            deep: '<table><tr><th>Model</th><th>V × d</th><th>params</th><th>share</th></tr>' +
+              '<tr><td>Llama 3 70B (untied)</td><td>128,256 × 8,192</td><td>2 × 1.05 B</td><td>3%</td></tr>' +
+              '<tr><td>Llama 3 8B (untied)</td><td>128,256 × 4,096</td><td>2 × 0.53 B</td><td>13%</td></tr>' +
+              '<tr><td>Llama 3.2 1B (tied)</td><td>128,256 × 2,048</td><td>0.26 B</td><td>21%</td></tr></table>' +
+              '<p>The share grows as models shrink, which is why small models care about vocabulary size and tying.</p>'
+          },
+          {
+            say: 'Small models often tie it to the output layer, reusing the same matrix transposed to turn the final vector back into logits. Large models usually keep the two tables separate.',
+            card: { tag: 'TRADE-OFF', title: 'Tie the table or not', body: 'Tying saves V·d parameters and forces input and output geometry to agree. It matters at 1B scale, not at 70B.' },
+            deep: '<ul><li><b>Tying</b> W<sub>U</sub> = Eᵀ (Press &amp; Wolf 2017) saves V·d params: 21% of a 1B model but 1.5% of a 70B one, so big models untie. Tying forces input and output geometry to agree.</li>' +
+              '<li>Some models scale embeddings by √d (Gemma) to match residual-stream magnitudes.</li>' +
+              '<li>Many small open models tie (Llama 3.2 1B/3B, Gemma); Llama 3 8B and 70B do not.</li></ul>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut(S.sp, 400, true);
           S.emb = ctx.group();
-          ctx.text(60, 186, 'EMBEDDING LOOKUP   onehot(id)\u1d40 \u00b7 E  =  E[id]', { size: 16, font: 'display', weight: 700, color: 'amber', parent: S.emb });
+          ctx.text(60, 186, 'EMBEDDING LOOKUP   onehot(id)ᵀ · E  =  E[id]', { size: 16, font: 'display', weight: 700, color: 'amber', parent: S.emb });
           /* one-hot as a column aligned with E rows */
           var R = 18, cell = 18, gap = 3, oy = 230;
           var hotRow = 11;
           ctx.text(130, 218, 'onehot', { size: 12, font: 'mono', color: 'cyan', anchor: 'middle', parent: S.emb });
           var oh = ctx.matrix(121, oy, R, 1, { cell: cell, gap: gap, cmap: 'cyan', values: function (r) { return r === hotRow ? 1 : 0.04; }, stroke: ctx.alpha('cyan', 0.35), parent: S.emb });
           ctx.text(130, oy + R * (cell + gap) + 16, 'V entries', { size: 12, font: 'mono', color: 'dim', anchor: 'middle', parent: S.emb });
-          ctx.text(165, oy + hotRow * (cell + gap) + cell / 2, '\u00b7fox  id 39935', { size: 12, font: 'mono', color: 'cyan', parent: S.emb });
+          ctx.text(165, oy + hotRow * (cell + gap) + cell / 2, '·fox  id 39935', { size: 12, font: 'mono', color: 'cyan', parent: S.emb });
           var r = ctx.rng(4);
           S.E = ctx.matrix(300, oy, R, 16, { cell: cell, gap: gap, cmap: 'diverge', values: function () { return (r() * 2 - 1) * 0.75; }, parent: S.emb });
-          ctx.text(300 + S.E.w / 2, 218, 'E   V = 128,256 rows \u00d7 d = 8,192', { size: 12, font: 'mono', color: 'amber', anchor: 'middle', parent: S.emb });
-          ctx.text(300 + S.E.w / 2, oy + R * (cell + gap) + 16, 'rows shown: 18 of 128,256 \u00b7 cols: 16 of 8,192', { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: S.emb });
-          S.sel = ctx.rect(296, oy + hotRow * (cell + gap) - 4, S.E.w + 8, cell + 8, { rx: 5, stroke: 'white', sw: 2, glow: true, parent: S.emb });
-          S.outV = ctx.matrix(300, 690, 1, 16, { cell: cell, gap: gap, cmap: 'gray', values: function () { return 0.06; }, parent: S.emb });
-          ctx.text(290, 699, 'e =', { size: 14, font: 'mono', color: 'white', anchor: 'end', parent: S.emb });
-          ctx.text(300 + S.E.w / 2, 734, 'e \u2208 \u211d^8192 \u2192 first residual-stream vector for "\u00b7fox"', { size: 12, font: 'mono', color: 'text', anchor: 'middle', parent: S.emb });
-          ctx.text(300, 780, 'dense matmul would cost 2\u00b7V\u00b7d = 2.1 GFLOP per token', { size: 12, font: 'mono', color: 'dim', parent: S.emb });
-          ctx.text(300, 802, 'gather costs 0 FLOPs, 16 KiB of HBM reads', { size: 12, font: 'mono', color: 'lime', parent: S.emb });
+          ctx.text(300 + S.E.w / 2, 218, 'E   V = 128,256 rows × d = 8,192', { size: 12, font: 'mono', color: 'amber', anchor: 'middle', parent: S.emb });
+          ctx.text(300 + S.E.w / 2, oy + R * (cell + gap) + 16, 'rows shown: 18 of 128,256 · cols: 16 of 8,192', { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: S.emb });
+          S.sel = ctx.rect(296, oy + hotRow * (cell + gap) - 4, S.E.w + 8, cell + 8, { rx: 5, stroke: 'white', sw: 2, glow: true, parent: S.emb, opacity: 0 });
+          var gOut = ctx.group({ parent: S.emb, opacity: 0 });
+          S.outV = ctx.matrix(300, 690, 1, 16, { cell: cell, gap: gap, cmap: 'gray', values: function () { return 0.06; }, parent: gOut });
+          ctx.text(290, 699, 'e =', { size: 14, font: 'mono', color: 'white', anchor: 'end', parent: gOut });
+          ctx.text(300 + S.E.w / 2, 734, 'e ∈ ℝ^8192 → first residual-stream vector for "·fox"', { size: 12, font: 'mono', color: 'text', anchor: 'middle', parent: gOut });
+          ctx.text(300, 780, 'dense matmul would cost 2·V·d = 2.1 GFLOP per token', { size: 12, font: 'mono', color: 'dim', parent: gOut });
+          ctx.text(300, 802, 'gather costs 0 FLOPs, 16 KiB of HBM reads', { size: 12, font: 'mono', color: 'lime', parent: gOut });
 
-          /* tied vs untied */
+          /* tied vs untied (beat 3) */
           var c = card(ctx, S.emb, 820, 200, 720, 330, 'violet', 'TIED vs UNTIED OUTPUT');
+          c.setAttribute('opacity', 0);
           function mini(x, y, lab, col, t) {
             var g = ctx.group({ parent: c });
             ctx.rect(x, y, 70, 120, { rx: 4, fill: ctx.alpha(col, 0.18), stroke: col, sw: 1.2, parent: g });
@@ -477,43 +800,75 @@
           ctx.text(850, 250, 'tied (Llama 3.2 1B, Gemma)', { size: 12, font: 'mono', color: 'violet', parent: c });
           mini(860, 280, 'E', 'amber', 'input');
           ctx.path('M940,340 C980,300 1000,300 1030,340', { stroke: 'violet', sw: 1.5, dash: '4 4', arrow: true, parent: c });
-          mini(1040, 280, 'E\u1d40', 'amber', 'output (shared)');
+          mini(1040, 280, 'Eᵀ', 'amber', 'output (shared)');
           ctx.text(1180, 250, 'untied (Llama 3 8B/70B)', { size: 12, font: 'mono', color: 'violet', parent: c });
           mini(1190, 280, 'E', 'amber', 'input');
           mini(1300, 280, 'W_U', 'orange', 'output (own)');
-          ctx.text(840, 476, 'tying saves V\u00b7d params: 21% of a 1B model,', { size: 12, font: 'mono', color: 'text', parent: c });
-          ctx.text(840, 498, '1.5% of a 70B model \u2192 big models untie', { size: 12, font: 'mono', color: 'text', parent: c });
+          ctx.text(840, 476, 'tying saves V·d params: 21% of a 1B model,', { size: 12, font: 'mono', color: 'text', parent: c });
+          ctx.text(840, 498, '1.5% of a 70B model → big models untie', { size: 12, font: 'mono', color: 'text', parent: c });
+          /* size of the table (beat 2) */
           var c2 = card(ctx, S.emb, 820, 560, 720, 310, 'amber', 'SIZE OF THE TABLE');
+          c2.setAttribute('opacity', 0);
           S.sizeTxt = ctx.text(840, 626, '', { size: 26, font: 'mono', weight: 700, color: 'amber', parent: c2 });
-          ctx.para(840, 676, ['= 128,256 \u00d7 8,192 parameters', '= 2.1 GB in BF16 (another 2.1 GB for W_U)', 'sharded along V under tensor parallelism', 'grad is row-sparse: only seen ids update'], { size: 13, font: 'mono', color: 'text', lh: 30, parent: c2 });
-          ctx.reveal(S.emb, { from: 'up' });
-          S.sel.setAttribute('opacity', 0);
+          ctx.para(840, 676, ['= 128,256 × 8,192 parameters', '= 2.1 GB in BF16 (another 2.1 GB for W_U)', 'sharded along V under tensor parallelism', 'grad is row-sparse: only seen ids update'], { size: 13, font: 'mono', color: 'text', lh: 30, parent: c2 });
           var rowVals = S.E.cells[hotRow].map(function (el) { return el.getAttribute('fill'); });
-          return ctx.wait(700).then(function () {
-            ctx.pulse(oh.cells[hotRow][0], { color: 'cyan', dur: 600 });
-            return ctx.reveal(S.sel, { dur: 400 });
-          }).then(function () {
-            var fly = ctx.group({ parent: S.emb });
-            rowVals.forEach(function (f, k) { ctx.rect(300 + k * (cell + gap), oy + hotRow * (cell + gap), cell, cell, { rx: 3, fill: f, parent: fly }); });
-            return ctx.transform(fly, { y: 690 - (oy + hotRow * (cell + gap)) }, 800, 'inOut').then(function () {
-              if (fly.parentNode) fly.parentNode.removeChild(fly);
-              S.outV.cells[0].forEach(function (el, k) { el.setAttribute('fill', rowVals[k]); });
+          /* beat 0: the one-hot vector and the table */
+          return ctx.reveal(S.emb, { from: 'up' }).then(function () {
+            return ctx.pulse(oh.cells[hotRow][0], { color: 'cyan', dur: 600 });
+          }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: the hot row is gathered */
+            ctx.reveal(gOut, { dur: 300 });
+            return ctx.reveal(S.sel, { dur: 400 }).then(function () {
+              var fly = ctx.group({ parent: S.emb });
+              rowVals.forEach(function (f, k) { ctx.rect(300 + k * (cell + gap), oy + hotRow * (cell + gap), cell, cell, { rx: 3, fill: f, parent: fly }); });
+              return ctx.transform(fly, { y: 690 - (oy + hotRow * (cell + gap)) }, 800, 'inOut').then(function () {
+                if (fly.parentNode) fly.parentNode.removeChild(fly);
+                S.outV.cells[0].forEach(function (el, k) { el.setAttribute('fill', rowVals[k]); });
+              });
             });
-          }).then(function () {
-            return ctx.counter(S.sizeTxt, 0, 1050673152, 1200);
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: how big the table is */
+            ctx.reveal(c2, { from: 'up', dur: 500 });
+            return ctx.wait(400).then(function () { return ctx.counter(S.sizeTxt, 0, 1050673152, 1200); });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: tied and untied output layers */
+            ctx.reveal(c, { from: 'up', dur: 500 });
+            return ctx.wait(500).then(function () { return ctx.pulse(c, { color: 'violet', dur: 700 }); });
           });
         }
       },
       /* ------------------------------------------------------------ 7 */
       {
         title: 'Geometry of meaning',
-        say: 'Training arranges these vectors so that geometry carries meaning. Related tokens point in similar directions, measured by cosine similarity: fox sits near wolf, moon near planet, ice near snow. Directions encode features. The classic example is king minus man plus woman landing near queen. In large models this becomes the linear representation hypothesis: concepts like cold, or space travel, or the fox character correspond to directions in the residual stream that later layers read out.',
-        deep: '<div class="eq">cos(u, v) = u·v / (‖u‖ ‖v‖)</div>' +
-          '<p>The 2-D map is an illustrative projection; real embeddings live in 4k–16k dimensions where random vectors are nearly orthogonal (cos ≈ 0 ± 1/√d).</p>' +
-          '<ul><li><b>Analogies</b>: <code>v(king) − v(man) + v(woman) ≈ v(queen)</code> holds approximately in word2vec-style spaces (nearest neighbour excluding the inputs).</li>' +
-          '<li><b>Linear representation hypothesis</b>: high-level concepts are directions; linear probes recover them, and adding a direction (activation steering) changes behaviour predictably.</li>' +
-          '<li><b>Anisotropy</b>: raw LLM embeddings share a common mean direction and a few massive outlier dimensions, so raw cosine is inflated; centring or whitening helps retrieval.</li>' +
-          '<li>Input embeddings are only layer 0: meaning is refined along the residual stream; contextual vectors for "moon" after "ice" differ from "moon" after "honey".</li></ul>',
+        beats: [
+          {
+            say: 'Training arranges the embedding vectors so that geometry carries meaning. Here is a two dimensional map: animals cluster in one corner, space words in another, and cold things in a third.',
+            card: { tag: 'KEY IDEA', title: 'Usage becomes location', body: 'Tokens used in similar contexts get similar vectors, so meaning shows up as clusters in the space.' },
+            deep: '<p>The 2-D map is an illustrative projection (think PCA or UMAP of a few token embeddings); real embeddings live in 4k–16k dimensions.</p>' +
+              '<p>Clusters emerge because the training loss rewards vectors that predict the same neighbours: <code>fox</code>, <code>wolf</code> and <code>cat</code> appear in interchangeable contexts, so gradient descent moves them together (the distributional hypothesis).</p>'
+          },
+          {
+            say: 'Similarity is measured by the angle between vectors, the cosine. Fox sits close to wolf, with a cosine near one, and nearly orthogonal to moon.',
+            card: { tag: 'HOW IT WORKS', title: 'Similarity is an angle', body: 'Cosine ignores length and compares direction: 1 means the same direction, 0 unrelated.' },
+            deep: '<div class="eq">cos(u, v) = u·v / (‖u‖ ‖v‖)</div>' +
+              '<ul><li><b>Anisotropy</b>: raw LLM embeddings share a common mean direction and a few massive outlier dimensions, so raw cosine is inflated; centring or whitening helps retrieval.</li>' +
+              '<li>Input embeddings are only layer 0: meaning is refined along the residual stream; contextual vectors for "moon" after "ice" differ from "moon" after "honey".</li></ul>'
+          },
+          {
+            say: 'Directions encode features. The classic example is king minus man plus woman landing near queen: the same gender offset is reused in different places.',
+            card: { tag: 'HOW IT WORKS', title: 'Offsets are reusable', more: '<p>Why a parallelogram: if v(woman) − v(man) ≈ v(queen) − v(king) ≈ g, a shared "gender" direction, then the four points span a parallelogram and v(queen) ≈ v(king) + g. The analogy test returns the vector nearest to that point by cosine, excluding the three query words.</p>', body: 'The vector from man to woman is roughly the vector from king to queen: one direction, many uses.' },
+            deep: '<p><b>Analogies</b>: <code>v(king) − v(man) + v(woman) ≈ v(queen)</code> holds approximately in word2vec-style spaces (nearest neighbour excluding the inputs; Mikolov et al. 2013).</p>' +
+              '<p>In contextual LLM spaces it is messier, but the same idea of a consistent <i>offset</i> per relation shows up as steerable directions for tense, sentiment, language and topic.</p>'
+          },
+          {
+            say: 'In large models this becomes the linear representation hypothesis: concepts such as cold, or space travel, or the fox character are directions in the residual stream that later layers read out. In eight thousand dimensions there is room for a huge number of nearly orthogonal directions.',
+            card: { tag: 'NUMBERS', title: 'Random means orthogonal', stat: { v: '0.011', l: 'typical |cos| of two random directions in 8,192 dimensions: 1/√d' } },
+            deep: '<p>The 2-D map hides the key fact: in d = 8,192 dimensions random vectors are nearly orthogonal (cos ≈ 0 ± 1/√d ≈ 0.011), so there is room for far more than d nearly independent feature directions.</p>' +
+              '<ul><li><b>Linear representation hypothesis</b>: high-level concepts are directions; linear probes recover them, and adding a direction (activation steering) changes behaviour predictably (Park et al. 2024).</li>' +
+              '<li>Probe: <code>sign(r<sub>c</sub>·h)</code>. Steer: <code>h ← h + α r<sub>c</sub></code>. The next step shows how sparse features pack into fewer dimensions.</li></ul>' +
+              '<details><summary>Go deeper</summary><p>For unit vectors drawn uniformly on the sphere S<sup>d−1</sup>, P(|cos| ≥ ε) ≤ 2e<sup>−dε²/2</sup>. A union bound over the N²/2 pairs shows that about e<sup>dε²/4</sup> vectors can coexist with every pairwise |cos| ≤ ε. At d = 8,192 and ε = 0.1 that is e<sup>20.5</sup> ≈ 8·10<sup>8</sup> directions, far more than the 128k tokens, or the many more features, a model may want to store.</p></details>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut(S.emb, 400, true);
@@ -531,23 +886,23 @@
           };
           S.pt = {};
           var dots = Object.keys(pts).map(function (k) {
-            var p = pts[k], g = ctx.group({ parent: S.geo });
+            var p = pts[k], g = ctx.group({ parent: S.geo, opacity: 0 });
             ctx.circle(O.x + p[0], O.y + p[1], 6, { fill: p[2], parent: g, glow: true });
             ctx.text(O.x + p[0] + 10, O.y + p[1] - 10, k, { size: 13, font: 'mono', color: p[2], parent: g });
             S.pt[k] = { x: O.x + p[0], y: O.y + p[1] };
             return g;
           });
-          /* cosine arcs from fox */
-          S.vecs = ctx.group({ parent: S.geo });
-          var vf = ctx.line(O.x, O.y, S.pt.fox.x, S.pt.fox.y, { color: 'orange', sw: 2, arrow: true, parent: S.vecs });
-          var vw = ctx.line(O.x, O.y, S.pt.wolf.x, S.pt.wolf.y, { color: ctx.alpha('orange', 0.6), sw: 1.5, arrow: true, parent: S.vecs });
-          var vm = ctx.line(O.x, O.y, S.pt.moon.x, S.pt.moon.y, { color: ctx.alpha('cyan', 0.6), sw: 1.5, arrow: true, parent: S.vecs });
+          /* cosine arcs from fox (beat 1) */
+          S.vecs = ctx.group({ parent: S.geo, opacity: 0 });
+          var vf = ctx.path('M' + O.x + ',' + O.y + ' L' + S.pt.fox.x + ',' + S.pt.fox.y, { stroke: 'orange', sw: 2, arrow: true, parent: S.vecs });
+          var vw = ctx.path('M' + O.x + ',' + O.y + ' L' + S.pt.wolf.x + ',' + S.pt.wolf.y, { stroke: ctx.alpha('orange', 0.6), sw: 1.5, arrow: true, parent: S.vecs });
+          var vm = ctx.path('M' + O.x + ',' + O.y + ' L' + S.pt.moon.x + ',' + S.pt.moon.y, { stroke: ctx.alpha('cyan', 0.6), sw: 1.5, arrow: true, parent: S.vecs });
           function cosv(a, b) { var ax = a.x - O.x, ay = a.y - O.y, bx = b.x - O.x, by = b.y - O.y; return (ax * bx + ay * by) / Math.sqrt((ax * ax + ay * ay) * (bx * bx + by * by)); }
           ctx.label(S.pt.wolf.x + 30, S.pt.wolf.y + 46, 'cos(fox, wolf) = ' + cosv(S.pt.fox, S.pt.wolf).toFixed(2), { color: 'orange', size: 11, parent: S.vecs });
           ctx.label(610, 470, 'cos(fox, moon) = ' + cosv(S.pt.fox, S.pt.moon).toFixed(2), { color: 'cyan', size: 11, parent: S.vecs });
 
-          /* analogy parallelogram in its own corner */
-          S.ana = ctx.group({ parent: S.geo });
+          /* analogy parallelogram in its own corner (beat 2) */
+          S.ana = ctx.group({ parent: S.geo, opacity: 0 });
           var A = { man: { x: 640, y: 700 }, king: { x: 700, y: 610 }, woman: { x: 800, y: 740 } };
           A.queen = { x: A.king.x + (A.woman.x - A.man.x) + 6, y: A.king.y + (A.woman.y - A.man.y) - 5 };
           Object.keys(A).forEach(function (k) {
@@ -556,64 +911,98 @@
           });
           ctx.line(A.man.x, A.man.y, A.king.x, A.king.y, { color: ctx.alpha('violet', 0.35), sw: 1, dash: '2 4', parent: S.ana });
           ctx.line(A.woman.x, A.woman.y, A.queen.x, A.queen.y, { color: ctx.alpha('violet', 0.35), sw: 1, dash: '2 4', parent: S.ana });
-          S.a1 = ctx.line(A.man.x, A.man.y, A.woman.x, A.woman.y, { color: 'violet', sw: 1.8, arrow: true, parent: S.ana });
-          S.a2 = ctx.line(A.king.x, A.king.y, A.queen.x - 3, A.queen.y + 2, { color: 'pink', sw: 1.8, arrow: true, dash: '5 4', parent: S.ana });
-          ctx.text(600, 800, 'king \u2212 man + woman \u2248 queen', { size: 13, font: 'mono', weight: 700, color: 'pink', parent: S.ana });
+          S.a1 = ctx.path('M' + A.man.x + ',' + A.man.y + ' L' + A.woman.x + ',' + A.woman.y, { stroke: 'violet', sw: 1.8, arrow: true, parent: S.ana });
+          S.a2 = ctx.path('M' + A.king.x + ',' + A.king.y + ' L' + (A.queen.x - 3) + ',' + (A.queen.y + 2), { stroke: 'pink', sw: 1.8, arrow: true, dash: '5 4', parent: S.ana });
+          ctx.text(600, 800, 'king − man + woman ≈ queen', { size: 13, font: 'mono', weight: 700, color: 'pink', parent: S.ana });
           ctx.text(600, 822, 'same "gender" offset, reused', { size: 11, font: 'mono', color: 'dim', parent: S.ana });
 
-          var c = card(ctx, S.geo, 1000, 180, 540, 690, 'amber', 'DIRECTIONS = FEATURES');
-          ctx.para(1020, 232, ['cos(u,v) = u\u00b7v / (|u| |v|)', '', 'similar usage \u2192 similar direction', 'clusters: animals \u00b7 space \u00b7 cold', '', 'linear representation hypothesis:', ' concept c \u2194 direction r_c', ' probe:  sign(r_c \u00b7 h)', ' steer:  h \u2190 h + \u03b1 r_c', '', 'in d = 8,192 dims, random vectors', 'have |cos| \u2248 1/\u221ad \u2248 0.011', '\u2192 room for many near-orthogonal', '  directions (see superposition)'], { size: 14, font: 'mono', color: 'text', lh: 30, parent: c });
-          keepWS(c);
-          ctx.reveal(S.geo, { from: 'fade' });
-          dots.forEach(function (d) { d.setAttribute('opacity', 0); });
-          [S.vecs, S.ana].forEach(function (g) { g.setAttribute('opacity', 0); });
-          return ctx.reveal(dots, { from: 'scale', stagger: 80 }).then(function () {
+          var ca = card(ctx, S.geo, 1000, 180, 540, 200, 'amber', 'SIMILARITY = ANGLE');
+          ca.setAttribute('opacity', 0);
+          ctx.para(1020, 232, ['cos(u,v) = u·v / (|u| |v|)', '', 'similar usage → similar direction', 'clusters: animals · space · cold'], { size: 14, font: 'code', color: 'text', lh: 30, parent: ca });
+          keepWS(ca);
+          var cb = card(ctx, S.geo, 1000, 400, 540, 470, 'amber', 'DIRECTIONS = FEATURES');
+          cb.setAttribute('opacity', 0);
+          ctx.para(1020, 452, ['linear representation hypothesis:', ' concept c ↔ direction r_c', ' probe:  sign(r_c · h)', ' steer:  h ← h + α r_c', '', 'in d = 8,192 dims, random vectors', 'have |cos| ≈ 1/√d ≈ 0.011', '→ room for many near-orthogonal', '  directions (see superposition)'], { size: 14, font: 'code', color: 'text', lh: 30, parent: cb });
+          keepWS(cb);
+          /* beat 0: the map and its clusters */
+          return ctx.reveal(S.geo, { from: 'fade' }).then(function () {
+            return ctx.reveal(dots, { from: 'scale', stagger: 80 });
+          }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: cosine similarity */
             ctx.reveal(S.vecs, {});
-            ctx.reveal([vf, vw, vm], { from: 'draw', stagger: 200 });
-            return ctx.wait(1200);
-          }).then(function () {
+            ctx.reveal(ca, { from: 'up', dur: 500 });
+            return ctx.reveal([vf, vw, vm], { from: 'draw', stagger: 200 });
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: the king, queen analogy */
             S.ana.setAttribute('opacity', 1);
             ctx.reveal(S.ana, {});
-            return ctx.reveal([S.a1, S.a2], { from: 'draw', stagger: 500, dur: 700 });
-          }).then(function () {
-            return ctx.camera(720, 700, 1.7, 900).then(function () { return ctx.wait(1300); }).then(function () { return ctx.camera(null, null, null, 800); });
+            return ctx.reveal([S.a1, S.a2], { from: 'draw', stagger: 500, dur: 700 }).then(function () {
+              return ctx.camera(720, 700, 1.7, 900);
+            }).then(function () { return ctx.wait(1000); }).then(function () { return ctx.camera(null, null, null, 800); });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: directions are features */
+            ctx.reveal(cb, { from: 'up', dur: 500 });
+            return ctx.wait(500).then(function () { return ctx.pulse(cb, { color: 'amber', dur: 700 }); });
           });
         }
       },
       /* ------------------------------------------------------------ 8 */
       {
         title: 'One sequence, all modes',
-        say: 'Two last ideas. First, superposition: a model must represent far more features than it has dimensions, so it packs them as almost orthogonal directions, like five features squeezed into two dimensions, tolerating a little interference because each feature is rarely active. Second, the sequence is not only text. The director sees the prompt, then hundreds of tokens for each style sketch, projected from a vision encoder, then the voice memo as audio tokens. After embedding, they are all just rows of the same matrix.',
-        deep: nolig('<p><b>Superposition</b> (Elhage et al. 2022): with sparse features, a layer of width d can store n ≫ d features as nearly orthogonal directions; readout via ReLU/thresholding suppresses interference. In the toy model, 5 features in 2-D form a pentagon. This is why individual neurons are <i>polysemantic</i> — see the Neuron chamber and sparse autoencoders.</p>' +
-          '<p><b>Multimodal tokens</b> share the sequence:</p>' +
-          '<ul><li><b>Images</b>: ViT patches (14 px) → 2×2 merge → MLP projector into ℝ<sup>d</sup>. A 448×448 sketch → 32×32 patches → <b>256 tokens</b> (Qwen2-VL-style).</li>' +
-          '<li><b>Audio</b>: Whisper-style encoder at 50 frames/s, pooled 2× → <b>25 tokens/s</b>; a 42 s memo ≈ 1,050 tokens.</li>' +
-          '<li>Placeholders such as <code>&lt;|image_pad|&gt;</code> reserve positions; the embedding gather is replaced by encoder outputs at those positions (multimodal RoPE assigns 2-D/temporal positions).</li></ul>' +
-          '<div class="eq">X = [E[text ids] ; P<sub>img</sub>(ViT(sketch)) ; P<sub>aud</sub>(Enc(memo)) ; …] ∈ ℝ<sup>T×d</sup></div>'),
+        beats: [
+          {
+            say: 'Now the sequence itself. It is not only text. The director sees the system prompt and tools, then the request, then hundreds of tokens for each style sketch, then the voice memo as audio tokens.',
+            card: { tag: 'KEY IDEA', title: 'One sequence, many modes', body: 'Text, sketches and audio share a single sequence: about three thousand positions for this request.' },
+            deep: '<div class="eq">X = [E[text ids] ; P<sub>img</sub>(ViT(sketch)) ; P<sub>aud</sub>(Enc(memo)) ; …] ∈ ℝ<sup>T×d</sup></div>' +
+              '<p>The bar is drawn to scale: system prompt and tool schemas ≈ 1,200 tokens, the request 34, three sketches 3 × 256, the 42 s memo ≈ 1,050, and the running text ≈ 60, for T ≈ 3,112 positions. Real agent contexts are several times longer once history accumulates.</p>'
+          },
+          {
+            say: 'Each modality has its own encoder and a small projector into the same width as the text embeddings. After that point, the transformer cannot tell where a row came from, except through learned content and positions.',
+            card: { tag: 'HOW IT WORKS', title: 'Encoders plus projectors', body: 'Text is a gather. Images go through a ViT, audio through a speech encoder, and each through an MLP projector into ℝ^d.' },
+            deep: nolig('<ul><li><b>Images</b>: ViT patches (14 px) → 2×2 merge → MLP projector into ℝ<sup>d</sup>. A 448×448 sketch → 32×32 patches → 256 tokens after the merge (Qwen2-VL-style).</li>' +
+              '<li><b>Audio</b>: Whisper-style encoder at 50 frames/s, pooled 2× → 25 tokens/s.</li>' +
+              '<li>Placeholders such as <code>&lt;|image_pad|&gt;</code> reserve positions; the embedding gather is replaced by encoder outputs at those positions (multimodal RoPE assigns 2-D and temporal positions).</li></ul>')
+          },
+          {
+            say: 'The cost adds up quickly. A sketch becomes two hundred fifty six tokens and the forty two second memo about one thousand fifty, so more than half of all positions in this request are not text.',
+            card: { tag: 'NUMBERS', title: 'Pixels and sound cost', stat: { v: '58%', u: 'not text', l: '1,818 of 3,112 positions come from sketches and the voice memo' } },
+            deep: '<ul><li><b>Images</b>: a 448×448 sketch → 32×32 patches → <b>256 tokens</b> after 2×2 merging; higher resolutions or native-resolution packing cost proportionally more.</li>' +
+              '<li><b>Audio</b>: 25 tokens/s, so the 42 s memo ≈ <b>1,050 tokens</b>.</li></ul>' +
+              '<p>Attention over these positions scales with T², so token compression (pooling, Q-Former-style resamplers, pruning of redundant frames) is a first-class design lever in multimodal models.</p>'
+          },
+          {
+            say: 'One more idea: superposition. A model must represent far more features than it has dimensions, so it packs them as almost orthogonal directions, like five features squeezed into two dimensions, and tolerates a little interference because each feature is rarely active.',
+            card: { tag: 'KEY IDEA', title: 'More features than dims', more: '<p>Pentagon: five unit vectors 72° apart have pairwise cosine cos 72° = 0.309 (cos 144° = −0.809 for non-neighbours). Sparse features rarely co-fire, so a ReLU readout can suppress the interference; dense features would be wrecked by it.</p>', body: 'Sparse features can share dimensions as nearly orthogonal directions. The price is interference, and polysemantic neurons.' },
+            deep: '<p><b>Superposition</b> (Elhage et al. 2022): with sparse features, a layer of width d can store n ≫ d features as nearly orthogonal directions; readout via ReLU/thresholding suppresses interference. In the toy model, 5 features in 2-D form a pentagon.</p>' +
+              '<p>This is why individual neurons are <i>polysemantic</i>: see the Neuron chamber and sparse autoencoders, which recover the features.</p>'
+          }
+        ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut(S.geo, 400, true);
           S.mm = ctx.group();
-          ctx.text(60, 186, 'THE DIRECTOR\'S INPUT SEQUENCE   one matrix X \u2208 \u211d^(T\u00d7d)', { size: 16, font: 'display', weight: 700, color: 'violet', parent: S.mm });
+          ctx.text(60, 186, 'THE DIRECTOR\'S INPUT SEQUENCE   one matrix X ∈ ℝ^(T×d)', { size: 16, font: 'display', weight: 700, color: 'violet', parent: S.mm });
           var segs = [['system + tools', 1200, 'amber'], ['prompt', 34, 'cyan'], ['sketch 1', 256, 'violet'], ['sketch 2', 256, 'violet'], ['sketch 3', 256, 'violet'], ['voice memo 42 s', 1050, 'orange'], ['text', 60, 'cyan']];
           var tot = segs.reduce(function (a, s) { return a + s[1]; }, 0);
           var x = 60, W = 1480;
           S.segEls = segs.map(function (s, i) {
             var w = Math.max(10, W * s[1] / tot);
-            var g = ctx.group({ parent: S.mm });
+            var g = ctx.group({ parent: S.mm, opacity: 0 });
             ctx.rect(x, 214, w - 3, 44, { rx: 5, fill: ctx.alpha(s[2], 0.28), stroke: s[2], sw: 1.2, parent: g });
             var small = w < 90;
             ctx.text(small ? x + w / 2 : x + 10, small ? 276 + (i % 2) * 18 : 236, s[0] + (small ? '' : '  ' + s[1]), { size: 12, font: 'mono', color: small ? s[2] : 'white', anchor: small ? 'middle' : 'start', parent: g });
             x += w;
             return g;
           });
-          ctx.text(1540, 316, 'T \u2248 ' + tot.toLocaleString('en-US') + ' positions', { size: 13, font: 'mono', weight: 700, color: 'white', anchor: 'end', parent: S.mm });
+          var tTxt = ctx.text(1540, 312, 'T ≈ ' + tot.toLocaleString('en-US') + ' positions', { size: 13, font: 'mono', weight: 700, color: 'white', anchor: 'end', parent: S.mm, opacity: 0 });
+          var nonText = ctx.label(60, 310, 'non-text: 1,818 of ' + tot.toLocaleString('en-US') + ' positions (58%)', { color: 'violet', size: 12, anchor: 'start', parent: S.mm, opacity: 0 });
 
-          /* modality paths into d-dim rows */
+          /* modality paths into d-dim rows (beat 1) */
           var c = card(ctx, S.mm, 60, 340, 900, 530, 'violet', 'EVERY MODALITY BECOMES ROWS OF X');
-          var rows = [['"\u00b7fox"', 'gather E[id]', 'amber', 'lookup'], ['sketch 1', 'ViT 14px + 2\u00d72 merge', 'violet', 'MLP projector'], ['memo 0.04 s', 'Whisper-style enc.', 'orange', 'MLP projector']];
+          c.setAttribute('opacity', 0);
+          var rows = [['"·fox"', 'gather E[id]', 'amber', 'lookup'], ['sketch 1', 'ViT 14px + 2×2 merge', 'violet', 'MLP projector'], ['memo 0.04 s', 'Whisper-style enc.', 'orange', 'MLP projector']];
           S.mRows = rows.map(function (rw, i) {
-            var y = 420 + i * 140, g = ctx.group({ parent: c });
+            var y = 420 + i * 140, g = ctx.group({ parent: c, opacity: 0 });
             ctx.label(150, y, rw[0], { color: rw[2], size: 13, w: 150, parent: g });
             var n1 = ctx.node({ x: 380, y: y, w: 200, h: 52, title: rw[1], color: rw[2], titleSize: 12, parent: g, glow: false });
             var n2 = ctx.node({ x: 580, y: y, w: 130, h: 44, title: rw[3], color: rw[2], titleSize: 12, parent: g, glow: false });
@@ -622,37 +1011,50 @@
             ctx.line(646, y, 690, y, { color: rw[2], arrow: true, parent: g });
             var rr = ctx.rng(30 + i);
             ctx.matrix(700, y - 9, 1, 12, { cell: 16, gap: 3, cmap: 'diverge', values: function () { return rr() * 2 - 1; }, parent: g });
-            ctx.text(700, y + 26, '\u2208 \u211d^8192', { size: 11, font: 'mono', color: 'dim', parent: g });
-            if (i === 1) ctx.text(150, y + 34, '\u00d7 256 tokens', { size: 11, font: 'mono', color: 'violet', anchor: 'middle', parent: g });
-            if (i === 2) ctx.text(150, y + 34, '\u00d7 1050 (25 / s)', { size: 11, font: 'mono', color: 'orange', anchor: 'middle', parent: g });
+            ctx.text(700, y + 26, '∈ ℝ^8192', { size: 11, font: 'mono', color: 'dim', parent: g });
+            if (i === 1) ctx.text(150, y + 34, '× 256 tokens', { size: 11, font: 'mono', color: 'violet', anchor: 'middle', parent: g });
+            if (i === 2) ctx.text(150, y + 34, '× 1050 (25 / s)', { size: 11, font: 'mono', color: 'orange', anchor: 'middle', parent: g });
             return g;
           });
           ctx.text(80, 850, 'after this point the transformer cannot tell where a row came from, except through learned content and positions', { size: 11, font: 'mono', color: 'dim', parent: c });
 
-          /* superposition pentagon */
+          /* superposition pentagon (beat 3) */
           var c2 = card(ctx, S.mm, 1000, 340, 540, 530, 'pink', 'SUPERPOSITION  5 features in 2-D');
+          c2.setAttribute('opacity', 0);
           var C0 = { x: 1270, y: 600 }, Rr = 150;
           S.feat = [];
           var names = ['fox', 'ice', 'space', 'glow', 'crash'];
           for (var k = 0; k < 5; k++) {
             var a = -Math.PI / 2 + k * 2 * Math.PI / 5;
             var tip = { x: C0.x + Rr * Math.cos(a), y: C0.y + Rr * Math.sin(a) };
-            var l = ctx.line(C0.x, C0.y, tip.x, tip.y, { color: 'pink', sw: 2.2, arrow: true, parent: c2 });
+            var l = ctx.path('M' + C0.x + ',' + C0.y + ' L' + tip.x.toFixed(1) + ',' + tip.y.toFixed(1), { stroke: 'pink', sw: 2.2, arrow: true, parent: c2 });
             ctx.text(C0.x + (Rr + 24) * Math.cos(a), C0.y + (Rr + 22) * Math.sin(a), names[k], { size: 13, font: 'mono', color: 'pink', anchor: 'middle', parent: c2 });
             S.feat.push(l);
           }
           ctx.circle(C0.x, C0.y, Rr, { stroke: ctx.alpha('pink', 0.2), dash: '3 5', parent: c2 });
-          ctx.text(1020, 800, 'angle 72\u00b0: cos = 0.31 interference', { size: 12, font: 'mono', color: 'text', parent: c2 });
+          ctx.text(1020, 800, 'angle 72°: cos = 0.31 interference', { size: 12, font: 'mono', color: 'text', parent: c2 });
           ctx.text(1020, 822, 'fine if features are sparse (rarely co-active)', { size: 12, font: 'mono', color: 'dim', parent: c2 });
-          ctx.text(1020, 844, '\u2192 polysemantic neurons, SAEs untangle them', { size: 12, font: 'mono', color: 'dim', parent: c2 });
-          ctx.reveal(S.mm, { from: 'up' });
-          S.segEls.forEach(function (g) { g.setAttribute('opacity', 0); });
-          S.mRows.forEach(function (g) { g.setAttribute('opacity', 0); });
+          ctx.text(1020, 844, '→ polysemantic neurons, SAEs untangle them', { size: 12, font: 'mono', color: 'dim', parent: c2 });
           S.feat.forEach(function (l) { l.setAttribute('opacity', 0); });
-          return ctx.reveal(S.segEls, { from: 'left', stagger: 160, dur: 350 }).then(function () {
-            return ctx.reveal(S.mRows, { from: 'up', stagger: 300 });
+          /* beat 0: the sequence, segment by segment */
+          return ctx.reveal(S.mm, { from: 'up' }).then(function () {
+            return ctx.reveal(S.segEls, { from: 'left', stagger: 160, dur: 350 });
           }).then(function () {
-            return ctx.reveal(S.feat, { from: 'draw', stagger: 180, dur: 500 });
+            return ctx.reveal(tTxt, {});
+          }).then(function () { return ctx.beat(1); }).then(function () {
+            /* beat 1: each modality becomes rows of X */
+            ctx.reveal(c, { from: 'up', dur: 500 });
+            return ctx.wait(400).then(function () { return ctx.reveal(S.mRows, { from: 'up', stagger: 300 }); });
+          }).then(function () { return ctx.beat(2); }).then(function () {
+            /* beat 2: how many positions are not text */
+            ctx.reveal(nonText, { from: 'down', dur: 400 });
+            return Promise.all([S.segEls[2], S.segEls[3], S.segEls[4], S.segEls[5]].map(function (g, i) {
+              return ctx.wait(i * 150).then(function () { return ctx.pulse(g, { color: 'violet', dur: 600 }); });
+            }));
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: superposition */
+            ctx.reveal(c2, { from: 'up', dur: 500 });
+            return ctx.wait(500).then(function () { return ctx.reveal(S.feat, { from: 'draw', stagger: 180, dur: 500 }); });
           });
         }
       }

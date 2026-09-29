@@ -17,6 +17,8 @@ def main():
     theme = pop_opt(args, '--theme', True) or 'dark'
     size = pop_opt(args, '--size', True) or '1600x1000'
     out = pop_opt(args, '--out', True)
+    opn = pop_opt(args, '--open', True)      # progress | home | zoom
+    pending = pop_opt(args, '--pending')     # show the "press Play" state of a freshly opened topic
     sid = args[0]
     step = args[1] if len(args) > 1 else '1'
     beat = args[2] if len(args) > 2 else None
@@ -26,7 +28,7 @@ def main():
         out = os.path.join(ROOT, 'tools', 'shots', name)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     exe = next((b for b in BROWSERS if os.path.exists(b)), None)
-    url = 'file:///' + os.path.join(ROOT, 'index.html').replace('\\', '/') + '?smoke&shot=%s&theme=%s' % (spec, theme)
+    url = 'file:///' + os.path.join(ROOT, 'index.html').replace('\\', '/') + '?smoke&shot=%s&theme=%s' % (spec, theme) + ('&pending' if pending else '') + ('&open=' + opn if opn else '')
     prof = os.path.join(os.environ.get('TEMP', ROOT), 'atlas-shot-%d' % os.getpid())
     cmd = [exe, '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--mute-audio', '--hide-scrollbars',
            '--user-data-dir=' + prof, '--allow-file-access-from-files', '--virtual-time-budget=30000',
