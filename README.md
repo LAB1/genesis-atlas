@@ -19,6 +19,39 @@ diffusion video generation, the GPU cluster, post-production and delivery, and s
 * The app is static. It has no build step, no server and no dependencies. Web fonts load from
   Google Fonts when online and fall back to system fonts offline.
 
+## Original product brief
+
+This app was built from the following requirements (translated from Chinese):
+
+> Design and implement a complete, hardcore web application that explains the principles behind an
+> AI system for multimodal video creation. It should explain in detail how the complete AI solution
+> architecture works when a person interacts with a multimodal AI agent to create an AI video.
+> That includes, but is not limited to:
+>
+> * the AI orchestration system
+> * agent tool calling
+> * multi-agent interaction
+> * communication from the user's client to the cloud
+> * how the AI infrastructure schedules user requests on the GPU cluster
+> * load balancing
+> * how an LLM becomes an AI agent (the orchestration loop)
+> * the transformer
+> * understanding of multimodal assets
+> * video generation models
+> * how a single neuron works
+> * any other key technologies in the system not listed here
+>
+> Requirements:
+>
+> * Animations use progressive disclosure and come with English narration.
+> * Users can choose interactively which system to learn about in detail. The app shows the
+>   high-level structure and also lets users zoom in on a specific system's internals.
+> * Interaction feels natural.
+> * Explanations go from simple to deep and are detailed and state-of-the-art, pitched at CS
+>   engineering PhDs.
+> * The UI has a tech aesthetic.
+> * Animations and transitions between systems are natural and smooth.
+
 ## Opening it
 
 Double-click `index.html`. It runs from `file://`.
