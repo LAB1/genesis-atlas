@@ -21,7 +21,7 @@ diffusion video generation, the GPU cluster, post-production and delivery, and s
 
 ## Original product brief
 
-This app was built from the following requirements (translated from Chinese):
+This app was built from the following requirements:
 
 > Design and implement a complete, hardcore web application that explains the principles behind an
 > AI system for multimodal video creation. It should explain in detail how the complete AI solution
