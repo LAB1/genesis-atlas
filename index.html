@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genesis Atlas</title>
+<meta name="description" content="An interactive, narrated, zoomable deep dive into the full architecture of a multimodal AI agent system that creates videos.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/atlas.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div class="brand"><span class="logo">&#9672;</span> GENESIS<b>//</b>ATLAS <small>anatomy of a multimodal AI video system</small></div>
+    <nav id="crumbs"></nav>
+    <div class="top-actions">
+      <button id="btn-map" title="System map (M)">&#8983; System Map <kbd>M</kbd></button>
+      <button id="btn-tour" title="Guided big-picture tour">&#9655; Tour</button>
+      <button id="btn-voice" title="Toggle English narration (V)">&#128266; Voice</button>
+      <select id="sel-rate" title="Narration speed">
+        <option value="0.9">0.9&times;</option>
+        <option value="1" selected>1.0&times;</option>
+        <option value="1.15">1.15&times;</option>
+        <option value="1.3">1.3&times;</option>
+      </select>
+      <button id="btn-drawer" title="Deep-dive panel (D)">&#9776; Deep Dive <kbd>D</kbd></button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="stage-wrap">
+      <div id="stage">
+        <svg id="svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
+          <defs id="defs"></defs>
+          <g id="bg"></g>
+          <g id="cam"></g>
+          <rect x="0" y="0" width="1600" height="900" fill="url(#fx-vignette)" pointer-events="none"/>
+        </svg>
+        <div id="canvas-host"></div>
+        <div id="hud">
+          <div id="hud-level"></div>
+          <div id="hud-kicker"></div>
+          <div id="hud-title"></div>
+          <div id="hud-step"></div>
+        </div>
+        <div id="hud-metric"></div>
+        <div id="flash"></div>
+        <div id="scan"></div>
+        <div id="toast"></div>
+        <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+      </div>
+    </section>
+
+    <aside id="drawer">
+      <div class="drawer-head">DEEP DIVE <span>for the engineer who wants the math</span></div>
+      <div id="deep">
+        <div id="deep-scene"></div>
+        <div id="deep-step"></div>
+        <div id="refs"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer id="dock">
+    <div id="zoom-chips"></div>
+    <div class="dock-row">
+      <div class="controls">
+        <button id="btn-up" title="Zoom out (Esc)">&#8598;</button>
+        <button id="btn-prev" title="Previous step (&larr;)">&#9664;&#9664;</button>
+        <button id="btn-play" class="on" title="Autoplay (Space)">&#10074;&#10074;</button>
+        <button id="btn-next" title="Next step (&rarr;)">&#9654;&#9654;</button>
+        <button id="btn-replay" title="Replay step (R)">&#8635;</button>
+      </div>
+      <div id="subtitle" aria-live="polite"></div>
+    </div>
+    <div id="timeline"></div>
+  </footer>
+
+  <div id="map" class="overlay hidden">
+    <div class="map-panel">
+      <div class="map-head">
+        <div>
+          <div class="dk">SYSTEM MAP</div>
+          <h2>Every chamber of the machine</h2>
+          <div id="map-progress"></div>
+        </div>
+        <div class="map-actions">
+          <input id="map-filter" placeholder="filter: attention, KV cache, scheduler…" autocomplete="off">
+          <button id="tour-big">&#9655; Big-picture tour</button>
+          <button id="tour-deep">&#9655;&#9655; Full deep tour</button>
+          <button id="map-close">&#10005;</button>
+        </div>
+      </div>
+      <div id="map-grid"></div>
+      <div class="map-foot">L0 system &rarr; L1 subsystem &rarr; L2 component &rarr; L3 primitive. Click any chamber to fly there. In the stage, dashed rings mark components you can zoom into.</div>
+    </div>
+  </div>
+
+  <div id="intro" class="overlay">
+    <div class="intro-panel">
+      <div class="dk">GENESIS // ATLAS</div>
+      <h1>How a sentence becomes a film.</h1>
+      <p>An interactive, narrated teardown of a state-of-the-art multimodal AI video system &mdash; from the user's keystroke to the GPU warp that computes one neuron. <span id="intro-count"></span> zoomable chambers, from architecture diagrams down to the math.</p>
+      <div class="intro-grid">
+        <div><b>&larr; &rarr;</b> steps</div><div><b>Space</b> autoplay</div><div><b>Click &#9711;</b> zoom in</div><div><b>Esc</b> zoom out</div><div><b>M</b> system map</div><div><b>D</b> deep-dive panel</div>
+      </div>
+      <div class="intro-actions">
+        <button id="intro-tour" class="primary">&#9655; Start the guided tour</button>
+        <button id="intro-go">Explore freely</button>
+        <button id="intro-map">Open system map</button>
+      </div>
+      <p class="muted">English narration uses your browser's speech engine. Best in Chrome or Edge.</p>
+    </div>
+  </div>
+</div>
+
+<script src="js/core/catalog.js"></script>
+<script src="js/core/ctx.js"></script>
+<script src="js/core/narrator.js"></script>
+<script src="js/core/engine.js"></script>
+<!-- scenes (one file per chamber; a missing file falls back to a placeholder) -->
+<script src="js/scenes/00-overview.js"></script>
+<script src="js/scenes/10-client.js"></script>
+<script src="js/scenes/11-gateway.js"></script>
+<script src="js/scenes/20-orchestration.js"></script>
+<script src="js/scenes/21-agent-loop.js"></script>
+<script src="js/scenes/22-tool-calling.js"></script>
+<script src="js/scenes/23-multi-agent.js"></script>
+<script src="js/scenes/24-durable.js"></script>
+<script src="js/scenes/30-multimodal.js"></script>
+<script src="js/scenes/31-vision.js"></script>
+<script src="js/scenes/32-audio-enc.js"></script>
+<script src="js/scenes/33-contrastive.js"></script>
+<script src="js/scenes/40-llm.js"></script>
+<script src="js/scenes/41-tokens.js"></script>
+<script src="js/scenes/42-transformer.js"></script>
+<script src="js/scenes/43-attention.js"></script>
+<script src="js/scenes/44-training.js"></script>
+<script src="js/scenes/45-decoding.js"></script>
+<script src="js/scenes/46-neuron.js"></script>
+<script src="js/scenes/47-moe.js"></script>
+<script src="js/scenes/48-flash.js"></script>
+<script src="js/scenes/50-videogen.js"></script>
+<script src="js/scenes/51-diffusion.js"></script>
+<script src="js/scenes/52-vae.js"></script>
+<script src="js/scenes/53-dit.js"></script>
+<script src="js/scenes/54-control.js"></script>
+<script src="js/scenes/60-postprod.js"></script>
+<script src="js/scenes/61-audio-gen.js"></script>
+<script src="js/scenes/62-delivery.js"></script>
+<script src="js/scenes/70-infra.js"></script>
+<script src="js/scenes/71-scheduler.js"></script>
+<script src="js/scenes/72-lb.js"></script>
+<script src="js/scenes/73-llm-serving.js"></script>
+<script src="js/scenes/74-video-serving.js"></script>
+<script src="js/scenes/75-gpu.js"></script>
+<script src="js/scenes/76-parallelism.js"></script>
+<script src="js/scenes/80-data.js"></script>
+<script src="js/scenes/81-rag.js"></script>
+<script src="js/scenes/90-trust.js"></script>
+<script src="js/scenes/91-safety.js"></script>
+<script src="js/scenes/92-eval-obs.js"></script>
+<script>if (/[?&]smoke/.test(location.search)) document.write('<script src="tools/smoke.js"><\/script>');</script>
+</body>
+</html>
