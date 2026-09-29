@@ -29,12 +29,13 @@
     refs: [
       'Dong et al., <i>XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models</i>, MLSys 2025',
       'Willard &amp; Louf, <i>Efficient Guided Generation for Large Language Models</i> (Outlines), arXiv 2023',
-      'Anthropic, <i>Model Context Protocol</i> specification, 2024–2025',
+      'Model Context Protocol project (originated at Anthropic), <i>Model Context Protocol</i> specification, revisions 2024-11-05 to 2026-07-28',
       'JSON-RPC Working Group, <i>JSON-RPC 2.0 Specification</i>, 2010',
       'Agache et al., <i>Firecracker: Lightweight Virtualization for Serverless Applications</i>, NSDI 2020',
       'Young et al., <i>The True Cost of Containing: A gVisor Case Study</i>, HotCloud 2019',
-      'Patil et al., <i>Gorilla: Large Language Model Connected with Massive APIs</i>, 2023; Qin et al., <i>ToolLLM</i>, ICLR 2024',
-      'Greshake et al., <i>Not What You\'ve Signed Up For: Indirect Prompt Injection</i>, AISec 2023'
+      'Patil et al., <i>Gorilla: Large Language Model Connected with Massive APIs</i>, NeurIPS 2024',
+      'Qin et al., <i>ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs</i>, ICLR 2024',
+      'Greshake et al., <i>Not what you\'ve signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection</i>, AISec 2023'
     ],
     setup: function (ctx) { ctx.layer.style.fontVariantLigatures = 'none'; },
     steps: [
@@ -51,7 +52,7 @@
           },
           {
             say: 'For our trailer the camera agent sees tools like generate video, synthesize speech, search assets and render edit. Some are instant reads; one is a costly GPU job that runs for a minute and a half.',
-            card: { tag: 'NUMBERS', title: 'Definitions cost context', stat: { v: '100–800', u: 'tokens', l: 'per tool definition, paid again on every turn' }, more: '<p>Rough accounting: JSON Schema tokenises at about one token per 3 to 4 characters, so the schema on the left (about 800 characters) costs roughly 250 tokens, and a chattier description or nested objects push it toward 800. Most APIs add a fixed tool-use preamble of a few hundred tokens on top.</p>' },
+            card: { tag: 'NUMBERS', title: 'Definitions cost context', stat: { v: '100–800', u: 'tokens', l: 'per tool definition, paid again on every turn' }, more: '<p>Rough accounting: punctuation-heavy JSON Schema tokenises at about one token per 2.5 to 4 characters, so the schema on the left (about 650 characters) costs roughly 200 tokens, and a chattier description or nested objects push it toward 800. Most APIs add a fixed tool-use preamble of a few hundred tokens on top.</p>' },
             deep: '<p>Definitions are rendered into the system section, so they cost context tokens on every turn, typically 100–800 tokens per tool.</p>' +
               '<table><tr><th>Tool</th><th>Effect class</th><th>Latency</th></tr>' +
               '<tr><td>search_assets</td><td>read-only</td><td>~50 ms</td></tr>' +
@@ -162,20 +163,20 @@
             say: 'When the model decides to act, it generates the call token by token, exactly like prose. A special token opens the tool call, then JSON streams out, starting with the tool name.',
             card: { tag: 'HOW IT WORKS', title: 'A call is generated, not invoked', body: 'The model emits an opening tag, the tool name and JSON text one token at a time, using the same sampling loop as for ordinary prose.' },
             deep: '<p>Nothing special happens in the network: the tool call is sampled like any other text. The opener is a vocabulary entry the model was trained to emit when it wants to act; the JSON that follows is constrained only by what the model has learned, unless constrained decoding is on (next step).</p>' +
-              '<p>Open-weight models emit tagged text (<code>&lt;tool_call&gt;…&lt;/tool_call&gt;</code> in Qwen; bare JSON for custom functions and <code>&lt;&#8202;|python_tag|&#8202;&gt;</code> for built-in tools in Llama 3.1).</p>'
+              '<p>Open-weight models emit tagged text (<code>&lt;tool_call&gt;…&lt;/tool_call&gt;</code> in Qwen; in Llama 3.1 a <code>&lt;&#8202;|python_tag|&#8202;&gt;</code> prefix marks built-in and JSON tool calls, and the message ends with <code>&lt;&#8202;|eom_id|&#8202;&gt;</code>).</p>'
           },
           {
             say: 'Then come the arguments, and a closing token ends the call. The model stops with the reason tool use.',
             card: { tag: 'NUMBERS', title: 'A short generation', stat: { v: '39', u: 'tokens', l: 'in this illustrative call: about 0.4 to 0.8 seconds of decoding at 10 to 20 ms per token' } },
             deep: '<p>The closing tag is what makes the stop reason <code>tool_use</code>: the serving engine sees the end-of-call token (or the API sees a complete tool block), halts sampling, and returns control. Any prose before the call (a short "Rendering shot 3.") is kept as a text block.</p>' +
-              '<p>Tokenisation is illustrative here: a real BPE vocabulary splits the JSON differently, but a call of this size is typically 40–80 tokens.</p>'
+              '<p>Tokenisation is illustrative here: a real BPE vocabulary splits the JSON differently, but a call of this size is typically 40–60 tokens.</p>'
           },
           {
             say: 'The API surfaces this as a tool use content block with a unique id, the name, and a parsed input object. Streaming clients see it as a sequence of events.',
-            card: { tag: 'HOW IT WORKS', title: 'The tool_use block', body: 'Id, name, parsed input. The id is the correlation key: every result must cite the tool_use_id it answers.', more: '<p>Streaming detail: the input arrives as <code>input_json_delta</code> fragments of partial JSON, and the harness may only parse after <code>content_block_stop</code>. Emitting a half-parsed call early is a classic streaming bug.</p>' },
+            card: { tag: 'HOW IT WORKS', title: 'The tool_use block', body: 'Id, name, parsed input. The id is the correlation key: every result must cite the tool_use_id it answers.', more: '<p>Streaming detail: the input arrives as <code>input_json_delta</code> fragments of partial JSON inside <code>content_block_delta</code> events, and the harness may only parse after <code>content_block_stop</code>. Emitting a half-parsed call early is a classic streaming bug.</p>' },
             deep: '<p>What the API returns for this turn:</p>' +
               '<pre>{"stop_reason": "tool_use",\n "content": [\n  {"type": "text",\n   "text": "Shot 3 next."},\n  {"type": "tool_use",\n   "id": "toolu_01HxK9",\n   "name": "generate_video",\n   "input": {"prompt": "...",\n             "duration_s": 5,\n             "camera": "dolly_in"}}]}</pre>' +
-              '<p>When streaming, the call arrives as <code>content_block_start</code> (type, id, name) followed by <code>input_json_delta</code> events carrying <i>partial JSON</i>; the harness accumulates and parses at <code>content_block_stop</code>.</p>'
+              '<p>When streaming, the call arrives as <code>content_block_start</code> (type, id, name) followed by <code>content_block_delta</code> events whose <code>input_json_delta</code> payload carries <i>partial JSON</i>; the harness accumulates and parses at <code>content_block_stop</code>.</p>'
           },
           {
             say: 'From here the harness takes over. It parses, validates against the schema, checks permissions, reserves budget, and only then executes.',
@@ -226,7 +227,7 @@
             ] });
             var ev = S.ev = ctx.group({ parent: G });
             ctx.text(70, 716, 'STREAMED TO THE HARNESS (SSE events)', { size: 12, font: 'mono', weight: 600, color: 'cyan', parent: ev, spacing: 1 });
-            var evs = [['message_start', 'dim'], ['content_block_start {tool_use, id, name}', 'magenta'], ['input_json_delta × n', 'amber'], ['content_block_stop', 'magenta'], ['message_delta {stop_reason: tool_use}', 'lime'], ['message_stop', 'dim']];
+            var evs = [['message_start', 'dim'], ['content_block_start {tool_use, id, name}', 'magenta'], ['content_block_delta × n', 'amber'], ['content_block_stop', 'magenta'], ['message_delta {stop_reason: tool_use}', 'lime'], ['message_stop', 'dim']];
             var ex = 70, evEls = [];
             evs.forEach(function (e, i) {
               var w = chipW(e[0], 12);
@@ -295,7 +296,7 @@
             say: 'Engines like XGrammar precompute most of these masks and overlap the rest with the forward pass, so the overhead is nearly zero.',
             card: { tag: 'STATE OF THE ART', title: 'XGrammar: masks almost free', body: 'Per-position masks are cached, only context-dependent tokens are checked at run time, and mask building overlaps the GPU forward pass.' },
             deep: '<p><b>XGrammar</b> (MLSys 2025) splits the vocabulary, per automaton position, into <i>context-independent</i> tokens (validity decided by the position alone, precomputed in an adaptive token-mask cache) and <i>context-dependent</i> tokens (need the full stack, checked at runtime; usually a small fraction). A persistent stack makes rollback cheap for speculative decoding and jump-forward, and mask generation overlaps the GPU forward pass.</p>' +
-              '<p>The result is near-zero overhead in end-to-end serving: the paper reports order-of-magnitude (up to about 100×) faster per-token mask generation than earlier structured-generation engines, and it has been adopted as a structured-output backend by engines such as vLLM and SGLang.</p>'
+              '<p>The result is near-zero overhead in end-to-end serving: the paper reports up to 100× lower per-token latency for context-free grammars than earlier structured-generation engines, and up to 80× end to end when integrated into a Llama 3.1 serving engine on an H100. It has since been adopted as a structured-output backend by engines such as vLLM and SGLang.</p>'
           }
         ],
         run: function (ctx) {
@@ -494,7 +495,7 @@
           },
           {
             say: 'The harness runs them concurrently, so the turn takes as long as the slowest call instead of the sum of all three.',
-            card: { tag: 'NUMBERS', title: 'Max, not sum', stat: { v: '95 s', l: 'wall-clock for three renders that would take 273 s one after another' }, more: '<p>Speedup = Σt / max t = 273 / 95 ≈ 2.9×, approaching k for k equal calls. It is bounded by the slowest call (Amdahl\'s law again) and by capacity: if the GPU pool only admits two 8-GPU jobs at a time, the third call queues and the turn takes about 185 s instead.</p>' },
+            card: { tag: 'NUMBERS', title: 'Max, not sum', stat: { v: '95 s', l: 'wall-clock for three renders that would take 273 s one after another' }, more: '<p>Speedup = Σt / max t = 273 / 95 ≈ 2.9×, approaching k for k equal calls. It is bounded by the slowest call (Amdahl\'s law again) and by capacity: if the GPU pool only admits two 8-GPU jobs at a time, the third call starts when the first slot frees at 88 s, and the turn takes about 178 s instead.</p>' },
             deep: '<p>Turn latency is max<sub>i</sub> t<sub>i</sub>, not Σ t<sub>i</sub>: three ~90 s renders take 95 s instead of 273 s.</p>' +
               '<div class="eq">T<sub>turn</sub> = max(95, 88, 90) = 95 s &nbsp;&nbsp; vs &nbsp;&nbsp; Σ = 95 + 88 + 90 = 273 s</div>' +
               '<p>Concurrency is bounded by the runtime, not the model: a per-job cap on in-flight GPU jobs and the fleet scheduler decide how many of the calls really start at once.</p>'
@@ -628,7 +629,7 @@
           {
             say: 'Hard coding every integration into every agent does not scale: with N agents and M services you would write N times M adapters. The Model Context Protocol standardizes the socket.',
             card: { tag: 'WHY IT MATTERS', title: 'The N times M integration trap', body: 'Every new agent needs a bespoke adapter for every service, and every new service for every agent. Nine here, hundreds in a real fleet.' },
-            deep: '<p>Before MCP, each application wired each model to each tool with vendor-specific function-calling formats, auth flows and retry code. MCP (introduced by Anthropic in late 2024, and since adopted across the industry) is modelled on the Language Server Protocol, which solved the same N×M problem for editors and language tooling.</p>' +
+            deep: '<p>Before MCP, each application wired each model to each tool with vendor-specific function-calling formats, auth flows and retry code. MCP (introduced by Anthropic in late 2024, and since adopted across the industry) takes inspiration from the Language Server Protocol, which solved the same N×M problem for editors and language tooling.</p>' +
               '<p>The economic point: the integration is written once, by whoever knows the service best, and reused by every host.</p>'
           },
           {
@@ -638,7 +639,7 @@
               '<tr><td>Host</td><td>the LLM application (agent runtime, IDE, chat app); owns the model, user consent and security policy</td></tr>' +
               '<tr><td>Client</td><td>connector inside the host, 1:1 with a server; lifecycle + capability negotiation</td></tr>' +
               '<tr><td>Server</td><td>exposes tools, resources and prompts; local or remote</td></tr></table>' +
-              '<details><summary>Go deeper</summary><p>One client per server because each connection has its own session, capability set and credentials. A host that talks to the 24 servers of step 7 therefore holds 24 clients, merges their tool lists into one catalogue and namespaces collisions (two servers may both export <code>search</code>). The model sees only the merged list; the host decides what is exposed, and to whom.</p></details>'
+              '<details><summary>Go deeper</summary><p>One client per server because each connection has its own capability set and credentials (and, before revision 2026-07-28, its own session). A host that talks to the 24 servers of step 7 therefore holds 24 clients, merges their tool lists into one catalogue and namespaces collisions (two servers may both export <code>search</code>). The model sees only the merged list; the host decides what is exposed, and to whom.</p></details>'
           },
           {
             say: 'Each server wraps a capability: the video generation service, asset search, text to speech, a local file system. Behind each server sits the real backend.',
@@ -649,7 +650,7 @@
           {
             say: 'Local servers talk over standard input and output; remote ones over streamable HTTP. Every message is JSON RPC two point oh.',
             card: { tag: 'HOW IT WORKS', title: 'stdio or Streamable HTTP', body: 'A local server is a subprocess with newline-delimited JSON-RPC on its pipes. A remote one is a single HTTP endpoint that can upgrade to an event stream.', more: '<p>Authorization for HTTP servers uses OAuth 2.1 with the MCP server as a resource server; tokens are audience-bound (RFC 8707 resource indicators), so a token minted for one server cannot be replayed against another.</p>' },
-            deep: '<p><b>Transports</b> (spec 2025-06-18): <b>stdio</b>, where the server is a subprocess speaking newline-delimited JSON-RPC on stdin/stdout; and <b>Streamable HTTP</b>, a single endpoint where the client POSTs each message and the server answers with JSON or upgrades to an SSE stream for progress and server-initiated requests, with the session in an <code>Mcp-Session-Id</code> header. It replaced the older HTTP+SSE transport in 2025-03-26.</p>' +
+            deep: '<p><b>Transports</b> (spec 2025-06-18): <b>stdio</b>, where the server is a subprocess speaking newline-delimited JSON-RPC on stdin/stdout; and <b>Streamable HTTP</b>, a single endpoint where the client POSTs each message and the server answers with JSON or upgrades to an SSE stream for progress and server-initiated requests, with an optional session in an <code>Mcp-Session-Id</code> header. It replaced the older HTTP+SSE transport in 2025-03-26. The 2026-07-28 revision keeps both transports but makes the protocol stateless: no sessions and no <code>initialize</code> handshake (next step).</p>' +
               '<pre>{"jsonrpc": "2.0", "id": 7,\n "method": "tools/call",\n "params": {\n   "name": "generate_video",\n   "arguments": {"shot": 3}}}</pre>'
           },
           {
@@ -742,15 +743,15 @@
         title: 'Handshake & primitives',
         beats: [
           {
-            say: 'Every connection starts with a handshake. The client sends initialize with its protocol version and its capabilities, for example that it supports sampling and elicitation. The server answers with its own: tools, resources, prompts.',
-            card: { tag: 'HOW IT WORKS', title: 'Capability negotiation', body: 'Client and server each declare what they support, so a server never asks for sampling from a host that cannot provide it.', more: '<p>Version negotiation: the client proposes a protocol version, the server answers with one it supports, and if the client cannot accept that version it disconnects.</p>' },
+            say: 'In the older revisions of the spec, every connection starts with a handshake. The client sends initialize with its protocol version and its capabilities, for example that it supports sampling and elicitation. The server answers with its own: tools, resources, prompts.',
+            card: { tag: 'HOW IT WORKS', title: 'Capability negotiation', body: 'Client and server each declare what they support, so a server never asks for sampling from a host that cannot provide it.', more: '<p>Version negotiation: the client proposes a protocol version, the server answers with one it supports, and if the client cannot accept that version it disconnects.</p><p>The 2026-07-28 revision removes this handshake: every request carries the protocol version and the client capabilities in <code>_meta</code>, and a new <code>server/discover</code> call advertises what the server supports.</p>' },
             deep: '<p>Primitives a <b>server</b> offers:</p>' +
               '<table><tr><th>Primitive</th><th>Controlled by</th><th>Methods</th></tr>' +
               '<tr><td>Tools</td><td>model</td><td>tools/list, tools/call</td></tr>' +
               '<tr><td>Resources</td><td>application</td><td>resources/list, read, subscribe</td></tr>' +
               '<tr><td>Prompts</td><td>user</td><td>prompts/list, get</td></tr></table>' +
               '<ul><li>Requests carry an <code>id</code> and get exactly one response, <code>result</code> or <code>error</code> {code, message}; notifications have no id and no response.</li></ul>' +
-              '<details><summary>Go deeper</summary><p><code>initialize</code> carries <code>protocolVersion</code>, <code>capabilities</code> and <code>clientInfo</code>; the result returns the version the server picked, its own <code>capabilities</code>, <code>serverInfo</code> and optional <code>instructions</code> that a host may add to the model\'s context. Every optional feature is negotiated, so a client and server built against different spec revisions still interoperate on their common subset.</p></details>'
+              '<details><summary>Go deeper</summary><p><code>initialize</code> carries <code>protocolVersion</code>, <code>capabilities</code> and <code>clientInfo</code>; the result returns the version the server picked, its own <code>capabilities</code>, <code>serverInfo</code> and optional <code>instructions</code> that a host may add to the model\'s context. Every optional feature is negotiated per connection, so each side only uses what both declared; if no common protocol version exists, the client disconnects. Revision 2026-07-28 drops <code>initialize</code> and <code>notifications/initialized</code> altogether: it puts <code>io.modelcontextprotocol/protocolVersion</code> and the client capabilities in the <code>_meta</code> of every request, so a server can be stateless.</p></details>'
           },
           {
             say: 'After an initialized notification, the client lists the tools and later calls one of them.',
@@ -760,9 +761,9 @@
               '<details><summary>Go deeper</summary><p><code>tools/list</code> is cursor-paginated (<code>nextCursor</code>), which matters once a server exposes hundreds of tools. Tools may carry <b>annotations</b> (<code>readOnlyHint</code>, <code>destructiveHint</code>, <code>idempotentHint</code>, <code>openWorldHint</code>) that let a host auto-approve reads and gate writes, but they are hints from the server: trust them only from a trusted server.</p></details>'
           },
           {
-            say: 'Servers can also ask the host for things: a model completion through sampling, or a confirmation from the user through elicitation. That is how the video server asks before spending money.',
-            card: { tag: 'KEY IDEA', title: 'Servers can ask back', body: 'Sampling lets a server borrow the host model; elicitation lets it ask the user a question. Both are requests from server to client.', more: '<p>Sampling is deliberately mediated: the host shows the proposed prompt, can edit or refuse it, and decides what context the server may see. A malicious server that could sample freely would be a prompt-injection channel into the host\'s model, so clients should rate-limit and display these requests.</p>' },
-            deep: '<p>Primitives a <b>client</b> offers:</p>' +
+            say: 'In those older revisions, servers can also ask the host for things: a model completion through sampling, or a confirmation from the user through elicitation. That is how the video server asks before spending money.',
+            card: { tag: 'KEY IDEA', title: 'Servers can ask back', body: 'Sampling lets a server borrow the host model; elicitation lets it ask the user a question. Both are requests from server to client.', more: '<p>Sampling is deliberately mediated: the host shows the proposed prompt, can edit or refuse it, and decides what context the server may see. A malicious server that could sample freely would be a prompt-injection channel into the host\'s model, so clients should rate-limit and display these requests.</p><p>Revision 2026-07-28 folds these asks into multi round-trip requests: the server answers the pending call with an <code>input_required</code> result, and the client retries with the answer. Roots, sampling and logging are deprecated there; elicitation stays.</p>' },
+            deep: '<p>Primitives a <b>client</b> offers (through revision 2025-11-25):</p>' +
               '<table><tr><th>Primitive</th><th>Purpose</th><th>Method</th></tr>' +
               '<tr><td>Sampling</td><td>server asks the host LLM</td><td>sampling/createMessage</td></tr>' +
               '<tr><td>Roots</td><td>host scopes files and URIs</td><td>roots/list</td></tr>' +
@@ -772,8 +773,8 @@
           },
           {
             say: 'Long jobs stream progress notifications back, and the final result arrives as a resource link to the finished shot.',
-            card: { tag: 'STATE OF THE ART', title: 'Progress and long-running tasks', body: 'notifications/progress carries a progress token and a running count. The 2025-11-25 revision adds experimental task handles for pollable, minute-long jobs.' },
-            deep: '<ul><li>Long work: <code>notifications/progress</code> against a progress token; the 2025-11-25 revision adds experimental task handles for long-running, pollable requests, a good fit for minute-long renders.</li>' +
+            card: { tag: 'STATE OF THE ART', title: 'Progress and long-running tasks', body: 'notifications/progress carries a progress token and a running count. Tasks began as an experimental feature in 2025-11-25 and became an official extension in 2026-07-28.' },
+            deep: '<ul><li>Long work: <code>notifications/progress</code> against a progress token; the 2025-11-25 revision added experimental task handles for long-running, pollable requests, and 2026-07-28 moved them into an official <code>io.modelcontextprotocol/tasks</code> extension (polling with <code>tasks/get</code>), a good fit for minute-long renders.</li>' +
               '<li>The result is a <code>resource_link</code> to <code>artifact://shot3@e5d1</code>, not the video bytes: the media stays in the artifact store and only a reference enters the model context.</li></ul>' +
               '<details><summary>Go deeper</summary><p>The requester opts in by putting a <code>progressToken</code> in the request\'s <code>_meta</code>; the server then sends <code>notifications/progress</code> with that token, a monotonically increasing <code>progress</code> value, an optional <code>total</code> and a message. Either side can abandon a request with <code>notifications/cancelled</code>, so a user who closes the tab does not leave 8 GPUs rendering an unwanted shot.</p></details>'
           }
@@ -809,7 +810,7 @@
             return g;
           });
           /* primitives panel */
-          var P = panel(ctx, G, 1010, 172, 530, 488, 'magenta', 'PRIMITIVES');
+          var P = panel(ctx, G, 1010, 172, 530, 488, 'magenta', 'PRIMITIVES · 2025 REVISIONS');
           var prim = function (grp, items, y0) {
             var py = y0;
             items.forEach(function (p) {
@@ -865,7 +866,8 @@
             say: 'Three hundred tools at a few hundred tokens each would eat most of the window before the task even starts, and choosing correctly gets harder as the menu grows.',
             card: { tag: 'NUMBERS', title: 'The schema tax', stat: { v: '≈ 120k', u: 'tokens', l: '300 schemas × ~400 tokens, resent every turn: 60 percent of a 200k window' } },
             deep: '<ul><li>Cost: 300 tools × ~400 tokens ≈ 120k tokens of schemas every turn, before a single word of the task.</li>' +
-              '<li>Quality: selection accuracy falls as the candidate set grows; retrieval-augmented selection (Gorilla, ToolLLM) and namespacing (<code>video.generate</code> vs <code>image.generate</code>) mitigate it.</li></ul>' +
+              '<li>Quality: selection accuracy falls as the candidate set grows (the tool search documentation from Anthropic puts the knee at roughly 30–50 tools); retrieval-augmented selection (Gorilla, ToolLLM) and namespacing (<code>video.generate</code> vs <code>image.generate</code>) mitigate it.</li>' +
+              '<li>For scale, the same documentation cites about 55k tokens of definitions for a five-server setup (GitHub, Slack, Sentry, Grafana, Splunk).</li></ul>' +
               '<p>Prompt caching makes the tokens cheaper to <i>read</i>, but not free to <i>attend to</i>: the model still has to choose one tool from three hundred descriptions.</p>'
           },
           {
@@ -941,7 +943,7 @@
             });
             var SQ = ctx.group({ parent: G });
             ctx.text(60, 668, 'ON-DEMAND LOADING · one extra model round trip, then an ordinary call', { size: 12, font: 'mono', weight: 600, color: 'violet', parent: SQ, spacing: 1 });
-            var seqD = [['tool_use: tool_search("camera dolly")', 'magenta'], ['tool_result: 5 tool_reference blocks', 'teal'], ['harness expands 5 schemas · ~2k tokens', 'amber'], ['tool_use: camera.plan_move({shot: 3, ...})', 'lime']];
+            var seqD = [['tool_use: tool_search("camera dolly")', 'magenta'], ['tool_result: 5 tool_reference blocks', 'teal'], ['API expands 5 schemas · ~2k tokens', 'amber'], ['tool_use: camera.plan_move({shot: 3, ...})', 'lime']];
             var qx = 60;
             S.seqChips = [];
             seqD.forEach(function (d, i) {
@@ -978,16 +980,16 @@
             say: 'Tools touch the real world, so they run in sandboxes. A plain container shares the host kernel, which is a large attack surface.',
             card: { tag: 'PITFALL', title: 'Containers share the kernel', body: 'Namespaces and cgroups isolate processes, but every syscall still reaches the one host kernel. A kernel bug is an escape for every tenant.' },
             deep: '<table><tr><th>Layer</th><th>Isolation boundary</th><th>Cost</th></tr>' +
-              '<tr><td>Container</td><td>namespaces, cgroups, seccomp-bpf; shares the host kernel</td><td>~ms start, ~0 overhead</td></tr></table>' +
+              '<tr><td>Container</td><td>namespaces, cgroups, seccomp-bpf; shares the host kernel</td><td>sub-second start, ~0 overhead</td></tr></table>' +
               '<p>The host kernel exposes hundreds of syscalls; each is code that a hostile tool process can reach. seccomp-bpf trims the list, but the remaining surface is still the full kernel implementation of those calls.</p>' +
-              '<details><summary>Go deeper</summary><p>This is not hypothetical. Kernel bugs such as Dirty Pipe (CVE-2022-0847) are reachable from inside any container because the kernel is shared, and container-runtime bugs such as runc\'s CVE-2019-5736 let a process overwrite the host runtime binary. Untrusted code (an LLM-written script, a user-supplied ffmpeg filter graph) belongs behind a stronger boundary than namespaces.</p></details>'
+              '<details><summary>Go deeper</summary><p>This is not hypothetical. Kernel bugs such as Dirty Pipe (CVE-2022-0847) are reachable from inside a container because the kernel is shared, and container-runtime bugs such as runc\'s CVE-2019-5736 let a process overwrite the host runtime binary. Untrusted code (an LLM-written script, a user-supplied ffmpeg filter graph) belongs behind a stronger boundary than namespaces.</p></details>'
           },
           {
-            say: 'gVisor puts a user space kernel between the tool and the host. Firecracker goes further and boots a lightweight virtual machine with its own kernel in around a hundred milliseconds.',
-            card: { tag: 'NUMBERS', title: 'A microVM in 125 ms', stat: { v: '≤ 125 ms', l: 'Firecracker boot time, with under 5 MiB of memory overhead per VM (NSDI 2020)' }, more: '<p>The trade-off between the two: gVisor intercepts syscalls in user space, so it needs no hypervisor but pays on syscall-heavy or file-heavy work. Firecracker uses hardware virtualisation, giving near-native CPU and a much smaller kernel attack surface, but needs KVM access and a guest kernel per sandbox. Snapshot and restore of warm microVMs hides the boot time.</p>' },
+            say: 'gVisor puts a user space kernel between the tool and the host. Firecracker goes further and boots a lightweight virtual machine with its own kernel in under an eighth of a second.',
+            card: { tag: 'NUMBERS', title: 'A microVM in 125 ms', stat: { v: '< 125 ms', l: 'for a Firecracker microVM to boot to application code, with under 5 MB of memory overhead each (NSDI 2020)' }, more: '<p>The trade-off between the two: gVisor intercepts syscalls in user space, so it needs no hypervisor but pays on syscall-heavy or file-heavy work. Firecracker uses hardware virtualisation, giving near-native CPU and a much smaller kernel attack surface, but needs KVM access and a guest kernel per sandbox. Snapshot and restore of warm microVMs hides the boot time.</p>' },
             deep: '<table><tr><th>Layer</th><th>Isolation boundary</th><th>Cost</th></tr>' +
               '<tr><td>gVisor</td><td>Sentry re-implements Linux syscalls in user space (Go); Gofer mediates file access</td><td>syscall-heavy workloads slower</td></tr>' +
-              '<tr><td>Firecracker</td><td>KVM microVM, minimal Rust VMM, own guest kernel</td><td>≤125 ms boot, ≤5 MiB per VM (NSDI 2020)</td></tr></table>' +
+              '<tr><td>Firecracker</td><td>KVM microVM, minimal Rust VMM, own guest kernel</td><td>boots to application code in under 125 ms with a minimal guest kernel, under 5 MB memory overhead, up to 150 microVMs per second per host (NSDI 2020)</td></tr></table>' +
               '<p class="muted">Production systems pick a boundary per risk class (and often snapshot/restore warm microVMs to hide boot time); the rings on the left show the options, not a mandatory stack.</p>'
           },
           {
@@ -1003,7 +1005,7 @@
             card: { tag: 'PITFALL', title: 'Injection arrives as data', body: 'Text inside a memo or a sketch can look like an instruction. Content from tools and uploads is data, never a command, and egress is the last line of defence.' },
             deep: '<p><b>Indirect prompt injection</b> (Greshake et al., 2023): tool outputs and uploaded media are untrusted data that can carry instructions aimed at the model. Defences are layered: provenance tags in the context, privilege separation, and limits on what a compromised turn can do.</p>' +
               '<p>The egress allowlist is the backstop: even if the model is fooled into proposing <code>POST sketches</code>, the sandbox has no route to <code>evil.example.com</code>, and the attempt lands in the audit log with its <code>span_id</code>.</p>' +
-              '<details><summary>Go deeper</summary><p>A useful checklist for any agent run is the <i>lethal trifecta</i>: access to private data, exposure to untrusted content, and a channel to communicate outward. Any two are manageable; all three together let an injected instruction exfiltrate data. Here the sketches are private, the memo is untrusted, and the egress proxy removes the third leg.</p></details>'
+              '<details><summary>Go deeper</summary><p>A useful checklist for any agent run is the <i>lethal trifecta</i> (Simon Willison, 2025): access to private data, exposure to untrusted content, and a channel to communicate outward. With all three, an injected instruction can exfiltrate data; removing any one leg closes that path. Here the sketches are private, the memo is untrusted, and the egress proxy removes the third leg.</p></details>'
           },
           {
             say: 'And irreversible actions, like publishing the finished film, always need a human to confirm, through the host interface.',
@@ -1102,7 +1104,7 @@
           },
           {
             say: 'Line everything up on a log scale and the picture is stark: microseconds for the mask, milliseconds for the network, a tenth of a second for the sandbox, and ninety five seconds for the GPU.',
-            card: { tag: 'NUMBERS', title: 'The GPU job is the budget', stat: { v: '< 2 s', l: 'for everything except the GPU job, which takes about 95 s' }, more: '<p>Adding up the serial stages: decode 0.9 s + validate 3 ms + JSON-RPC 20 ms + sandbox 100 ms + prefill 0.4 s ≈ 1.4 s. The grammar mask costs about 30 µs per token but runs alongside the forward pass, so it adds nothing to the critical path.</p>' },
+            card: { tag: 'NUMBERS', title: 'The GPU job is the budget', stat: { v: '< 2 s', l: 'for everything except the GPU job, which takes about 95 s' }, more: '<p>Adding up the serial stages: decode 0.9 s + validate 3 ms + JSON-RPC 20 ms + sandbox 100 ms + prefill 0.4 s ≈ 1.4 s. The XGrammar paper measures about 36 µs per token for JSON-schema masks; that work runs alongside the forward pass, so it adds nothing to the critical path.</p>' },
             deep: '<table><tr><th>Stage</th><th>Typical time</th></tr>' +
               '<tr><td>Decode ~40–60 tokens of tool call</td><td>0.6–1.2 s (10–20 ms/token)</td></tr>' +
               '<tr><td>Grammar mask per token</td><td>µs to tens of µs, overlapped with the forward pass</td></tr>' +
@@ -1161,7 +1163,7 @@
               ctx.line(lx(s), 404, lx(s), 612, { color: 'line', sw: 1, parent: W });
               ctx.text(lx(s), 626, s >= 1 ? s + ' s' : (s >= 1e-3 ? (s * 1000) + ' ms' : (s * 1e6) + ' µs'), { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: W });
             });
-            var rows = [['decode tool call', 0.9, 'amber', '0.9 s'], ['grammar mask / token', 3e-5, 'cyan', '30 µs'], ['validate + authz', 0.003, 'magenta', '3 ms'], ['JSON-RPC round trip', 0.02, 'magenta', '20 ms'], ['sandbox start', 0.1, 'orange', '100 ms'], ['GPU job', 95, 'red', '95 s'], ['tool_result prefill', 0.4, 'teal', '0.4 s']];
+            var rows = [['decode tool call', 0.9, 'amber', '0.9 s'], ['grammar mask / token', 3.6e-5, 'cyan', '36 µs'], ['validate + authz', 0.003, 'magenta', '3 ms'], ['JSON-RPC round trip', 0.02, 'magenta', '20 ms'], ['sandbox start', 0.1, 'orange', '100 ms'], ['GPU job', 95, 'red', '95 s'], ['tool_result prefill', 0.4, 'teal', '0.4 s']];
             S.lat = rows.map(function (r, i) {
               var y = 420 + i * 28;
               ctx.text(344, y, r[0], { size: 12, font: 'mono', color: 'text', anchor: 'end', parent: W });

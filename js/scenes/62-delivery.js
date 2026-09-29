@@ -4,8 +4,11 @@
  * Beat format: each step = beats (narration, callout card, deep-dive chunk, gated animation segment). */
 (function () {
   function nb(lines) { return lines.map(function (s) { return s.replace(/^ +| {2,}/g, function (m) { return new Array(m.length + 1).join(' '); }); }); }
-  function head(ctx, parent, x, y, s, col) { return ctx.text(x, y, s, { size: 13, font: 'mono', weight: 600, color: col || 'orange', parent: parent, spacing: 1 }); }
-  function note(ctx, parent, x, y, s, col, anchor, size) { return ctx.text(x, y, s, { size: size || 12, font: 'mono', color: col || 'dim', anchor: anchor || 'start', parent: parent }); }
+  /* violet, pink, red, blue and magenta are low-luminance hues: as text they wash out in the light theme, so
+   * text in those hues is lightened towards white (which the light theme turns into a dark, readable tone) */
+  function tc(ctx, c) { return (c === 'violet' || c === 'pink' || c === 'red' || c === 'blue' || c === 'magenta') ? ctx.mix(c, 'white', 0.55) : c; }
+  function head(ctx, parent, x, y, s, col) { return ctx.text(x, y, s, { size: 13, font: 'mono', weight: 600, color: tc(ctx, col || 'orange'), parent: parent, spacing: 1 }); }
+  function note(ctx, parent, x, y, s, col, anchor, size) { return ctx.text(x, y, s, { size: size || 12, font: 'mono', color: tc(ctx, col || 'dim'), anchor: anchor || 'start', parent: parent }); }
   function cnote(ctx, parent, x, y, s, col, size) { return ctx.text(x, y, s, { size: size || 12, font: 'code', color: col || 'dim', parent: parent, pre: true }); }
   function box(ctx, parent, x, y, w, h, col) { return ctx.rect(x, y, w, h, { rx: 10, fill: 'rgba(7,12,24,0.88)', stroke: ctx.alpha(col || 'orange', 0.4), sw: 1.1, parent: parent }); }
 
@@ -68,17 +71,45 @@
   }
   function qstep(qp) { return Math.pow(2, (qp - 4) / 6); }
 
+  /* ---------- rate-control demo (step 7): Mb/s in each second of the 30 s trailer under three controllers ---------- */
+  var RC_CAP = 8.5, RC_AVG = 4.5, RC_TOP = 15, RC_BUF = 8.5;   /* bufsize = 1 s of maxrate = 8.5 Mbit */
+  function rcProfiles() {
+    var r = [], s, m = 0;
+    for (s = 0; s < 30; s++) {
+      var c = 2.6 + 0.4 * Math.sin(s * 0.7);
+      if (s >= 9 && s < 13) c = 7.0;
+      if (s >= 13 && s < 18) c = [8.5, 11, 13.5, 11, 8.5][s - 13];
+      if (s >= 27) c = 1.2;
+      r.push(c); m += c;
+    }
+    m /= 30;
+    function meanAt(k) { var t = 0; r.forEach(function (v) { t += Math.min(RC_CAP, v * k * RC_AVG / m); }); return t / 30; }
+    var lo = 0.5, hi = 3, k = 1;
+    for (var it = 0; it < 40; it++) { k = (lo + hi) / 2; if (meanAt(k) < RC_AVG) lo = k; else hi = k; }
+    return {
+      crf: r.map(function (v) { return v * RC_AVG / m; }),
+      cbr: r.map(function () { return RC_AVG; }),
+      vbr: r.map(function (v) { return Math.min(RC_CAP, v * k * RC_AVG / m); })
+    };
+  }
+  var RC_TEXT = {
+    crf: 'CRF: quality constant, crash peaks near 14 Mb/s, about 11.7 Mbit over maxrate: underrun',
+    cbr: 'CBR: 4.5 Mb/s in every second, quiet ice is over-served and the crash is starved',
+    vbr: 'capped VBR: average 4.5 Mb/s, the crash borrows bits up to maxrate 8.5 Mb/s'
+  };
+
   Atlas.register({
     id: 'render-delivery',
     refs: [
       'FFmpeg Project, <i>FFmpeg Filters Documentation</i> (filtergraph, xfade, lut3d, loudnorm), ffmpeg 7.x, 2024–2025',
-      'ITU-R BS.1770-4, <i>Algorithms to measure audio programme loudness and true-peak audio level</i>, 2015; EBU R 128, 2020',
-      'Huang et al., <i>RIFE: Real-Time Intermediate Flow Estimation for Video Frame Interpolation</i>, ECCV 2022; Reda et al., <i>FILM</i>, ECCV 2022',
-      'Wang et al., <i>Real-ESRGAN: Training Real-World Blind Super-Resolution with Pure Synthetic Data</i>, ICCVW 2021; Wang et al., <i>SeedVR2</i>, 2025',
+      'ITU-R BS.1770-4, <i>Algorithms to measure audio programme loudness and true-peak audio level</i>, 2015 (latest revision BS.1770-5, 2023); EBU R 128, 2020',
+      'Huang et al., <i>RIFE: Real-Time Intermediate Flow Estimation for Video Frame Interpolation</i>, ECCV 2022; Reda et al., <i>FILM: Frame Interpolation for Large Motion</i>, ECCV 2022',
+      'Wang et al., <i>Real-ESRGAN: Training Real-World Blind Super-Resolution with Pure Synthetic Data</i>, ICCVW 2021; Wang et al., <i>SeedVR2: One-Step Video Restoration via Diffusion Adversarial Post-Training</i>, 2025',
       'Sullivan et al., <i>Overview of the High Efficiency Video Coding (HEVC) Standard</i>, IEEE TCSVT 2012; Han et al., <i>A Technical Overview of AV1</i>, Proc. IEEE 2021',
       'Aaron et al. (Netflix), <i>Per-Title Encode Optimization</i>, 2015; Li et al., <i>Toward a Practical Perceptual Video Quality Metric (VMAF)</i>, 2016',
       'ISO/IEC 23000-19 <i>CMAF</i>; RFC 8216 <i>HTTP Live Streaming</i>; ISO/IEC 23009-1 <i>MPEG-DASH</i>',
-      'Spiteri et al., <i>BOLA: Near-Optimal Bitrate Adaptation for Online Videos</i>, IEEE/ACM ToN 2020; C2PA, <i>Technical Specification 2.x</i>, 2024–2025'
+      'Spiteri, Urgaonkar &amp; Sitaraman, <i>BOLA: Near-Optimal Bitrate Adaptation for Online Videos</i>, IEEE INFOCOM 2016',
+      'C2PA, <i>Content Credentials: C2PA Technical Specification</i> v2.1, 2024'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -103,18 +134,22 @@
             card: { tag: 'HOW IT WORKS', title: 'Video and audio meet at the mux', body: 'Stems are ducked, summed and loudness-normalised, then resampled to 48 kHz and muxed with the 10-bit video into master.mov.' },
             deep: '<p>The audio graph mirrors the video graph: <code>asplit</code> feeds the voice both to the mix and to the <code>sidechaincompress</code> key, <code>amix</code> sums the three stems, <code>loudnorm</code> normalises, and <code>aresample</code> fixes the rate at 48 kHz.</p>' +
               '<ul><li><b>Time is rational</b>: frame indices at 24/1, PTS in a 1/24000 or 1/90000 timebase; floating-point seconds drift and cause off-by-one frames at cuts.</li></ul>' +
-              '<p>Audio and video are never aligned by wall-clock time: both follow the EDL\'s frame counts, so the mux is exact by construction.</p>'
+              '<p>Audio and video are never aligned by wall-clock time: both follow the EDL\'s frame counts, so the mux is exact by construction.</p>' +
+              '<details><summary>Go deeper: samples per frame</summary>' +
+              '<p>At 24 fps and 48 kHz one video frame is exactly 2,000 audio samples, so cuts on frame boundaries are also sample-exact. At 23.976 fps (24000/1001) a frame is 48000 · 1001 / 24000 = 2,002 samples, still an integer, which is why 48 kHz became the video audio rate. At 44.1 kHz neither is whole (1,837.5 and 1,839.3), so audio cut points would need rounding.</p></details>'
           },
           {
             say: 'Below is the frame accurate detail of one dissolve. Each clip lends six frames of handle, and the blend weight ramps over twelve frames.',
             card: { tag: 'NUMBERS', title: 'A twelve-frame dissolve', stat: { v: '12 f', u: 'dissolve', l: 'α ramps 0 to 1 over frames 309 to 321, borrowing 6 frames of handle from each clip' }, more: '<p>A dissolve of length d normally overlaps two clips and shortens the sequence by d frames. Here each clip is extended by its handle instead: S3 plays 6 frames past its cut and S4 starts 6 frames before it, so the 12-frame overlap is covered by borrowed frames and the sequence keeps its 195 frames between 225 and 420.</p>' },
             deep: '<div class="eq">out(n) = (1 − α(n))·S3 + α(n)·S4,   α(n) = (n − 309) / 12,  n ∈ [309, 321)</div>' +
-              '<p>S3 lends 6 frames beyond its out point (source frames 110–116); S4 starts 6 frames before its in point (source frames 2–8). The dissolve is centred on cut 315, so S3 is used for 90 frames and S4 for 105, and the total stays at 720.</p>'
+              '<p>S3 lends 6 frames beyond its out point (source frames 110–116); S4 starts 6 frames before its in point (source frames 2–8). The dissolve is centred on cut 315, so S3 is used for 90 frames and S4 for 105, and the total stays at 720.</p>' +
+              '<details><summary>Go deeper: which space the blend happens in</summary>' +
+              '<p>ffmpeg\'s <code>xfade</code> blends the stored pixel values, that is, in the gamma-encoded space. Mixing a white and a black frame at α = 0.5 then gives an encoded value of 0.5, which is about 22 % of the light of white (0.5<sup>2.2</sup>), whereas an exact half mix of light would encode as 0.73 (0.5<sup>1/2.2</sup>). The gamma-space midpoint therefore dips darker than it should. For shots of similar exposure the effect is subtle, and a linear-light blend (convert, mix, convert back) removes it at the cost of two colour conversions.</p></details>'
           },
           {
             say: 'The total length stays exactly seven hundred twenty frames. And because the compiler is a pure function, a hash of its inputs becomes the cache key for the whole render.',
             card: { tag: 'WHY IT MATTERS', title: 'The hash is the cache key', body: 'sha256 of the EDL, input hashes, build and flags. Same key, same bytes: a hit skips the render, a miss re-renders only what changed.' },
-            deep: '<ul><li><b>GPU path</b>: NVDEC → CUDA kernels (scale_cuda, overlay_cuda, custom LUT) → NVENC keeps frames in VRAM; PCIe copies of 1080p RGB frames (≈12 MB in 16-bit) are what usually bottleneck CPU/GPU hybrids.</li>' +
+            deep: '<ul><li><b>GPU path</b>: for sources NVDEC can decode (H.264, HEVC, AV1), frames go NVDEC → CUDA kernels (scale_cuda, overlay_cuda, a custom LUT) → NVENC without leaving VRAM. NVDEC and NVENC have no ProRes support, so the ProRes mezzanine is decoded on CPU cores and uploaded once. PCIe copies of 1080p RGB frames (≈12 MB in 16-bit) are what usually bottleneck CPU/GPU hybrids.</li>' +
               '<li><b>Captions</b> are not burned in: the EDL\'s cues (from forced-alignment timestamps) become a WebVTT sidecar or IMSC/WebVTT track in CMAF, so they stay searchable, restylable and translatable; only social cuts burn them in with the <code>subtitles</code> filter.</li></ul>'
           }
         ],
@@ -123,7 +158,7 @@
           var G = stage(ctx);
           nav(ctx, 0);
           var XS = [630, 800, 970, 1140, 1310, 1480];
-          var vt = ['6× NVDEC', 'trim·setpts', 'xfade 12 f', 'lut3d 33³', 'overlay title', '[v] 10-bit'];
+          var vt = ['6× decode', 'trim·setpts', 'xfade 12 f', 'lut3d 33³', 'overlay title', '[v] 10-bit'];
           var at = ['A1 A2 A3', 'sidechain', 'amix', 'loudnorm', 'aresample', '[a] 48 kHz'];
           var vn, an, vl = [], al = [], mux, comp, lc;
           /* beat 0: the EDL and the compiler */
@@ -134,6 +169,8 @@
             ' {"uri": "S4.mov", "in": 8, "out": 113}, … ],',
             ' "lut": "show_v2.cube", "loudness_lufs": -14}']) });
           comp = ctx.node({ x: 285, y: 356, w: 400, h: 50, title: 'edl2fg compiler', sub: 'pure function · versioned · hashed', icon: 'code', color: 'magenta', titleSize: 15, subSize: 11, parent: G });
+          comp.subEl.setAttribute('fill', ctx.mix('magenta', 'white', 0.55));   /* readable in the light theme */
+          code.childNodes[5].setAttribute('fill', ctx.mix('magenta', 'white', 0.55));
           lc = ctx.line(285, 312, 285, 328, { color: 'magenta', arrow: true, parent: G });
           ctx.hud('EDL → filtergraph · pure function');
           return Promise.all([ctx.reveal(code, { from: 'left' }), ctx.reveal([lc, comp], { delay: 300, stagger: 150 })]).then(function () {
@@ -218,8 +255,11 @@
           {
             say: 'Loudness is measured the way ears hear it, not by peak level. The signal is first K weighted: a high pass removes rumble, and a shelf boosts everything above about one and a half kilohertz.',
             card: { tag: 'KEY IDEA', title: 'Measure loudness like an ear', body: 'Peak level says little about how loud a mix feels. K-weighting mimics the ear: bass counts less, the presence region counts more.' },
-            deep: '<p><b>ITU-R BS.1770-4</b> integrated loudness starts with K-weighting: a 2nd-order high-shelf (+4 dB, ≈1.5 kHz) followed by a 2nd-order high-pass (RLB, ≈38 Hz).</p>' +
-              '<p>The shelf models the acoustic effect of the head; the high-pass discards rumble that carries energy but contributes little to perceived loudness. Everything after this filter is plain mean-square arithmetic.</p>'
+            deep: '<p><b>ITU-R BS.1770-4</b> integrated loudness starts with K-weighting: a 2nd-order high-shelf (+4 dB, half-gain point ≈1.5 kHz) followed by a 2nd-order high-pass (RLB, f<sub>0</sub> ≈ 38 Hz, Q = 0.5).</p>' +
+              '<p>The shelf models the acoustic effect of the head; the high-pass discards rumble that carries energy but contributes little to perceived loudness. Everything after this filter is plain mean-square arithmetic.</p>' +
+              '<details><summary>Go deeper: the two biquads at 48 kHz</summary>' +
+              '<pre>stage 1 (shelf)  b = [ 1.53512485958697, −2.69169618940638, 1.19839281085285 ]\n                 a = [ 1, −1.69065929318241, 0.73248077421585 ]\nstage 2 (RLB)    b = [ 1, −2, 1 ]\n                 a = [ 1, −1.99004745483398, 0.99007225036621 ]</pre>' +
+              '<p>These are the coefficients tabulated in BS.1770 for 48 kHz. Evaluating stage 1 at z = −1 (Nyquist) gives (1.535 + 2.692 + 1.198) / (1 + 1.691 + 0.732) = 1.585, which is +4.0 dB, and at z = 1 gives 1.0, so the shelf leaves low frequencies alone. At other sample rates the coefficients are recomputed from the same analogue prototype.</p></details>'
           },
           {
             say: 'Mean square energy is computed in four hundred millisecond blocks. Quiet blocks are then gated away, first below minus seventy, then below ten units under the running average.',
@@ -227,22 +267,28 @@
             deep: '<ol><li>Blocks of 400 ms with 75 % overlap: z<sub>j</sub> = mean square of channel j.</li>' +
               '<li>Block loudness l = −0.691 + 10·log<sub>10</sub>(Σ<sub>j</sub> G<sub>j</sub>·z<sub>j</sub>), G = 1.0 for L/R/C, 1.41 for surrounds.</li>' +
               '<li>Absolute gate −70 LUFS, relative gate = (mean of surviving blocks) − 10 LU; average the survivors in the energy domain.</li></ol>' +
-              '<div class="eq">L<sub>I</sub> = −0.691 + 10·log<sub>10</sub>( (1/|J<sub>g</sub>|) Σ<sub>j∈J<sub>g</sub></sub> Σ<sub>c</sub> G<sub>c</sub>·z<sub>c,j</sub> )</div>'
+              '<div class="eq">L<sub>I</sub> = −0.691 + 10·log<sub>10</sub>( (1/|J<sub>g</sub>|) Σ<sub>j∈J<sub>g</sub></sub> Σ<sub>c</sub> G<sub>c</sub>·z<sub>c,j</sub> )</div>' +
+              '<details><summary>Go deeper: energy-domain averaging and loudness range</summary>' +
+              '<p>The surviving blocks are averaged as energies, not as dB values, so a block 6 dB louder counts four times as much. L<sub>I</sub> therefore sits nearer the loud passages than the plain dB mean does, which is what a listener remembers. Loudness range (LRA, EBU Tech 3342) is a separate statistic: 3 s short-term loudness values, a relative gate at −20 LU, then the spread between the 10th and 95th percentiles. Our mix has LRA 7.9 LU, a moderately dynamic trailer.</p></details>'
           },
           {
             say: 'Our mix measures minus eighteen point seven LUFS, so a clean gain of four point seven decibels lands it exactly on the streaming target of minus fourteen.',
-            card: { tag: 'NUMBERS', title: 'A clean +4.7 dB', stat: { v: '+4.7 dB', l: 'takes the mix from −18.7 to −14.0 LUFS integrated, the streaming-platform target' }, more: '<p>Gain = target − measured = −14 − (−18.7) = +4.7 dB, a linear factor of 10<sup>4.7/20</sup> ≈ 1.72. Every sample scales by it, so the measured true peak of −3.2 dBTP becomes +1.5 dBTP, and the look-ahead limiter must take about 2.5 dB off the few peaks that would exceed the −1 dBTP ceiling.</p>' },
+            card: { tag: 'NUMBERS', title: 'A clean +4.7 dB', stat: { v: '+4.7 dB', l: 'takes the mix from −18.7 to −14.0 LUFS integrated, the usual web-streaming target' }, more: '<p>Gain = target − measured = −14 − (−18.7) = +4.7 dB, a linear factor of 10<sup>4.7/20</sup> ≈ 1.72. Every sample scales by it, so the measured true peak of −3.2 dBTP becomes +1.5 dBTP, and the look-ahead limiter must take about 2.5 dB off the few peaks that would exceed the −1 dBTP ceiling.</p>' },
             deep: '<table><tr><th>Target</th><th>Integrated</th><th>Max TP</th></tr>' +
-              '<tr><td>Streaming platforms</td><td>−14 LUFS (Apple −16)</td><td>−1 dBTP</td></tr>' +
+              '<tr><td>Music and web streaming</td><td>−14 LUFS (Apple −16)</td><td>−1 dBTP</td></tr>' +
               '<tr><td>EBU R128 broadcast</td><td>−23 LUFS ±0.5</td><td>−1 dBTP</td></tr>' +
               '<tr><td>ATSC A/85</td><td>−24 LKFS ±2</td><td>−2 dBTP</td></tr></table>' +
-              '<p>A static gain preserves the mix\'s dynamics (loudness range 7.9 LU is unchanged). Reaching the target with a compressor instead would squash the crash that the score was built around.</p>'
+              '<p>A static gain preserves the mix\'s dynamics (loudness range 7.9 LU is unchanged). Reaching the target with a compressor instead would squash the crash that the score was built around. Long-form video services normalise lower: Netflix, Disney+ and Prime Video sit at roughly −27 to −24 LUFS.</p>' +
+              '<details><summary>Go deeper: static gain versus ffmpeg\'s loudnorm modes</summary>' +
+              '<p>With <code>loudnorm</code> the first pass only measures (I, TP, LRA and the gate threshold). In the second pass, <code>linear=true</code> with the measured values applies one static gain, but only when that gain does not push the true peak over the ceiling and the target LRA is not below the source LRA. Otherwise ffmpeg falls back to its dynamic mode, which varies the gain over time. Here +4.7 dB takes the −3.2 dBTP peak to +1.5 dBTP, so a plain <code>volume</code> gain followed by a look-ahead true-peak limiter is the way to keep the mix static everywhere the limiter has nothing to do.</p></details>'
           },
           {
             say: 'A true peak limiter then catches peaks that only appear between the samples, once the waveform is reconstructed. That is why the ceiling is minus one decibel, not zero.',
             card: { tag: 'PITFALL', title: 'Sample peaks under-read', body: 'A tone at a quarter of the sample rate reads −2.0 dBFS on its samples but +1.0 dBTP once reconstructed. Lossy encoders add more overshoot.' },
             deep: '<p><b>True peak</b>: upsample ×4 (48 → 192 kHz) and take the max |x|; sample peaks under-read the reconstructed waveform by 3 dB for a tone at f<sub>s</sub>/4 sampled at 45° (the demo here), and by more for pathological signals near Nyquist; 4× oversampling itself can still under-read by ≈0.7 dB.</p>' +
-              '<p>Lossy encoders (AAC, Opus) add overshoot, hence the −1 dBTP ceiling (−2 dBTP for ATSC). Our master ends at I −14.0 LUFS, TP −1.0 dBTP, LRA 7.9 LU.</p>'
+              '<p>Lossy encoders (AAC, Opus) add overshoot, hence the −1 dBTP ceiling (−2 dBTP for ATSC). Our master ends at I −14.0 LUFS, TP −1.0 dBTP, LRA 7.9 LU.</p>' +
+              '<details><summary>Go deeper: why the worst case is a tone at fs/4</summary>' +
+              '<p>Take x[n] = A·sin(πn/2 + φ). The samples alternate between magnitudes A·|sin φ| and A·|cos φ|, so the sample peak is A·max(|sin φ|, |cos φ|), which is at least A/√2. At φ = 45° the sample meter reads 3.01 dB below the true amplitude A, which a reconstruction filter (a DAC, or a 4× polyphase interpolator in the meter) recovers. A limiter working on samples cannot see this; a true-peak limiter oversamples its detection path, typically 4× at 48 kHz, and delays the signal by a millisecond or two so the gain is already falling when the peak arrives.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -250,22 +296,28 @@
           var G = stage(ctx);
           nav(ctx, 1);
           var bars, bl, gt, yv, gR, gRl, res;
+          /* exact BS.1770 K-weighting at 48 kHz: |H| of the two tabulated biquads, in dB */
           function kdb(lf) {
-            var f = Math.pow(10, lf);
-            var hp = 10 * Math.log(Math.pow(f / 38, 4) / (1 + Math.pow(f / 38, 4))) / Math.LN10;
-            var sh = 4 / (1 + Math.pow(1500 / f, 2));
-            return hp + sh;
+            var w = 2 * Math.PI * Math.pow(10, lf) / 48000;
+            function bq(b, a) {
+              var c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+              var nr = b[0] + b[1] * c1 + b[2] * c2, ni = b[1] * s1 + b[2] * s2;
+              var dr = a[0] + a[1] * c1 + a[2] * c2, di = a[1] * s1 + a[2] * s2;
+              return 10 * Math.log((nr * nr + ni * ni) / (dr * dr + di * di)) / Math.LN10;
+            }
+            return bq([1.53512485958697, -2.69169618940638, 1.19839281085285], [1, -1.69065929318241, 0.73248077421585]) +
+              bq([1, -2, 1], [1, -1.99004745483398, 0.99007225036621]);
           }
           /* beat 0: the K-weighting filter */
           var kb = box(ctx, G, 60, 170, 700, 320, 'orange');
           var kh = head(ctx, G, 80, 194, 'K-WEIGHTING FILTER · gain (dB) vs frequency');
-          var kp = ctx.plot(120, 225, 600, 220, kdb, { xDomain: [Math.log(20) / Math.LN10, Math.log(20000) / Math.LN10], yDomain: [-12, 6], color: 'orange', sw: 2.2, samples: 200, parent: G, glow: true });
+          var kp = ctx.plot(120, 225, 600, 220, kdb, { xDomain: [Math.log(20) / Math.LN10, Math.log(20000) / Math.LN10], yDomain: [-15, 6], color: 'orange', sw: 2.2, samples: 200, parent: G, glow: true });
           var kn = [];
           [20, 100, 1000, 10000].forEach(function (f) { var p = kp.toPx(Math.log(f) / Math.LN10, -12); kn.push(note(ctx, G, p.x, 460, f >= 1000 ? f / 1000 + 'k' : String(f), 'dim', 'middle', 11)); });
           [-12, -6, 0, 4].forEach(function (d) { var p = kp.toPx(Math.log(20) / Math.LN10, d); kn.push(note(ctx, G, 112, p.y, String(d), 'dim', 'end', 11)); });
           var z = kp.toPx(Math.log(20) / Math.LN10, 0);
           var zl = ctx.line(120, z.y, 720, z.y, { color: 'faint', dash: '3 4', parent: G });
-          var ks = note(ctx, G, 560, 305, 'shelf +4 dB above ~1.5 kHz', 'orange', 'middle', 12);
+          var ks = note(ctx, G, 716, 270, 'shelf +4 dB above ~1.5 kHz', 'orange', 'end', 12);
           var kh2 = note(ctx, G, 240, 420, 'high-pass ~38 Hz', 'orange', 'start', 12);
           ctx.hud('K-weighting: high-pass 38 Hz + shelf +4 dB');
           return Promise.all([ctx.reveal([kb, kh], { stagger: 60 }), ctx.reveal(kp.curve, { from: 'draw', dur: 1200, delay: 200 }), ctx.reveal(kn.concat([zl]), { delay: 400, stagger: 30 }), ctx.reveal([ks, kh2], { delay: 1200, stagger: 200 })]).then(function () { return ctx.beat(1); }).then(function () {
@@ -344,8 +396,9 @@
           {
             say: 'Some video models generate sixteen frames per second, and some deliverables want twenty four, forty eight or sixty. Frame interpolation invents the missing frames.',
             card: { tag: 'NUMBERS', title: 'Two of three frames are new', stat: { v: '2 of 3', l: 'output frames synthesised when converting 16 to 24 fps, at t = 1/3 and 2/3 between the inputs' } },
-            deep: '<ul><li>Cadence: 16 → 24 fps is a 3:2 ratio, so two of every three output frames are synthesised at t = 1/3 and 2/3; 24 → 48 is plain 2×.</li></ul>' +
-              '<div class="note">Generation-time alternative: many video DiTs are trained at 16–24 fps; interpolating after generation costs seconds, orders of magnitude less than generating twice as many latent frames (attention cost grows quadratically with frame count).</div>'
+            deep: '<ul><li>Cadence: 16 → 24 fps is a 3:2 ratio, so two of every three output frames are synthesised at t = 1/3 and 2/3; 24 → 48 is plain 2×.</li>' +
+              '<li>For the running example this stage is optional: the six shots are native 24 fps, so nothing needs to be invented. It matters for 16 fps models such as Wan 2.1 and for 48 or 60 fps deliverables.</li></ul>' +
+              '<div class="note">Generation-time alternative: many video DiTs are trained at 16–24 fps; interpolating after generation costs seconds of GPU time, far less than generating twice as many latent frames (attention cost grows quadratically with frame count).</div>'
           },
           {
             say: 'RIFE estimates two flows directly from the intermediate time: one pointing back to the previous frame, and one forward to the next.',
@@ -358,13 +411,17 @@
             card: { tag: 'HOW IT WORKS', title: 'Warp both, blend with a mask', body: 'Backward warping samples each source frame along its flow. A learned mask M decides, per pixel, which warped frame to trust, which handles occlusions.' },
             deep: '<div class="eq">Î<sub>t</sub> = M ⊙ W(I<sub>0</sub>, F<sub>t→0</sub>) + (1 − M) ⊙ W(I<sub>1</sub>, F<sub>t→1</sub>)  (+ residual refinement)</div>' +
               '<p>W is backward warping by bilinear sampling. Arbitrary t is supported by conditioning on t; 2× is applied recursively for 4×.</p>' +
-              '<ul><li>Speed: tens of 1080p frames per second on one modern GPU; FILM (bi-directional, multi-scale feature pyramid with shared weights) handles large motion better at higher cost.</li></ul>'
+              '<ul><li>Speed: the paper reports about 31 ms per 720p frame on a TITAN X (Pascal) and about 3 GB of GPU memory for 1080p; FILM (bi-directional, multi-scale feature pyramid with shared weights) is aimed at large motion, at higher cost.</li></ul>' +
+              '<details><summary>Go deeper: warping and the mask</summary>' +
+              '<p>Backward warping is W(I, F)(x) = I(x + F(x)) with bilinear sampling, which is differentiable in both the image and the flow, so the whole pipeline trains end to end. The mask M comes from a sigmoid, so it is a soft per-pixel weight in [0, 1]: where a region is visible in only one source (an occlusion or disocclusion) M leans towards the frame that sees it. A small refinement network then adds a residual to the blend to repair warping artefacts around thin structures.</p></details>'
           },
           {
             say: 'One rule is absolute: never interpolate across a cut, or you get a ghostly morph between two shots. The edit decision list tells the interpolator where the cuts are.',
             card: { tag: 'PITFALL', title: 'Never across a cut', body: 'A hard cut has no motion between its two frames, so interpolation invents a ghostly morph. Split on cuts first, from the EDL or a scene-change score.' },
             deep: '<ul><li>Failure modes: thin structures, fast rotation, text/UI overlays, and <b>cuts</b>. Scene-change detection (histogram / SSIM drop, or the EDL itself) splits the stream into shots first.</li></ul>' +
-              '<p>At cut 315 the scene-change score spikes from about 0.1 to above 0.9 within a single frame; any pair straddling it is excluded, and the last frame of the outgoing shot is repeated as the interpolation boundary condition.</p>'
+              '<p>At the hard cut S2 → S3 (frame 225) the scene-change score spikes from about 0.1 to above 0.9 within a single frame; any pair straddling it is excluded, and the last frame of the outgoing shot is repeated as the interpolation boundary condition. The S3 → S4 dissolve at 315 is different: it is built afterwards in the compositor from two already-interpolated shots, so it never confuses the interpolator.</p>' +
+              '<details><summary>Go deeper: detecting a cut</summary>' +
+              '<p>A hard cut shows as a one-frame jump in a global statistic: the histogram distance between consecutive frames, or 1 − SSIM. A dissolve spreads the same change over 12 frames, so a per-frame threshold misses it and a two-threshold method (a high jump, or a moderate rise sustained over a window) is used for real footage. Here the EDL already lists every boundary, so detection is only a safety net for the generated shots themselves, which can contain internal cuts.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -453,10 +510,11 @@
           }).then(function () { return ctx.beat(3); }).then(function () {
             if (ctx.dead) return;
             /* beat 3: never across a cut */
-            var rh = head(ctx, G, 860, 700, 'NEVER ACROSS A CUT · scene-change score', 'red');
-            var cp = ctx.plot(880, 714, 640, 78, function (n) { return 0.08 + 0.05 * Math.sin(n * 1.7) + 0.85 * Math.exp(-Math.pow(n - 315, 2) / 1.2); }, { xDomain: [295, 335], yDomain: [0, 1], color: 'red', sw: 2, samples: 200, parent: G });
-            var pcut = cp.toPx(315, 0.93);
-            var cn = [note(ctx, G, pcut.x + 10, pcut.y + 4, 'cut 315 → split here', 'red', 'start', 12), note(ctx, G, 880, 812, 'frame 295', 'dim', 'start', 11), note(ctx, G, 1520, 812, '335', 'dim', 'end', 11)];
+            var dv = ctx.line(860, 688, 1540, 688, { color: ctx.alpha('dim', 0.5), sw: 1, dash: '3 5', parent: G });
+            var rh = head(ctx, G, 860, 708, 'NEVER ACROSS A CUT · scene-change score at the S2 → S3 cut', 'amber');
+            var cp = ctx.plot(880, 722, 640, 70, function (n) { return 0.08 + 0.05 * Math.sin(n * 1.7) + 0.85 * Math.exp(-Math.pow(n - 225, 2) / 1.2); }, { xDomain: [205, 245], yDomain: [0, 1], color: 'red', sw: 2, samples: 200, parent: G });
+            var pcut = cp.toPx(225, 0.93);
+            var cn = [dv, note(ctx, G, pcut.x + 16, pcut.y + 8, 'cut 225 → split here', 'text', 'start', 12), note(ctx, G, 880, 812, 'frame 205', 'dim', 'start', 11), note(ctx, G, 1520, 812, '245', 'dim', 'end', 11)];
             ctx.hud('never interpolate across a cut');
             return Promise.all([ctx.reveal(rh, { delay: 100 }), ctx.reveal(cp.curve, { from: 'draw', delay: 300, dur: 1200 }), ctx.reveal(cn, { delay: 900, stagger: 100 })]).then(function () { return ctx.pulse(rh, { color: 'red', times: 2, dur: 600 }); });
           });
@@ -477,19 +535,25 @@
             card: { tag: 'HOW IT WORKS', title: 'Bicubic blurs, learned SR invents', body: 'Interpolation cannot create frequencies that were never sampled. A trained network can add plausible ones, such as the crack\'s sharp edge.' },
             deep: '<p><b>Real-ESRGAN</b>: RRDBNet generator (23 residual-in-residual dense blocks, ~16.7 M params), U-Net discriminator with spectral norm; trained on synthetic pairs from a <i>high-order degradation</i> model (blur → resize → noise → JPEG, applied twice, plus sinc ringing).</p>' +
               '<div class="eq">L = L<sub>1</sub> + λ<sub>p</sub>·L<sub>percep</sub>(VGG) + λ<sub>g</sub>·L<sub>GAN</sub></div>' +
-              '<p>The adversarial term is what makes edges crisp instead of averaged; the price is that details are invented, not recovered.</p>'
+              '<p>The adversarial term is what makes edges crisp instead of averaged; the price is that details are invented, not recovered.</p>' +
+              '<details><summary>Go deeper: high-order degradation</summary>' +
+              '<p>Real-ESRGAN builds each training pair from a clean image by chaining, twice, blur (a random kernel), resize (a random factor and interpolation), Gaussian or Poisson noise, and JPEG at a random quality, and closing with a sinc filter (ringing) and a JPEG pass in random order. A network trained on one fixed bicubic degradation fails on real footage; training on a wide random family teaches it the inverse of many degradations, so it also copes with compression damage it was never shown. Note the trailer\'s shots are generated, not degraded photographs, so the gain comes from added plausible texture more than from restoration.</p></details>'
           },
           {
             say: 'Frames are processed in overlapping tiles to bound memory, so the cost per tile is fixed and the video can be any size.',
             card: { tag: 'NUMBERS', title: 'Tiles of 512²', stat: { v: '512²', u: 'input tile', l: 'with at least 32 px overlap, feather-blended; six tiles cover a 1280×720 frame and VRAM stays flat' } },
             deep: '<ul><li><b>Tiling</b>: 512² input tiles with ≥ 32 px overlap, feathered blend; VRAM stays flat regardless of output size.</li>' +
-              '<li><b>Scale factors</b>: models ship as ×2/×4, so 1280×720 → ×2 = 2560×1440 → Lanczos down to 1920×1080 (×1.5 overall), or ×3 overall for a 3840×2160 master.</li></ul>'
+              '<li><b>Scale factors</b>: models ship as ×2/×4, so 1280×720 → ×2 = 2560×1440 → Lanczos down to 1920×1080 (×1.5 overall). A 3840×2160 master (×3) is ×4 to 5120×2880, then Lanczos down by 0.75.</li></ul>' +
+              '<details><summary>Go deeper: the tile grid</summary>' +
+              '<p>With tile size T = 512, minimum overlap 32 and stride s = T − 32 = 480, a 1280-wide frame needs ⌈(1280 − 512) / 480⌉ + 1 = 3 columns and a 720-high frame ⌈(720 − 512) / 480⌉ + 1 = 2 rows: six tiles. The last tile in each direction is right-aligned to the frame edge, so its overlap with its neighbour is larger than 32 px (224 px here at the last column, 304 px at the last row). Overlaps are blended with linear feather weights so seams average out instead of stepping.</p></details>'
           },
           {
             say: 'Diffusion based upscalers add temporal attention, so the invented detail does not shimmer from frame to frame. The price is speed, which one step distilled models now close.',
             card: { tag: 'TRADE-OFF', title: 'Texture versus temporal stability', body: 'Per-frame GAN upscalers are fast but may flicker. Recurrent and diffusion video upscalers stay stable, at a higher GPU cost per frame.' },
             deep: '<ul><li><b>Video SR</b>: per-frame GAN SR flickers (independent hallucinations). Recurrent / flow-guided VSR (BasicVSR++) and diffusion VSR (Upscale-A-Video, STAR, SeedVR2 one-step) use temporal attention or propagation for consistency.</li>' +
-              '<li><b>Guardrails</b>: SR must not change identity; faces/fur are checked with an embedding distance against the pre-SR frame, and the critic compares VMAF/LPIPS against a bicubic baseline.</li></ul>'
+              '<li><b>Guardrails</b>: SR must not change identity; faces/fur are checked with an embedding distance against the pre-SR frame, and the critic compares VMAF/LPIPS against a bicubic baseline.</li></ul>' +
+              '<details><summary>Go deeper: measuring flicker</summary>' +
+              '<p>A common temporal-consistency measure is the warping error E<sub>warp</sub> = mean over pixels of M<sub>t</sub> · ‖O<sub>t</sub> − W(O<sub>t−1</sub>, F<sub>t−1→t</sub>)‖ between consecutive output frames, where W warps by optical flow and M<sub>t</sub> masks out occlusions. Per-frame GAN upscaling invents different texture on each frame, so E<sub>warp</sub> rises even when every frame looks sharp. BasicVSR++ lowers it with second-order grid propagation, which carries features both forward and backward through the clip and aligns them with flow-guided deformable convolutions; diffusion VSR lowers it with temporal attention.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -593,27 +657,35 @@
         beats: [
           {
             say: 'Now inside the encoder. Most frames are predicted, not stored. An I frame is coded on its own, P frames predict from earlier frames, and B frames from both directions, so they are cheapest.',
-            card: { tag: 'NUMBERS', title: 'A leaf B frame is 7× cheaper', stat: { v: '1.1 → 0.15', u: 'Mbit', l: 'per frame: an I frame versus a leaf B frame in a 1080p24 HEVC stream at 4.5 Mb/s' } },
-            deep: '<p><b>Frame types</b>: I (intra only), P (forward references), B (bi-predicted, often non-reference in a hierarchy). A mini-GOP of 8 with hierarchical B frames is the x265/SVT-AV1 default shape: the B at position 4 (level L1) references frames 0 and 8; positions 2 and 6 (L2) reference their neighbours at 0/4 and 4/8; odd positions (L3) are non-reference leaves, coded with the highest QP.</p>'
+            card: { tag: 'NUMBERS', title: 'A leaf B frame is 7× cheaper', stat: { v: '1.1 → 0.15', u: 'Mbit', l: 'per frame, in a plausible split for a 1080p24 HEVC stream at 4.5 Mb/s: an I frame versus a leaf B frame' } },
+            deep: '<p><b>Frame types</b>: I (intra only), P (forward references), B (bi-predicted, often non-reference in a hierarchy). A mini-GOP of 8 with hierarchical B frames is the shape of the HEVC reference software\'s random-access configuration (production encoders adapt it: x265 allows up to 16 consecutive B frames, SVT-AV1 uses deeper hierarchies): the B at position 4 (level L1) references frames 0 and 8; positions 2 and 6 (L2) reference their neighbours at 0/4 and 4/8; odd positions (L3) are non-reference leaves, coded with the highest QP.</p>' +
+              '<details><summary>Go deeper: why the leaves get the highest QP</summary>' +
+              '<p>A frame that is referenced propagates its quantisation error into every frame that predicts from it, so it deserves more bits; a leaf B frame is used by no one, so its error stays put. Encoders therefore raise QP by about one per hierarchy level (in the reference configuration the offsets run 1, 2, 3, 4 across levels). By the rule of thumb of about half the bits per +6 QP, a leaf sitting 3 to 4 QP above the anchors needs roughly 0.6 to 0.7 of the coefficient bits (2<sup>−3/6</sup> to 2<sup>−4/6</sup>), on top of the saving from bi-directional prediction. This is how a leaf B frame reaches 0.15 Mbit next to the I frame\'s 1.1.</p></details>'
           },
           {
             say: 'Our group of pictures is closed and ninety six frames long, four seconds, so every streaming segment can start with a clean key frame.',
             card: { tag: 'KEY IDEA', title: 'Closed GOP = independent segments', body: 'No reference crosses the key frame, so every 4 s segment decodes on its own. ABR switching and CDN caching both require that.' },
             deep: '<p><b>Closed GOP</b> of 96 frames = 4 s: no reference crosses the IDR, so each CMAF segment is independently decodable, which is required for ABR switching and CDN caching.</p>' +
-              '<div class="note">Budget check for 1080p24 HEVC at 4.5 Mb/s: a 4 s GOP must average 18 Mbit, ≈190 kbit per frame. A plausible split is 1 I ≈ 1.1 Mbit + 11 P ≈ 0.4 Mbit + 84 B ≈ 0.15 Mbit (leaf B frames smallest) ≈ 18 Mbit. The quiet ice shots cost a fraction of the impact shot.</div>'
+              '<div class="note">Budget check for 1080p24 HEVC at 4.5 Mb/s: a 4 s GOP must average 18 Mbit, ≈190 kbit per frame. A plausible split is 1 I ≈ 1.1 Mbit + 11 P ≈ 0.4 Mbit + 84 B ≈ 0.15 Mbit (leaf B frames smallest) ≈ 18 Mbit. The quiet ice shots cost a fraction of the impact shot.</div>' +
+              '<details><summary>Go deeper: open versus closed GOP, and aligned keyframes</summary>' +
+              '<p>In an <i>open</i> GOP, B frames after the next I frame in display order may still reference the previous GOP, which saves a little bitrate but makes a segment impossible to decode alone. ABR packaging therefore uses closed GOPs with IDR frames forced on the segment grid (in x264/x265 terms <code>keyint = min-keyint = 96</code> with scene-cut insertion disabled or aligned, and x265\'s open GOP, on by default, switched off), so every rung of the ladder has keyframes at exactly the same instants and a player can switch rungs at any boundary.</p></details>'
           },
           {
             say: 'Prediction starts with motion estimation. For each block, the encoder searches a window in a reference frame for the best match.',
             card: { tag: 'HOW IT WORKS', title: 'Search a window for the best match', body: 'Each block is compared against shifted candidates in the reference frame using SAD, then refined to quarter-pixel precision.', more: '<p>A full search over ±8 px tests (2·8 + 1)² = 289 candidates, each a 256-pixel SAD, so about 74,000 absolute differences per 16×16 block. A 1080p frame has about 8,100 such blocks, so a full search costs roughly 0.6 billion operations per reference frame. A diamond or hexagon search tests about 20 candidates, roughly 15 times fewer, with a small loss in match quality.</p>' },
             deep: '<p><b>Motion estimation</b> per block (H.264 macroblock 16×16 with partitions; HEVC CTU up to 64×64 split by quadtree; AV1 superblock 128×128):</p>' +
               '<div class="eq">mv* = argmin<sub>mv ∈ W</sub>  SAD(mv) + λ·R(mv − mv<sub>pred</sub>),   SAD = Σ |C(x) − R(x + mv)|</div>' +
-              '<p>Searches are hierarchical (diamond / hexagon / UMH), refined to quarter-pel (H.264/HEVC) or 1/8-pel (AV1) with interpolation filters.</p>'
+              '<p>Searches are hierarchical (diamond / hexagon / UMH), refined to quarter-pel (H.264/HEVC) or 1/8-pel (AV1) with interpolation filters.</p>' +
+              '<details><summary>Go deeper: sub-pixel interpolation</summary>' +
+              '<p>Fractional positions are not stored; they are computed from the reference with separable filters. HEVC uses an 8-tap filter for luma half-pel positions and a 7-tap filter for quarter-pel positions, and a 4-tap filter at 1/8 precision for chroma. A quarter-pel vector therefore makes the decoder compute each predicted pixel from up to 8 × 8 neighbours (two passes of 8 taps), which is why motion compensation dominates decoder memory bandwidth, and why the vector precision is a real complexity trade-off.</p></details>'
           },
           {
-            say: 'It then sends only a motion vector plus the residual difference. That residual is a few percent of the block\'s energy, which is why prediction saves so many bits.',
-            card: { tag: 'NUMBERS', title: 'Residual: a few percent', stat: { v: '≈ 3 %', u: 'of block energy', l: 'left after motion compensation; the vector itself costs about 6 bits' } },
-            deep: '<p>Mode decision compares every candidate (partition, reference, intra or inter) by rate-distortion cost J = D + λR, with λ tied to the quantiser (λ ≈ 0.85·2<sup>(QP−12)/3</sup> in H.264/HEVC reference encoders).</p>' +
-              '<p>The bits of a block are the motion vector (coded as a difference from a predictor) plus the transformed and quantised residual, which is the subject of the next step.</p>'
+            say: 'It then sends only a motion vector plus the residual difference. For a good match that residual is only a few percent of the block\'s energy, which is why prediction saves so many bits.',
+            card: { tag: 'NUMBERS', title: 'Residual: a few percent', stat: { v: '≈ 3 %', u: 'of block energy', l: 'left after motion compensation in this well-matched block; the vector itself costs about 6 bits' } },
+            deep: '<p>Mode decision compares every candidate (partition, reference, intra or inter) by rate-distortion cost J = D + λR, with λ tied to the quantiser (λ ≈ 0.85·2<sup>(QP−12)/3</sup> in the H.264 reference encoder; HEVC\'s HM uses the same exponential law with a different constant).</p>' +
+              '<p>The bits of a block are the motion vector (coded as a difference from a predictor) plus the transformed and quantised residual, which is the subject of the next step.</p>' +
+              '<details><summary>Go deeper: skip and merge</summary>' +
+              '<p>In flat, static regions the encoder chooses SKIP or MERGE: the motion vector is inferred from a neighbouring block and no residual is sent, so the block costs a fraction of a bit per pixel. The quiet ice shots are made mostly of such blocks, which is why they sit so far below the average bitrate while the impact shot, full of motion and new detail, runs near the cap. The λ in J = D + λR is what decides between them: a mode that lowers distortion by less than λ per extra bit loses.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -674,7 +746,7 @@
             mv = ctx.line(506 + 182, 618, 506 + 150, 618, { color: 'lime', sw: 2.5, arrow: true, parent: G, opacity: 0 });
             sad = ctx.text(90, 800, 'SAD = —', { size: 14, font: 'mono', color: 'amber', parent: G });
             mvT = ctx.text(506, 800, 'mv = ?', { size: 14, font: 'mono', color: 'lime', parent: G });
-            var sn = note(ctx, G, 90, 826, 'search: 8-point diamond → quarter-pel refinement', 'dim', 'start', 12);
+            var sn = note(ctx, G, 90, 826, 'search: 8 probes at ±8 px, then refine → quarter-pel', 'dim', 'start', 12);
             ctx.hud('search ±8 px · SAD picks the best match');
             /* animate the search: raster over the window, converge on best match (dx = −32 px in scene = −8 px real) */
             var pos = [[-32, -32], [0, -32], [32, -32], [-32, 0], [32, 0], [-32, 32], [0, 32], [32, 32], [0, 0], [-16, 0], [8, 0], [0, 0]];
@@ -721,14 +793,18 @@
           {
             say: 'The residual, or an intra block, is transformed. A discrete cosine transform rewrites the eight by eight pixels as eight by eight frequencies.',
             card: { tag: 'HOW IT WORKS', title: 'Pixels to frequencies', body: 'An 8×8 DCT rewrites 64 pixel values as 64 amplitudes of cosine patterns. It is invertible: nothing has been thrown away yet.' },
-            deep: '<div class="eq">X(u,v) = ¼·c<sub>u</sub>c<sub>v</sub> Σ<sub>y,x</sub> s<sub>y,x</sub>·cos((2y+1)uπ/16)·cos((2x+1)vπ/16),  c<sub>0</sub> = 1/√2</div>' +
-              '<ul><li><b>Transforms</b>: H.264 4×4/8×8 integer DCT; HEVC 4–32 integer DCT (+ DST-VII for 4×4 intra luma); AV1 4×4 to 64×64 with DCT, ADST, flipped ADST and identity per direction (16 combinations); VVC adds MTS and LFNST.</li></ul>'
+            deep: '<div class="eq">X(u,v) = ¼·c<sub>u</sub>c<sub>v</sub> Σ<sub>y,x</sub> s<sub>y,x</sub>·cos((2y+1)uπ/16)·cos((2x+1)vπ/16)<br>c<sub>0</sub> = 1/√2, c<sub>k</sub> = 1 for k &gt; 0</div>' +
+              '<ul><li><b>Transforms</b>: H.264 4×4/8×8 integer DCT; HEVC 4–32 integer DCT (+ DST-VII for 4×4 intra luma); AV1 4×4 to 64×64 with DCT, ADST, flipped ADST and identity per direction (16 combinations); VVC adds MTS and LFNST.</li></ul>' +
+              '<details><summary>Go deeper: separability and integer transforms</summary>' +
+              '<p>The 2-D DCT is separable: transform the 8 rows, then the 8 columns. Directly that is 2 · 8 · (8 · 8) = 1,024 multiply-adds per block; fast factorisations cut each 1-D pass to a few dozen operations. Real codecs use <i>integer</i> approximations rather than the exact cosine, for one reason above all: encoder and decoder must reconstruct bit-identical references, or prediction drifts frame after frame. An integer transform with fixed shifts is identical on every device, whereas floating-point cosines are not.</p></details>'
           },
           {
             say: 'For natural images, energy piles into the top left corner, the low frequencies, and the high frequencies stay small.',
             card: { tag: 'KEY IDEA', title: 'Energy compaction', body: 'Neighbouring pixels are correlated, so a few low-frequency coefficients carry most of the energy. That is what makes the next step cheap.' },
             deep: '<p>For a first-order Markov source with high neighbour correlation, the DCT approaches the optimal Karhunen–Loève transform without having to be sent or learned per block, which is why every block-based codec since JPEG uses it.</p>' +
-              '<p>The block here is an ice edge plus texture. The corner highlighted on the stage holds the share of total coefficient energy computed live from the actual 8×8 transform; the other 55 coefficients share the rest.</p>'
+              '<p>The block here is an ice edge plus texture. The corner highlighted on the stage holds the share of total coefficient energy computed live from the actual 8×8 transform; the other 55 coefficients share the rest.</p>' +
+              '<details><summary>Go deeper: the Gauss-Markov argument</summary>' +
+              '<p>Model a row of pixels as a first-order Gauss-Markov process with correlation ρ between neighbours. The optimal decorrelating transform (the KLT) has eigenvectors of the covariance matrix Σ<sub>ij</sub> = ρ<sup>|i−j|</sup>. As ρ → 1 these eigenvectors approach the DCT-II basis, and for natural-image ρ around 0.9 to 0.95 the DCT\'s coding gain, G = σ<sub>x</sub>² / (Π<sub>k</sub> σ<sub>k</sub>²)<sup>1/N</sup>, is within a fraction of a decibel of the KLT\'s. The DCT is fixed, so nothing about the block has to be sent or learned; the KLT would need its basis transmitted per block.</p></details>'
           },
           {
             say: 'Quantization is where information is actually thrown away. Each coefficient is divided by a step size and rounded, and most high frequency coefficients become zero. The step doubles every six QP.',
@@ -746,7 +822,9 @@
             say: 'A zigzag scan then lines the coefficients up so the zeros cluster at the end, and arithmetic coding finishes the job. The decoder inverts every step to rebuild the block.',
             card: { tag: 'HOW IT WORKS', title: 'Zigzag, then entropy coding', body: 'A diagonal scan groups trailing zeros for a cheap end-of-block signal. CABAC or an AV1 range coder then spends close to the entropy limit.' },
             deep: '<ul><li><b>Entropy coding</b>: zigzag / diagonal scan groups trailing zeros; CABAC (H.264/HEVC) or multi-symbol adaptive arithmetic coding (AV1) codes significance maps, levels and signs at ≈ information-theoretic cost.</li>' +
-              '<li><b>In-loop filters</b> then clean the reconstruction before it is used as a reference: deblocking, SAO (HEVC), CDEF + loop restoration (AV1).</li></ul>'
+              '<li><b>In-loop filters</b> then clean the reconstruction before it is used as a reference: deblocking, SAO (HEVC), CDEF + loop restoration (AV1).</li></ul>' +
+              '<details><summary>Go deeper: how arithmetic coding approaches the entropy</summary>' +
+              '<p>CABAC binarises every syntax element into bins and codes each bin with an adaptive probability chosen by a context (for example the magnitudes of neighbouring coefficients and the position in the scan). A bin with probability p costs −log<sub>2</sub> p bits, so a well-modelled zero costs a small fraction of a bit and the long tail of zeros costs almost nothing beyond the end-of-block signal. The scheme is adaptive and lossless: the decoder mirrors the encoder\'s probability updates, so the total rate sits close to the conditional entropy of the coefficients given their contexts.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -808,9 +886,11 @@
             if (ctx.dead) return;
             /* beat 2: quantisation: divide, round, most become zero */
             mQ = ctx.matrix(780, 230, 8, 8, { cell: CELL, gap: GAP, cmap: 'diverge', stroke: ctx.alpha('dim', 0.35), values: function () { return 0; }, parent: G });
-            for (var u = 0; u < 8; u++) { qTxt.push([]); for (var v = 0; v < 8; v++) { var cc = mQ.cellCenter(u, v); qTxt[u].push(note(ctx, G, cc.x, cc.y + 0.5, '0', 'faint', 'middle', 11)); } }
+            /* the scan path lives under the digits and is revealed only in the beat that talks about the scan */
             var zz = 'M' + ZZ.map(function (p) { var c = mQ.cellCenter(p[0], p[1]); return c.x + ',' + c.y; }).join(' L');
-            zpath = ctx.path(zz, { stroke: ctx.alpha('white', 0.35), sw: 1.2, parent: G });
+            zpath = ctx.path(zz, { stroke: ctx.alpha('white', 0.4), sw: 1.2, parent: G });
+            zpath.setAttribute('opacity', 0);
+            for (var u = 0; u < 8; u++) { qTxt.push([]); for (var v = 0; v < 8; v++) { var cc = mQ.cellCenter(u, v); qTxt[u].push(note(ctx, G, cc.x, cc.y + 0.5, '0', 'faint', 'middle', 11)); } }
             var l2 = ctx.line(736, 378, 772, 378, { color: 'dim', arrow: true, parent: G });
             var qn = note(ctx, G, 928, 540, 'quantised levels', 'orange', 'middle', 13);
             var qbx = box(ctx, G, 1130, 220, 430, 320, 'orange');
@@ -828,7 +908,7 @@
             var qf = [note(ctx, G, 1150, 460, 'Qstep = 2^((QP − 4) / 6)', 'dim', 'start', 13), note(ctx, G, 1150, 486, 'QP + 6 ⇒ step × 2 ⇒ ≈ ½ the bits', 'dim', 'start', 13)];
             apply(22);
             ctx.hud('QP +6 ⇒ Qstep ×2 ⇒ ≈ ½ bits');
-            return Promise.all([ctx.reveal([l2, mQ, qn], { delay: 100, stagger: 150 }), ctx.reveal(zpath, { from: 'draw', delay: 600, dur: 1200 }), ctx.reveal([qbx, qh], { stagger: 60, delay: 200 }), ctx.reveal(S.qpChips, { from: 'left', delay: 500, stagger: 100 }), ctx.reveal([st1, st2, st3, st4].concat(qf), { delay: 800, stagger: 80 })]);
+            return Promise.all([ctx.reveal([l2, mQ, qn], { delay: 100, stagger: 150 }), ctx.reveal([qbx, qh], { stagger: 60, delay: 200 }), ctx.reveal(S.qpChips, { from: 'left', delay: 500, stagger: 100 }), ctx.reveal([st1, st2, st3, st4].concat(qf), { delay: 800, stagger: 80 })]);
           }).then(function () { return ctx.beat(3); }).then(function () {
             if (ctx.dead) return;
             /* beat 3: cycle through QP 30 and 38 (the chips stay clickable) */
@@ -847,7 +927,7 @@
             var rp = ctx.para(560, 710, ['decoder: level × Qstep → inverse DCT → + prediction', 'in-loop: deblocking + SAO (HEVC) / CDEF + LR (AV1)', 'transform sizes: H.264 4–8 · HEVC 4–32 · AV1 4–64', 'AV1 picks DCT / ADST / flipADST / identity per axis'], { size: 13, font: 'mono', color: 'text', lh: 26, parent: G });
             apply(S.qp);
             ctx.hud('zigzag → arithmetic coder → bitstream');
-            return Promise.all([ctx.reveal([sb, sh], { stagger: 60 }), ctx.reveal(seq, { from: 'left', stagger: 25, delay: 200 }), ctx.reveal([se].concat(rn), { delay: 800, stagger: 80 }), ctx.reveal([mR, mE], { from: 'scale', delay: 700, stagger: 150 }), ctx.reveal(rp, { delay: 1200 })]);
+            return Promise.all([ctx.reveal([sb, sh], { stagger: 60 }), ctx.reveal(zpath, { from: 'draw', delay: 100, dur: 1400 }), ctx.reveal(seq, { from: 'left', stagger: 25, delay: 200 }), ctx.reveal([se].concat(rn), { delay: 800, stagger: 80 }), ctx.reveal([mR, mE], { from: 'scale', delay: 700, stagger: 150 }), ctx.reveal(rp, { delay: 1200 })]);
           });
         }
       },
@@ -863,37 +943,52 @@
               '<tr><td>CRF / CQ</td><td>perceptual constant quality (x264/x265 CRF 18–28, NVENC CQ)</td><td>mezzanine, archive</td></tr>' +
               '<tr><td>CBR</td><td>constant bits, strict VBV</td><td>live, low latency</td></tr>' +
               '<tr><td>capped VBR</td><td>target + maxrate + bufsize (VBV/HRD)</td><td>VOD ABR ladders</td></tr>' +
-              '<tr><td>2-pass</td><td>pass 1 logs per-frame complexity</td><td>best allocation at a size</td></tr></table>'
+              '<tr><td>2-pass</td><td>pass 1 logs per-frame complexity</td><td>best allocation at a size</td></tr></table>' +
+              '<details><summary>Go deeper: what two-pass optimises</summary>' +
+              '<p>Pass 1 records, for every frame, how many bits it costs at a reference QP: a complexity c<sub>i</sub>. Pass 2 picks QP<sub>i</sub> to minimise total distortion subject to Σb<sub>i</sub> equal to the budget. With b<sub>i</sub> ≈ c<sub>i</sub> − N·log<sub>2</sub>(Qstep<sub>i</sub>) and D<sub>i</sub> ∝ Qstep<sub>i</sub>², equal slope dD/dR across frames means equal Qstep: for a mean-squared-error criterion the optimum is the same QP everywhere, and the bits simply follow complexity. What bends that in practice is perception (dark and flat regions deserve more bits than their MSE suggests) and the VBV constraint that clips the crash.</p></details>'
           },
           {
             say: 'Capped variable bitrate, with a buffer model, is the choice for streaming: quiet ice shots are cheap, and the crash at fifteen seconds borrows bits. Two pass encoding measures complexity first and then allocates.',
-            card: { tag: 'TRADE-OFF', title: 'Borrow bits for the crash', body: 'Capped VBR spends less on quiet ice and more on the impact, within maxrate. Two-pass knows the complexity in advance.', more: '<p>The decoder buffer fills at maxrate and is drained by each frame as it is decoded. The encoder may burst above the steady rate only as far as the buffer allows: with a bufsize of one second of maxrate (8.5 Mbit), the crash can borrow at most 8.5 Mbit of extra bits, and only if the quieter frames before it left the buffer full.</p>' },
+            card: { tag: 'TRADE-OFF', title: 'Borrow bits for the crash', body: 'Capped VBR spends less on quiet ice and more on the impact, within maxrate. Two-pass knows the complexity in advance.', more: '<p>The decoder buffer fills at maxrate and is drained by each frame as it is decoded. The encoder may burst above the steady rate only as far as the buffer allows: with a bufsize of one second of maxrate (8.5 Mbit), the crash can borrow at most 8.5 Mbit beyond what maxrate alone would deliver, and only if the quieter frames before it left the buffer full.</p>' },
             deep: '<p>The VBV (leaky bucket) guarantees a decoder with buffer B draining at maxrate never under-runs: Σ bits over any window ≤ maxrate·t + B.</p>' +
               '<p>Pass 1 logs per-frame complexity; pass 2 distributes the 4.5 Mb/s average in proportion, capped at 8.5 Mb/s by the VBV. The impact seconds run near the cap while quiet stretches fall to a fraction of the average; CBR would waste bits on the quiet parts and starve the crash.</p>'
           },
           {
-            say: 'Codec generations shift the whole rate quality curve. HEVC needs roughly forty percent fewer bits than the older AVC standard for the same VMAF, and AV1 another twenty to thirty percent.',
-            card: { tag: 'NUMBERS', title: 'BD-rate: bits at equal quality', stat: { v: '−40 %', u: 'HEVC vs H.264', l: 'at equal VMAF; AV1 saves a further 20 to 30 percent over HEVC' } },
-            deep: '<p><b>BD-rate</b> (Bjøntegaard delta): average bitrate difference between two RD curves at equal quality, integrated over the overlapping quality range in log-rate. Reported gains: HEVC vs H.264 ≈ −35…−50 % (objective PSNR BD-rate at the low end, subjective tests at the high end), AV1 vs HEVC ≈ −20…−30 % (content and encoder dependent); VVC ≈ −40 % vs HEVC in JVET common test conditions, but with limited device decode support in 2026.</p>'
+            say: 'Your turn. Click a rate control mode and watch the bits move, and the decoder buffer with them. Constant quality lets the crash spike past the cap and drain the buffer, constant bitrate flattens everything, and capped variable bitrate finds the middle.',
+            card: { tag: 'TRY IT', title: 'Click a rate-control mode', body: 'CRF, CBR or capped VBR: the same 30 seconds get three bit allocations. Watch the crash against the maxrate line, and the buffer on the left.' },
+            deep: '<p>Same content, three controllers. Let r(t) be the complexity of second t:</p>' +
+              '<ul><li><b>CRF</b>: bits ∝ r(t), unbounded. The crash asks for about 14 Mb/s, which is 11.7 Mbit more than maxrate delivers over those seconds. An 8.5 Mbit decoder buffer cannot absorb that: the fullness plot dips to about −3.1 Mbit, so playback would underrun from about 16 s to 18 s.</li>' +
+              '<li><b>CBR</b>: 4.5 Mb/s in every second. Nothing can overflow, but quiet ice is over-served and the crash is starved.</li>' +
+              '<li><b>Capped VBR</b>: bits ∝ r(t) clipped at 8.5 Mb/s, with the constant solved so the mean is exactly 4.5 Mb/s. Every second stays at or under maxrate, so the buffer constraint holds.</li></ul>' +
+              '<details><summary>Go deeper: the VBV buffer as a leaky bucket</summary>' +
+              '<p>The buffer level evolves as B<sub>t+1</sub> = min(B<sub>max</sub>, B<sub>t</sub> + R<sub>max</sub>·Δt − b<sub>t</sub>), where b<sub>t</sub> is the size of the picture removed at time t. An underrun is B falling below zero. Over any window of w seconds the stream may therefore exceed R<sub>max</sub>·w by at most B<sub>max</sub>, here 8.5 Mb/s · w + 8.5 Mbit. The CRF profile breaks that bound by about 3 Mbit around the crash; the capped profile never exceeds R<sub>max</sub> in any second, so it satisfies the bound trivially.</p></details>'
+          },
+          {
+            say: 'Codec generations shift the whole rate quality curve. In typical reports HEVC needs roughly forty percent fewer bits than the older AVC standard for the same VMAF, and AV1 saves a further ten to thirty percent.',
+            card: { tag: 'NUMBERS', title: 'BD-rate: bits at equal quality', stat: { v: '−40 %', u: 'HEVC vs H.264', l: 'at equal VMAF, in typical reports; AV1 saves a further 10 to 30 percent over HEVC' } },
+            deep: '<p><b>BD-rate</b> (Bjøntegaard delta): average bitrate difference between two RD curves at equal quality, integrated over the overlapping quality range in log-rate. Reported gains: HEVC vs H.264 ≈ −25…−50 % (content, metric and encoder dependent); AV1 vs HEVC ≈ −10…−30 % in published comparisons (for example about 18 % in a 2017 Moscow State University test and about 10 % at 4K in a 2020 University of Waterloo study); VVC about −40 % vs HEVC in objective tests and up to about −50 % in subjective ones, with device decode support still growing.</p>' +
+              '<details><summary>Go deeper: computing a BD-rate</summary>' +
+              '<p>Encode each codec at four or more QPs and record (bitrate, quality) points. Fit a cubic polynomial of quality against log-rate for each codec, integrate both fits over the quality interval they share, and take the difference of the mean log-rates: ΔR = exp( (∫ log R<sub>B</sub> − ∫ log R<sub>A</sub>) / (Q<sub>hi</sub> − Q<sub>lo</sub>) ) − 1. The result is a single percentage for "bits saved at equal quality". It depends on the quality metric (PSNR, SSIM or VMAF), on the content and on the encoder presets, which is why published figures come as ranges, and why 4 QPs on one clip is an anecdote, not a benchmark.</p></details>'
           },
           {
             say: 'Hardware encoders like NVENC do all of this at hundreds of frames per second, without touching the CUDA cores that the rest of the job needs.',
-            card: { tag: 'STATE OF THE ART', title: 'NVENC on dedicated silicon', body: 'Ada and Blackwell encoders handle H.264, HEVC and AV1 in fixed-function blocks. Slow software encoders still win 10 to 20 percent bitrate.' },
-            deep: '<div class="note"><b>NVENC</b> (Ada, Blackwell): dedicated ASIC blocks, H.264 / HEVC / AV1, presets P1–P7, lookahead, temporal AQ and B-frames as references; multiple 1080p streams at hundreds of fps per GPU without touching the CUDA cores. Slow software encoders (x265 veryslow, SVT-AV1 preset 2–4) still win ≈10–20 % BD-rate, worth it for a video watched a million times.</div>'
+            card: { tag: 'STATE OF THE ART', title: 'NVENC on dedicated silicon', body: 'Ada and newer encoders handle H.264, HEVC and AV1 in fixed-function blocks. Slow software encoders usually still win some bitrate at equal quality.' },
+            deep: '<div class="note"><b>NVENC</b> (Ada and newer): dedicated ASIC blocks, H.264 / HEVC / AV1, presets P1–P7, lookahead, temporal AQ and B-frames as references; multiple 1080p streams at hundreds of fps per GPU at fast presets, without touching the CUDA cores. Slow software encoders (x265 veryslow, SVT-AV1 at slow presets) usually still win some BD-rate, worth it for a video watched a million times; the margin depends on content and settings.</div>' +
+              '<p>Placement matters: data-centre training parts such as the H100 carry decode engines but no NVENC block, so the encode stage runs on a separate pool of encode-capable GPUs (L4 or L40S class) while the H100s that rendered the shots stay free for the next job.</p>'
           }
         ],
         run: function (ctx) {
           var S = ctx.state;
           var G = stage(ctx);
           nav(ctx, 3);
-          var vb, cx = [];
+          var vb;
           /* beat 0: the rate-control modes */
           var mb = box(ctx, G, 60, 630, 1500, 220, 'orange');
           var mh = head(ctx, G, 80, 654, 'RATE-CONTROL MODES · and who encodes');
           var modes = [['CRF / CQ', 'constant quality, size floats', 'violet'], ['CBR', 'constant bits, live / low latency', 'cyan'], ['capped VBR', 'target + maxrate + bufsize', 'orange'], ['2-pass', 'measure, then allocate', 'amber']];
           var mc = modes.map(function (m, k) {
             var g = ctx.group({ parent: G });
-            ctx.label(180 + k * 250, 700, m[0], { color: m[2], size: 14, w: 200, parent: g });
+            ctx.label(180 + k * 250, 700, m[0], { color: m[2], textColor: tc(ctx, m[2]), size: 14, w: 200, parent: g });
             note(ctx, g, 180 + k * 250, 732, m[1], 'dim', 'middle', 11);
             return g;
           });
@@ -903,28 +998,87 @@
             if (ctx.dead) return;
             /* beat 1: bit allocation over time */
             var bb = box(ctx, G, 860, 170, 700, 440, 'orange');
-            var bh = head(ctx, G, 880, 194, 'BIT ALLOCATION · capped VBR vs CBR (kbit per second)');
-            for (var s = 0; s < 30; s++) {
-              var c = 0.35 + 0.1 * Math.sin(s * 0.7);
-              if (s >= 9 && s < 13) c = 0.75;
-              if (s >= 13 && s < 18) c = 1.0 - 0.1 * Math.abs(s - 15);
-              if (s >= 27) c = 0.15;
-              cx.push(Math.min(1, c));
-            }
-            vb = ctx.bars(900, 240, 620, 280, cx.map(function () { return 0.01; }), { color: cx.map(function (c) { return c > 0.7 ? 'amber' : 'orange'; }), gap: 3, parent: G });
-            var cbrY = 240 + 280 - 0.5 * 280, capY = 240 + 280 - 0.95 * 280;
+            var bh = head(ctx, G, 880, 194, 'BIT ALLOCATION · Mb/s in each second of the trailer');
+            var RP = S.rcP = rcProfiles();
+            var U = 280 / RC_TOP;
+            vb = S.rcBars = ctx.bars(900, 240, 620, 280, RP.vbr.map(function () { return 0.01; }), { color: RP.vbr.map(function (v) { return v > 6 ? 'amber' : 'orange'; }), gap: 3, parent: G });
+            var cbrY = 520 - RC_AVG * U, capY = 520 - RC_CAP * U;
             var lines = [ctx.line(900, cbrY, 1520, cbrY, { color: 'cyan', dash: '6 4', parent: G }), ctx.line(900, capY, 1520, capY, { color: 'red', dash: '3 4', parent: G })];
-            var ln = [note(ctx, G, 1516, cbrY - 10, 'CBR 4.5 Mb/s', 'cyan', 'end', 11), note(ctx, G, 1516, capY - 10, 'maxrate 8.5 Mb/s (VBV)', 'red', 'end', 11)];
+            var ln = [note(ctx, G, 1516, cbrY + 12, 'CBR level = average 4.5 Mb/s', 'cyan', 'end', 11), note(ctx, G, 1516, capY - 10, 'maxrate 8.5 Mb/s (VBV)', 'text', 'end', 11)];
             [0, 5, 10, 15, 20, 25].forEach(function (t) { ln.push(note(ctx, G, 900 + t * (620 / 30) + 8, 540, t + 's', 'dim', 'middle', 11)); });
             ln.push(note(ctx, G, 900 + 15 * (620 / 30), 226, 'impact', 'amber', 'middle', 11));
-            ln.push(note(ctx, G, 880, 574, 'average 4.5 Mb/s · 2-pass: pass 1 measures complexity, pass 2 allocates', 'text', 'start', 12));
+            S.rcNote = note(ctx, G, 880, 574, RC_TEXT.vbr, 'text', 'start', 12);
+            ln.push(S.rcNote);
             ctx.hud('avg 4.5 Mb/s · cap 8.5 Mb/s · impact borrows');
-            return Promise.all([ctx.reveal([bb, bh], { stagger: 60 }), ctx.reveal(vb, { delay: 100 }), ctx.reveal(lines, { from: 'draw', delay: 300 }), ctx.reveal(ln, { delay: 600, stagger: 40 })]).then(function () { return vb.update(cx.map(function (c) { return Math.min(0.95, c); }), 1400); });
+            return Promise.all([ctx.reveal([bb, bh], { stagger: 60 }), ctx.reveal(vb, { delay: 100 }), ctx.reveal(lines, { from: 'draw', delay: 300 }), ctx.reveal(ln, { delay: 600, stagger: 40 })]).then(function () { return vb.update(RP.vbr.map(function (v) { return v / RC_TOP; }), 1400); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             if (ctx.dead) return;
-            /* beat 2: codec generations shift the rate-quality curve */
+            /* beat 2: TRY IT, switch the controller and watch the same 30 s get three allocations */
+            var MODES = [['crf', 'CRF', 'violet'], ['cbr', 'CBR', 'cyan'], ['vbr', 'capped VBR', 'orange']];
+            /* left: the decoder buffer (VBV) that each allocation would produce; refilled at maxrate, drained by every picture */
+            var vg = S.vbvG = ctx.group({ parent: G });
+            box(ctx, vg, 60, 170, 760, 440, 'orange');
+            head(ctx, vg, 80, 194, 'DECODER BUFFER · VBV fullness after each second (Mbit)');
+            var vpl = ctx.plot(130, 240, 640, 290, function () { return -99; }, { xDomain: [0, 30], yDomain: [-4, 10], color: 'none', parent: vg });
+            var yTop = vpl.toPx(0, RC_BUF).y, yZero = vpl.toPx(0, 0).y;
+            ctx.line(130, yTop, 770, yTop, { color: 'cyan', dash: '6 4', parent: vg });
+            ctx.line(130, yZero, 770, yZero, { color: 'red', dash: '3 4', parent: vg });
+            note(ctx, vg, 764, yTop - 10, 'bufsize 8.5 Mbit (full)', 'cyan', 'end', 11);
+            note(ctx, vg, 764, yZero + 14, 'below 0 = underrun: playback stalls', 'red', 'end', 11);
+            [-4, 0, 4, 8].forEach(function (v) { note(ctx, vg, 122, vpl.toPx(0, v).y, String(v), 'dim', 'end', 11); });
+            [0, 10, 20, 30].forEach(function (t) { note(ctx, vg, vpl.toPx(t, -4).x, 548, t + 's', 'dim', 'middle', 11); });
+            var vcurve = ctx.path('M130,' + yTop, { stroke: 'lime', sw: 2.6, parent: vg });
+            var vnote = note(ctx, vg, 80, 578, '', 'text', 'start', 12);
+            note(ctx, vg, 80, 597, 'B(t+1) = min(8.5, B(t) + 8.5 − bits(t))  ·  refill at maxrate, drain by each picture', 'dim', 'start', 11);
+            function paintBuf(vals) {
+              var B = RC_BUF, pts = [[0, B]], lo = B, d = 'M' + vpl.toPx(0, B).x.toFixed(1) + ',' + vpl.toPx(0, B).y.toFixed(1);
+              for (var k = 0; k < 30; k++) {
+                B = Math.min(RC_BUF, B + RC_CAP - vals[k]); lo = Math.min(lo, B);
+                var p = vpl.toPx(k + 1, B); d += ' L' + p.x.toFixed(1) + ',' + p.y.toFixed(1);
+              }
+              vcurve.setAttribute('d', d);
+              vcurve.setAttribute('stroke', lo < 0 ? ctx.C.red : ctx.C.lime);
+              vnote.textContent = lo < 0 ? 'lowest level ' + lo.toFixed(1).replace('-', '−') + ' Mbit: UNDERRUN around the crash' : 'lowest level ' + lo.toFixed(1) + ' Mbit: the buffer never underruns';
+              vnote.setAttribute('fill', lo < 0 ? ctx.C.red : ctx.C.lime);
+            }
+            function paint(mode) {
+              S.rcMode = mode;
+              var vals = S.rcP[mode];
+              paintBuf(vals);
+              S.rcBars.bars.forEach(function (b, i) {
+                var v = vals[i], col = mode === 'cbr' ? 'cyan' : (v > RC_CAP + 0.01 ? 'red' : (mode === 'crf' ? 'violet' : (v > 6 ? 'amber' : 'orange')));
+                b.setAttribute('fill', ctx.alpha(col, 0.75)); b.setAttribute('stroke', ctx.C[col]);
+              });
+              S.rcBars.update(vals.map(function (v) { return v / RC_TOP; }), 700);
+              S.rcNote.textContent = RC_TEXT[mode];
+              S.rcChips.forEach(function (c, k) {
+                var on = MODES[k][0] === mode;
+                c.childNodes[0].setAttribute('fill', on ? ctx.alpha(MODES[k][2], 0.25) : 'rgba(123,140,171,0.08)');
+                c.childNodes[0].setAttribute('stroke', on ? ctx.C[MODES[k][2]] : ctx.alpha('dim', 0.5));
+                c.childNodes[1].setAttribute('fill', on ? ctx.C.white : ctx.C.dim);
+              });
+              ctx.hud(MODES.filter(function (m) { return m[0] === mode; })[0][1] + ' · average 4.5 Mb/s · peak ' + Math.max.apply(null, vals).toFixed(1) + ' Mb/s');
+            }
+            S.rcChips = MODES.map(function (m, k) {
+              var c = ctx.label(940 + k * 96, 218, m[1], { color: m[2], textColor: 'white', size: 11, w: 88, parent: G });
+              c.style.cursor = 'pointer';
+              c.addEventListener('click', function () { if (!ctx.dead) paint(m[0]); });
+              return c;
+            });
+            paint('vbr');
+            return Promise.all([ctx.reveal(S.rcChips, { from: 'up', stagger: 100 }), ctx.reveal(vg, { from: 'left', dur: 600 })]).then(function () { return ctx.wait(500); }).then(function () {
+              paint('crf'); return ctx.wait(2100);
+            }).then(function () {
+              paint('cbr'); return ctx.wait(1700);
+            }).then(function () {
+              paint('vbr'); return ctx.pulse(S.rcChips[2], { color: 'orange', times: 1, dur: 600 });
+            });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            if (ctx.dead) return;
+            /* beat 3: codec generations shift the rate-quality curve (the buffer panel makes room) */
+            ctx.fadeOut(S.vbvG, 300, true);
             var rb = box(ctx, G, 60, 170, 760, 440, 'orange');
-            var rh = head(ctx, G, 80, 194, 'RATE–QUALITY · 1080p24 · VMAF vs bitrate (log)');
+            var rh = head(ctx, G, 80, 194, 'RATE–QUALITY · 1080p24 · VMAF vs bitrate (log) · illustrative');
             function vm(R, s) { return 100 - 23.7 * Math.pow(R / s, -0.8); }
             var lx = [Math.log(0.5) / Math.LN10, Math.log(12) / Math.LN10];
             var codecs = [['H.264', 1, 'dim'], ['HEVC', 0.6, 'cyan'], ['AV1', 0.45, 'lime']];
@@ -943,15 +1097,15 @@
             var leg = nb(['H.264   baseline', 'HEVC    −40 % bits', 'AV1     −25 % vs HEVC']);
             codecs.forEach(function (c, k) { ax.push(cnote(ctx, G, 580, 470 + k * 22, leg[k], c[2], 12)); });
             ax.push(note(ctx, G, 580, 540, 'arrows: equal VMAF 93', 'dim', 'start', 11));
-            ax.push(note(ctx, G, 150, 250, 'VMAF 93 ≈ "excellent" on a TV', 'dim', 'start', 11));
-            ctx.hud('HEVC ≈ −40 % vs H.264 · AV1 ≈ −25 % vs HEVC');
+            ax.push(note(ctx, G, 150, 250, 'VMAF: 0–100, 100 = identical to reference', 'dim', 'start', 11));
+            ctx.hud('model: HEVC −40 % vs H.264 · AV1 −25 % vs HEVC');
             return Promise.all([ctx.reveal([rb, rh], { stagger: 60 })].concat(plots.map(function (p, k) { return ctx.reveal(p.curve, { from: 'draw', delay: 200 + k * 300, dur: 900 }); }), [ctx.reveal(ax, { delay: 300, stagger: 20 }), ctx.reveal(bd, { from: 'draw', delay: 1300, stagger: 200 })]));
-          }).then(function () { return ctx.beat(3); }).then(function () {
+          }).then(function () { return ctx.beat(4); }).then(function () {
             if (ctx.dead) return;
-            /* beat 3: NVENC does the encoding on dedicated silicon */
+            /* beat 4: NVENC does the encoding on dedicated silicon */
             var nv = ctx.node({ x: 1320, y: 710, w: 400, h: 64, title: 'NVENC ASIC', sub: 'H.264 · HEVC · AV1 · P1–P7 · lookahead', icon: 'chip', color: 'red', titleSize: 16, subSize: 11, parent: G });
-            var nn = note(ctx, G, 80, 816, '4 rungs × 3 codecs = 12 encodes of 720 frames, fanned out over the job\'s 8 GPUs\' NVENC engines ≈ 3 s', 'dim', 'start', 12);
-            ctx.hud('12 encodes on 8 NVENC engines ≈ 3 s');
+            var nn = note(ctx, G, 80, 816, '5 rungs × 3 codecs = 15 encodes of 720 frames on an 8-GPU L4/L40S pool ≈ 3 s (budget)', 'dim', 'start', 12);
+            ctx.hud('15 encodes on 8 NVENC GPUs ≈ 3 s');
             return Promise.all([ctx.reveal(nv, { from: 'right' }), ctx.reveal(nn, { delay: 500 })]).then(function () { return ctx.pulse(nv, { color: 'red', times: 2, dur: 600 }); });
           });
         }
@@ -964,18 +1118,22 @@
             say: 'One encode is not enough, because viewers have different screens and networks. Per title encoding encodes several resolutions across many bitrates, draws their quality curves, and keeps only the upper convex hull.',
             card: { tag: 'KEY IDEA', title: 'Keep only the upper convex hull', body: 'For every bitrate, the best resolution wins. Their upper envelope is the efficient frontier that ladder rungs sit on.' },
             deep: '<p><b>Per-title / per-shot encoding</b> (Netflix 2015 → dynamic optimizer): for each resolution r, encode at many CRFs, compute (bitrate, VMAF), take the upper convex hull over all r, then pick rungs along it.</p>' +
-              '<p>A dark, slow trailer might need 3.2 Mb/s for VMAF 95 at 1080p; a grainy action trailer 7 Mb/s. A fixed ladder must serve both; a per-title ladder does not overspend on the first or underserve the second.</p>'
+              '<p>A dark, slow trailer might need 3.2 Mb/s for VMAF 95 at 1080p; a grainy action trailer 7 Mb/s. A fixed ladder must serve both; a per-title ladder does not overspend on the first or underserve the second.</p>' +
+              '<details><summary>Go deeper: the dynamic optimizer</summary>' +
+              '<p>Per-shot encoding lets each shot pick its own resolution and QP. With shot i encoded at operating points (R<sub>ij</sub>, D<sub>ij</sub>), the goal is min Σ<sub>i</sub> D<sub>i</sub> subject to Σ<sub>i</sub> R<sub>i</sub> ≤ R<sub>target</sub>. The Lagrangian solution takes, for a common slope −λ, the point on each shot\'s convex hull where dD/dR = −λ, and sweeps λ to trace out the ladder: a hard shot and an easy shot end up at different bitrates but at the same marginal return. It is the same equal-slope rule that governs two-pass allocation in the previous step.</p></details>'
           },
           {
-            say: 'At low bitrates a smaller resolution looks better than a starved ten eighty p, so the chosen rungs sit on that hull, roughly two times apart in bitrate.',
-            card: { tag: 'HOW IT WORKS', title: 'Small beats starved at low rates', body: 'On this illustrative title the hull hands over from 540p to 720p near 1.9 Mb/s and to 1080p near 3.7 Mb/s. Rungs sit about 2× apart.', more: '<p>The hull is built from all (bitrate, VMAF) points of all resolutions with a monotone-chain algorithm in O(n log n). Rungs are then spaced so that neighbouring VMAF values differ by roughly one just-noticeable difference (about 2 to 6 VMAF points): closer wastes storage, farther makes each switch visible.</p>' },
-            deep: '<p>Rungs are chosen along the hull about 1.5–2× apart in bitrate, which gives the ABR algorithm meaningful steps without wasting storage: here 0.6, 1.4, 2.5 and 4.5 Mb/s at 360p, 540p, 720p and 1080p.</p>' +
+            say: 'At low bitrates a smaller resolution looks better than a starved ten eighty p, so the chosen rungs sit on that hull, roughly one and a half to two times apart in bitrate.',
+            card: { tag: 'HOW IT WORKS', title: 'Small beats starved at low rates', body: 'On this illustrative title the hull hands over from 540p to 720p near 1.8 Mb/s and to 1080p near 3.6 Mb/s. Rungs sit 1.5 to 1.8× apart.', more: '<p>The hull is built from all (bitrate, VMAF) points of all resolutions with a monotone-chain algorithm in O(n log n). Rungs are then spaced so that neighbouring VMAF values differ by roughly one just-noticeable difference (a few VMAF points): closer wastes storage, farther makes each switch visible.</p>' },
+            deep: '<p>Rungs are chosen along the hull about 1.5–2× apart in bitrate, which gives the ABR algorithm meaningful steps without wasting storage: here 0.6, 0.9, 1.4, 2.5 and 4.5 Mb/s at 360p, 432p, 540p, 720p and 1080p.</p>' +
               '<p>Below the crossover a smaller frame with fewer, cleaner pixels beats a large frame with blocking and blur, and the player upscales it. The curves drawn here are an illustrative model, not measured data.</p>'
           },
           {
             say: 'The chosen rungs are then cut into four second CMAF segments: fragmented MP4 with a shared init segment, and one closed group of pictures per segment.',
             card: { tag: 'NUMBERS', title: 'One GOP per segment', stat: { v: '96', u: 'frames = 4 s', l: 'one closed GOP per CMAF segment; eight segments for the 30 s trailer, the last one 2 s' } },
-            deep: '<p><b>CMAF</b> (ISO/IEC 23000-19): <code>init.mp4</code> = ftyp + moov (codec config, no samples); each segment = styp + moof + mdat with one closed GOP. Segments of 2–6 s trade startup and switch latency against compression (longer GOP) and request overhead. Low-latency CMAF splits segments into ~0.5 s chunks sent with HTTP chunked transfer.</p>'
+            deep: '<p><b>CMAF</b> (ISO/IEC 23000-19): <code>init.mp4</code> = ftyp + moov (codec config, no samples); each segment = styp + moof + mdat with one closed GOP. Segments of 2–6 s trade startup and switch latency against compression (longer GOP) and request overhead. Low-latency CMAF splits segments into sub-segment chunks (commonly around 0.5 to 1 s) sent with HTTP chunked transfer.</p>' +
+              '<details><summary>Go deeper: keeping fragments aligned</summary>' +
+              '<p>Each segment\'s <code>tfdt</code> box carries its baseMediaDecodeTime in the track timescale (24000 here), so segment k starts at exactly k · 96,000 ticks with no cumulative drift. Every rung uses the same values and the same IDR positions, which is what lets a player splice segment 5 of the 720p rung after segment 4 of the 1080p rung with no discontinuity. If rungs disagreed by even one frame, the switch would show as a repeated or dropped picture at the boundary.</p></details>'
           },
           {
             say: 'The same segments are described twice, by an HLS playlist for Apple devices and a DASH manifest for everything else. The C2PA provenance manifest travels in the init segment.',
@@ -983,14 +1141,16 @@
             deep: '<ul><li><b>HLS</b> (RFC 8216): master playlist lists variants with BANDWIDTH, RESOLUTION, CODECS; media playlists list segments with EXTINF and EXT-X-MAP for the init segment.</li>' +
               '<li><b>DASH</b> (ISO/IEC 23009-1): MPD → Period → AdaptationSet → Representation, with SegmentTemplate addressing.</li>' +
               '<li><b>C2PA</b>: the manifest (claims: generator, AI-generated assertion, edit actions, signatures) is stored in a <code>uuid</code> box in the init segment; fragments are bound by a BMFF Merkle-tree hash so each segment can be verified independently.</li>' +
-              '<li><b>DRM</b> (if needed): CENC cbcs encryption lets one set of CMAF segments serve FairPlay, Widevine and PlayReady.</li></ul>'
+              '<li><b>DRM</b> (if needed): CENC cbcs encryption lets one set of CMAF segments serve FairPlay, Widevine and PlayReady.</li></ul>' +
+              '<details><summary>Go deeper: BANDWIDTH versus AVERAGE-BANDWIDTH</summary>' +
+              '<p>HLS <code>BANDWIDTH</code> is the peak segment bit rate and <code>AVERAGE-BANDWIDTH</code> the mean over the presentation. With capped VBR at a 4.5 Mb/s average and an 8.5 Mb/s VBV cap, the impact segment approaches the cap, so the master playlist declares BANDWIDTH = 8,500,000 for the 1080p variant. A player that budgeted by the average would pick that rung, hit the crash segment, and stall; budgeting by the peak is what keeps the buffer safe, at the cost of choosing a lower rung on marginal networks.</p></details>'
           }
         ],
         run: function (ctx) {
           var S = ctx.state;
           var G = stage(ctx);
           nav(ctx, 4);
-          var res = [['360p', 0.18, 74, 'violet'], ['540p', 0.42, 86, 'cyan'], ['720p', 0.75, 93, 'lime'], ['1080p', 1.25, 98, 'orange']];
+          var res = [['360p', 0.18, 74, 'violet'], ['432p', 0.34, 82, 'pink'], ['540p', 0.42, 86, 'cyan'], ['720p', 0.75, 93, 'lime'], ['1080p', 1.25, 98, 'orange']];
           var lx = [Math.log(0.2) / Math.LN10, Math.log(10) / Math.LN10];
           function q(R, r) { return r[2] - (r[2] - 20) * Math.exp(-R / r[1] * 0.9); }
           var ps, hull;
@@ -1008,18 +1168,20 @@
           var ax = [];
           [0.25, 0.5, 1, 2, 4, 8].forEach(function (R) { var p = ps[0].toPx(Math.log(R) / Math.LN10, 30); ax.push(note(ctx, G, p.x, 536, R + '', 'dim', 'middle', 11)); });
           ax.push(note(ctx, G, 770, 554, 'Mb/s', 'dim', 'end', 11));
-          res.forEach(function (r, k) { ax.push(note(ctx, G, 150 + k * 90, 250, r[0], r[3], 'start', 12)); });
+          [40, 60, 80, 100].forEach(function (v) { var p = ps[0].toPx(lx[0], v); ax.push(note(ctx, G, 122, p.y, String(v), 'dim', 'end', 11)); });
+          ax.push(note(ctx, G, 100, 214, 'VMAF', 'dim', 'start', 11));
+          res.forEach(function (r, k) { ax.push(note(ctx, G, 150 + k * 84, 250, r[0], r[3], 'start', 12)); });
           ctx.hud('per-title ladder: upper convex hull');
           return Promise.all([ctx.reveal([pb, ph], { stagger: 60 }), ctx.reveal(ax, { delay: 200, stagger: 20 })].concat(ps.map(function (p, k) { return ctx.reveal(p.curve, { from: 'draw', delay: k * 200, dur: 800 }); }), [ctx.reveal(hull.curve, { from: 'draw', delay: 1000, dur: 1000 })])).then(function () { return ctx.beat(1); }).then(function () {
             if (ctx.dead) return;
             /* beat 1: the chosen rungs on the hull */
-            var rungs = [[0.6, 0], [1.4, 1], [2.5, 2], [4.5, 3]].map(function (p) {
+            var rungs = [[0.6, 0], [0.9, 1], [1.4, 2], [2.5, 3], [4.5, 4]].map(function (p) {
               var pt = ps[0].toPx(Math.log(p[0]) / Math.LN10, q(p[0], res[p[1]]));
               return ctx.circle(pt.x, pt.y, 7, { fill: res[p[1]][3], stroke: 'white', sw: 1.5, parent: G, glow: true });
             });
             var rn = note(ctx, G, 470, 470, 'white = upper hull · dots = chosen rungs', 'text', 'start', 12);
-            ctx.hud('4 rungs: 0.6 · 1.4 · 2.5 · 4.5 Mb/s');
-            return Promise.all([ctx.reveal(rungs, { from: 'scale', stagger: 150 }), ctx.reveal(rn, { delay: 600 })]).then(function () { return ctx.pulse(rungs[3], { color: 'orange', times: 2, dur: 600 }); });
+            ctx.hud('5 rungs: 0.6 · 0.9 · 1.4 · 2.5 · 4.5 Mb/s');
+            return Promise.all([ctx.reveal(rungs, { from: 'scale', stagger: 150 }), ctx.reveal(rn, { delay: 600 })]).then(function () { return ctx.pulse(rungs[4], { color: 'orange', times: 2, dur: 600 }); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             if (ctx.dead) return;
             /* beat 2: CMAF: one init segment, GOP-aligned media segments */
@@ -1028,7 +1190,7 @@
             var init = ctx.group({ parent: G });
             ctx.rect(890, 220, 150, 110, { rx: 6, fill: ctx.alpha('cyan', 0.1), stroke: 'cyan', sw: 1.3, parent: init });
             note(ctx, init, 965, 238, 'init.mp4', 'cyan', 'middle', 12);
-            ['ftyp', 'moov', 'uuid: C2PA'].forEach(function (b, k) { ctx.label(965, 266 + k * 24, b, { color: k === 2 ? 'pink' : 'cyan', size: 11, w: 120, parent: init }); });
+            ['ftyp', 'moov', 'uuid: C2PA'].forEach(function (b, k) { ctx.label(965, 266 + k * 24, b, { color: k === 2 ? 'pink' : 'cyan', textColor: tc(ctx, k === 2 ? 'pink' : 'cyan'), size: 11, w: 120, parent: init }); });
             var segs = [];
             for (var s = 0; s < 8; s++) {
               var g = ctx.group({ parent: G });
@@ -1039,7 +1201,7 @@
               segs.push(g);
             }
             var cn = [note(ctx, G, 890, 350, '4 s = 96 frames = 1 closed GOP · IDR at every boundary · 8 segments (last 2 s)', 'text', 'start', 12), note(ctx, G, 890, 372, 'Merkle-tree hash binds each fragment to the C2PA manifest', 'pink', 'start', 12)];
-            var lad = ctx.para(890, 406, nb(['v1080  HEVC Main10  4.5 Mb/s  1920×1080', 'v720   HEVC Main10  2.5 Mb/s  1280×720', 'v540   HEVC Main10  1.4 Mb/s   960×540', 'v360   HEVC Main10  0.6 Mb/s   640×360', '(+ AV1 set and H.264 fallback set)']), { size: 12.5, font: 'code', color: 'text', lh: 24, parent: G });
+            var lad = ctx.para(890, 406, nb(['v1080  HEVC Main10  4.5 Mb/s  1920×1080', 'v720   HEVC Main10  2.5 Mb/s  1280×720', 'v540   HEVC Main10  1.4 Mb/s   960×540', 'v432   HEVC Main10  0.9 Mb/s   768×432', 'v360   HEVC Main10  0.6 Mb/s   640×360', '(+ AV1 set and H.264 fallback set)']), { size: 12.5, font: 'code', color: 'text', lh: 24, parent: G });
             ctx.hud('4 s CMAF segments · 1 init · 1 GOP each');
             return Promise.all([ctx.reveal([cb, chh], { stagger: 60 }), ctx.reveal(init, { from: 'left', delay: 300 }), ctx.reveal(segs, { from: 'left', stagger: 70, delay: 500 }), ctx.reveal(cn, { delay: 1000, stagger: 100 }), ctx.reveal(lad, { delay: 1200 })]);
           }).then(function () { return ctx.beat(3); }).then(function () {
@@ -1049,21 +1211,21 @@
               '#EXTM3U',
               '#EXT-X-VERSION:7',
               '#EXT-X-INDEPENDENT-SEGMENTS',
-              '#EXT-X-STREAM-INF:BANDWIDTH=5200000,AVERAGE-BANDWIDTH=4500000,',
+              '#EXT-X-STREAM-INF:BANDWIDTH=8500000,AVERAGE-BANDWIDTH=4500000,',
               '  RESOLUTION=1920x1080,CODECS="hvc1.2.4.L123.B0,mp4a.40.2"',
               'v1080/index.m3u8',
-              '#EXT-X-STREAM-INF:BANDWIDTH=2900000,RESOLUTION=1280x720,…',
+              '#EXT-X-STREAM-INF:BANDWIDTH=4750000,RESOLUTION=1280x720,…',
               'v720/index.m3u8']) });
             var mpd = ctx.code({ x: 820, y: 590, w: 740, title: 'manifest.mpd (DASH)', lang: 'text', size: 12, color: 'cyan', parent: G, lines: nb([
-              '<MPD type="static" mediaPresentationDuration="PT30S">',
+              '<MPD type="static" mediaPresentationDuration="PT30S" minBufferTime="PT4S">',
               ' <Period><AdaptationSet mimeType="video/mp4"',
               '   segmentAlignment="true" startWithSAP="1">',
               '  <SegmentTemplate timescale="24000" duration="96000"',
               '    initialization="v$RepresentationID$/init.mp4"',
               '    media="v$RepresentationID$/s$Number$.m4s"/>',
-              '  <Representation id="1080" bandwidth="4500000"',
+              '  <Representation id="1080" bandwidth="8500000"',
               '    codecs="hvc1.2.4.L123.B0" width="1920" height="1080"/>']) });
-            ctx.hud('4 rungs · 4 s CMAF · HLS + DASH · C2PA');
+            ctx.hud('5 rungs · 4 s CMAF · HLS + DASH · C2PA');
             return ctx.reveal([hls, mpd], { from: 'up', stagger: 200 }).then(function () { return ctx.wait(400); });
           });
         }
@@ -1081,23 +1243,31 @@
           {
             say: 'Requests from viewers hit an edge server near them. A miss goes to a regional tier and then to an origin shield, which collapses concurrent misses so the object store sees roughly one request per segment.',
             card: { tag: 'HOW IT WORKS', title: 'The shield collapses misses', body: 'A thousand viewers missing the same new segment become one origin fetch. Edge, mid-tier and shield form a cache hierarchy.' },
-            deep: '<ul><li><b>Hierarchy</b>: origin (object store / packager) → origin shield (one per region, request collapsing) → mid-tier caches → edge POPs (anycast / DNS-steered). Edge hit ratios for VOD segments are typically &gt;90–95 %; the shield turns N concurrent misses into one origin fetch.</li></ul>'
+            deep: '<ul><li><b>Hierarchy</b>: origin (object store / packager) → origin shield (one per region, request collapsing) → mid-tier caches → edge POPs (anycast / DNS-steered). Edge hit ratios for VOD segments are typically &gt;90–95 %; the shield turns N concurrent misses into one origin fetch.</li></ul>' +
+              '<details><summary>Go deeper: why a trailer caches so well</summary>' +
+              '<p>Video popularity is heavy-tailed, roughly Zipf-like: a small head of titles draws most of the views. A new trailer that many people watch within hours is head content, so after the first viewer in a region its segments are already in the edge cache and the hit ratio approaches its ceiling. A long-tail title watched once a week mostly misses at the edge and leans on the mid-tier and the shield. Because players fetch segments in order, CDNs can also prefetch segment n + 1 as soon as segment n is requested.</p></details>'
           },
           {
             say: 'URLs are signed with an expiry, and the cache key strips the token, so every viewer shares the same cached copy.',
             card: { tag: 'HOW IT WORKS', title: 'Sign the URL, not the cache key', body: 'An HMAC over the path prefix and expiry is verified at the edge without calling the origin. The token is dropped from the cache key.' },
             deep: '<ul><li><b>Signed URLs / tokens</b>: <code>sig = HMAC-SHA256(k, path_prefix ‖ exp ‖ ip?)</code>, verified at the edge without calling the origin; prefix-scoped so one token covers all segments.</li></ul>' +
-              '<p>Stripping the token from the cache key is what makes one cached object serve every viewer, while the signature still gates who may fetch it.</p>'
+              '<p>Stripping the token from the cache key is what makes one cached object serve every viewer, while the signature still gates who may fetch it.</p>' +
+              '<details><summary>Go deeper: token design</summary>' +
+              '<p>Scope the signature to a path prefix (<code>/j7f3a/*</code>) so one token covers every segment and manifest of the title. Choose the expiry to match the use: minutes for live, hours for VOD. Edges hold two keys, the current and the previous one, so a token minted just before a key rotation still verifies. Binding the token to a client IP stops link sharing but breaks on mobile handovers between networks, so it is optional. None of this needs a call to the origin: verification is one HMAC over a short string.</p></details>'
           },
           {
             say: 'In the player, an adaptive bitrate algorithm watches throughput and buffer. When the network dips, it steps down a rung instead of stalling, then climbs back as the connection recovers.',
-            card: { tag: 'STATE OF THE ART', title: 'Buffer-aware adaptation', body: 'Throughput rules chase the network; buffer rules like BOLA pick the rung that maximises utility given the buffer. Hybrids ship in dash.js and hls.js.' },
-            deep: '<p><b>ABR</b>: throughput-based (harmonic mean of the last k segment downloads × safety 0.8), buffer-based (BBA), or <b>BOLA</b>, which picks rung m maximising (V·(υ<sub>m</sub> + γp) − Q(t)) / S<sub>m</sub> with utility υ<sub>m</sub> = ln(S<sub>m</sub>/S<sub>1</sub>) and buffer level Q(t). dash.js and hls.js ship hybrids; startup usually at a middle rung, then switch up once 2–3 segments are buffered.</p>'
+            card: { tag: 'STATE OF THE ART', title: 'Buffer-aware adaptation', body: 'Throughput rules chase the network; buffer rules like BOLA pick the rung that maximises utility given the buffer. dash.js ships a hybrid.' },
+            deep: '<p><b>ABR</b>: throughput-based (harmonic mean of the last k segment downloads × safety 0.8), buffer-based (BBA), or <b>BOLA</b>, which picks rung m maximising (V·(υ<sub>m</sub> + γp) − Q(t)) / S<sub>m</sub> with utility υ<sub>m</sub> = ln(S<sub>m</sub>/S<sub>1</sub>) and buffer level Q(t). dash.js ships a hybrid (DYNAMIC: throughput at start-up, BOLA once the buffer passes about 10 s; hls.js and Shaka use EWMA throughput estimators); startup usually at a middle rung, then switch up once a few segments are buffered.</p>' +
+              '<details><summary>Go deeper: why BOLA climbs as the buffer fills</summary>' +
+              '<p>BOLA maximises f<sub>m</sub> = (V·(υ<sub>m</sub> + γp) − Q) / S<sub>m</sub> over rungs m, where S<sub>m</sub> is the segment size. With an almost empty buffer the −Q term is negligible and the ratio (υ<sub>m</sub> + γp) / S<sub>m</sub> favours small segments, because the log utility grows more slowly than size. As Q rises, −Q / S<sub>m</sub> penalises small segments most, so the argmax moves up the ladder. There is no throughput estimate in the rule at all, which is why it is robust to noisy measurements; hybrids add one back to avoid over-committing right after start-up.</p></details>'
           },
           {
             say: 'After start-up, the buffer stays well above the stall threshold, even through the dip. The fox lands, in every living room.',
             card: { tag: 'NUMBERS', title: 'The origin sees 5 percent', stat: { v: '≈ 5 %', u: 'from origin', l: 'of the bytes, with a 95 percent edge hit ratio; the 30 s trailer at 4.5 Mb/s is about 17 MB' }, more: '<p>Bytes per view = 4.5 Mb/s × 30 s / 8 = 16.9 MB. With an edge hit ratio h = 0.95 the origin side sees (1 − h) × 16.9 MB ≈ 0.85 MB per view, and the shield collapses simultaneous misses so many viewers of a fresh segment cost a single origin fetch.</p>' },
-            deep: '<div class="note">End to end: the 30 s trailer at 4.5 Mb/s is ≈17 MB; with a 95 % edge hit ratio the origin serves ≈5 % of the bytes. The whole post-production chamber added ≈14 s after the last shot rendered.</div>'
+            deep: '<div class="note">End to end: the 30 s trailer at 4.5 Mb/s is ≈17 MB; with a 95 % edge hit ratio the origin serves ≈5 % of the bytes. The whole post-production chamber added ≈14 s after the last shot rendered.</div>' +
+              '<details><summary>Go deeper: what the player optimises</summary>' +
+              '<p>ABR research scores a session with a QoE objective of the form Σ<sub>k</sub> q(R<sub>k</sub>) − μ·T<sub>stall</sub> − λ·Σ<sub>k</sub> |q(R<sub>k+1</sub>) − q(R<sub>k</sub>)|: reward the quality of each segment, punish stall time heavily and punish visible switches. Stall weights are large, because a second of frozen video costs a viewer more than several seconds at a lower rung. That asymmetry is why the buffer floor, not peak quality, is the constraint every controller in this step is built around.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -1141,7 +1311,7 @@
           }).then(function () { return ctx.beat(2); }).then(function () {
             if (ctx.dead) return;
             /* beat 2: signed URLs and the cache key */
-            var info = ctx.para(1210, 230, ['cache key:', '/j7f3a/v720/s4.m4s', '(token stripped)', '', 'signed URL:', '?exp=1790000000', '&sig=HMAC(k, path‖exp)', '', 'edge hit ≈ 95 %', 'origin ≈ 1 req / segment'], { size: 12.5, font: 'mono', color: 'text', lh: 26, parent: G });
+            var info = ctx.para(1210, 230, ['cache key:', '/j7f3a/v720/s4.m4s', '(token stripped)', '', 'signed URL:', '?exp=1800000000', '&sig=HMAC(k, path‖exp)', '', 'edge hit ≈ 95 %', 'origin ≈ 1 req / segment'], { size: 12.5, font: 'mono', color: 'text', lh: 26, parent: G });
             ctx.hud('sig = HMAC(k, path ‖ exp) · token not in key');
             return ctx.reveal(info, { from: 'left', dur: 800 }).then(function () { return ctx.pulse(info, { color: 'blue', times: 1, dur: 600 }); });
           }).then(function () { return ctx.beat(3); }).then(function () {
@@ -1155,7 +1325,7 @@
               var seg = Math.floor(t / 4), ts = seg * 4;
               if (ts < 4) return 2.5;
               var est = 0.8 * bw(ts - 1);
-              var opts = [0.6, 1.4, 2.5, 4.5];
+              var opts = [0.6, 0.9, 1.4, 2.5, 4.5];
               var pick = 0.6;
               opts.forEach(function (o) { if (o <= est) pick = o; });
               return pick;
@@ -1166,7 +1336,7 @@
             var ax = [];
             [0, 5, 10, 15, 20, 25, 30].forEach(function (tt) { var p = bwp.toPx(tt, 0); ax.push(note(ctx, G, p.x, 814, tt + 's', 'dim', 'middle', 11)); });
             [0, 5, 10].forEach(function (v) { var p = bwp.toPx(0, v); ax.push(note(ctx, G, 112, p.y, String(v), 'dim', 'end', 11)); });
-            ax.push(note(ctx, G, 120, 836, 'dip at 8–18 s → steps down to 2.5, then 0.6 Mb/s, no stall; climbs back as throughput and buffer recover', 'text', 'start', 12));
+            ax.push(note(ctx, G, 120, 836, 'dip at 8–18 s → steps down to 2.5, then 0.9 Mb/s, no stall; climbs back as throughput and buffer recover', 'text', 'start', 12));
             ctx.hud('throughput dip → rung steps down, no stall');
             return Promise.all([ctx.reveal([ab, ah], { stagger: 60 }), ctx.reveal(ax, { delay: 200, stagger: 20 }), ctx.reveal(bwp.curve, { from: 'draw', dur: 1400, delay: 300 }), ctx.reveal(rp.curve, { from: 'draw', dur: 1800, delay: 700 })]);
           }).then(function () { return ctx.beat(4); }).then(function () {
@@ -1178,9 +1348,11 @@
             var bt = buf.toPx(0, 2);
             var sl = ctx.line(1140, bt.y, 1530, bt.y, { color: 'red', dash: '4 4', parent: G });
             var sn = note(ctx, G, 1528, bt.y - 10, 'stall risk < 2 s', 'red', 'end', 11);
-            var bn = ctx.para(1120, 790, ['BOLA / hybrid (dash.js, hls.js)', 'startup at 720p, up after 2 segs'], { size: 12, font: 'mono', color: 'text', lh: 20, parent: G });
+            var bn = ctx.para(1120, 796, ['BOLA / hybrid (dash.js)', 'startup at 720p, up after 1 seg'], { size: 12, font: 'mono', color: 'text', lh: 20, parent: G });
+            var bt2 = [0, 10, 20].map(function (v) { return note(ctx, G, 1132, buf.toPx(0, v).y, String(v), 'dim', 'end', 11); });
+            [0, 15, 30].forEach(function (tt) { bt2.push(note(ctx, G, buf.toPx(tt, 0).x, 776, tt + 's', 'dim', 'middle', 11)); });
             ctx.hud('edge hit ≈ 95 % · no stall through the dip');
-            return Promise.all([ctx.reveal([bb, bh], { stagger: 60 }), ctx.reveal([sl, sn, bn], { delay: 300, stagger: 80 }), ctx.reveal(buf.curve, { from: 'draw', dur: 1600, delay: 400 })]).then(function () { return ctx.wait(500); });
+            return Promise.all([ctx.reveal([bb, bh], { stagger: 60 }), ctx.reveal([sl, sn, bn].concat(bt2), { delay: 300, stagger: 60 }), ctx.reveal(buf.curve, { from: 'draw', dur: 1600, delay: 400 })]).then(function () { return ctx.wait(500); });
           });
         }
       }

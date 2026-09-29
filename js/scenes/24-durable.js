@@ -53,13 +53,13 @@
   Atlas.register({
     id: 'durable-exec',
     refs: [
-      'Temporal Technologies, <i>Temporal documentation: Workflows, Activities, Event History, Retry Policies, Versioning</i>, 2024–2025',
-      'Uber Engineering, <i>Cadence: fault-oblivious stateful workflow engine</i> (open source), 2017',
+      'Temporal Technologies, <i>Temporal documentation: Workflows, Activities, Signals, Event History, Retry Policies, Versioning</i>, 2024–2025',
+      'Uber Engineering, <i>Conducting Better Business with Uber\'s Open Source Orchestration Tool, Cadence</i>, Uber Blog 2019',
       'Burckhardt et al., <i>Durable Functions: Semantics for Stateful Serverless</i>, OOPSLA 2021',
       'Garcia-Molina &amp; Salem, <i>Sagas</i>, ACM SIGMOD 1987',
       'Helland, <i>Life beyond Distributed Transactions: an Apostate\'s Opinion</i>, CIDR 2007',
       'Brooker, <i>Exponential Backoff and Jitter</i>, AWS Architecture Blog, 2015',
-      'Llama Team (Meta), <i>The Llama 3 Herd of Models</i> (§3.3.4 reliability: 419 unexpected interruptions in 54 days), 2024',
+      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
       'Richardson, <i>Pattern: Transactional Outbox</i>, microservices.io'
     ],
     steps: [
@@ -69,9 +69,9 @@
         beats: [
           {
             say: 'A thirty second trailer is a long-running distributed transaction: minutes of GPU time, paid API calls, and a human approval that may take hours. Something will crash along the way.',
-            card: { tag: 'NUMBERS', title: 'Failure is the steady state', stat: { v: '419', l: 'interruptions in 54 days on Meta\'s 16,384-GPU Llama 3 job' },
-              more: '<p>Llama 3 log: 16,384 GPUs × 1,296 h ≈ 21 M GPU-hours over 419 interruptions, about one per 50,700 GPU-hours. One trailer burns 6 shots × 8 GPUs × ~95 s ≈ 1.3 GPU-hours, so P(hit) ≈ 2.5·10<sup>−5</sup> per trailer. A 10,000-GPU render fleet running flat out logs about 5 such interruptions a day, before counting node drains, preemptions and deploys.</p>' },
-            deep: '<p><b>Why:</b> at fleet scale failure is routine. Meta logged 419 unexpected interruptions in 54 days on a 16k-H100 job, about one every 3 hours, roughly 78% attributed to hardware. That is one interruption per ~50,000 GPU-hours.</p>' +
+            card: { tag: 'NUMBERS', title: 'Failure is the steady state', stat: { v: '419', l: 'unexpected interruptions in 54 days on Meta\'s 16,384-GPU Llama 3 job' },
+              more: '<p>Llama 3 log: 419 unexpected interruptions in 54 days (1,296 h). Assuming all 16,384 GPUs ran the whole time, that is ≈ 21 M GPU-hours, about one interruption per 50,700 GPU-hours. One trailer burns 6 shots × 8 GPUs × ~95 s ≈ 1.3 GPU-hours, so P(hit) ≈ 2.5·10<sup>−5</sup> per trailer. A 10,000-GPU render fleet running flat out logs about 5 such interruptions a day, before counting node drains, preemptions and deploys.</p>' },
+            deep: '<p><b>Why:</b> at fleet scale failure is routine. Meta logged 419 unexpected interruptions in 54 days on a 16k-H100 job, about one every 3 hours, roughly 78% attributed to confirmed or suspected hardware issues. That is one interruption per ~50,000 GPU-hours.</p>' +
               '<p>A single 6-shot trailer (48 GPUs for under two minutes) almost never meets one. But at the same rate a 10,000-GPU fleet meets a few per day, and node drains, preemptions and deploys are far more frequent. The trailer also waits on a human and calls paid APIs, so it must survive all of them.</p>'
           },
           {
@@ -94,7 +94,7 @@
           {
             say: 'A service in the middle, Temporal style, records everything the workflow decides and hands out work through task queues.',
             card: { tag: 'HOW IT WORKS', title: 'A log and three queues', body: 'The service keeps the append-only <b>event history</b> and matches tasks to workers through named <b>task queues</b>. Workers only ever pull.' },
-            deep: '<p>The Temporal service has three roles: a <b>frontend</b> (API gateway), a <b>history</b> service that owns each workflow\'s append-only event log, and a <b>matching</b> service that owns the task queues. Cadence (Uber, 2017) is the ancestor; Azure Durable Functions (Burckhardt et al., 2021) formalized the same semantics.</p>' +
+            deep: '<p>The Temporal service is made of four services: a <b>frontend</b> (API gateway), a <b>history</b> service that owns each workflow\'s append-only event log, a <b>matching</b> service that owns the task queues, and an internal worker service for background jobs. Cadence (open-sourced by Uber in 2017) is the ancestor; Azure Durable Functions (Burckhardt et al., 2021) formalized the same semantics.</p>' +
               '<div class="note">The engine gives <b>effectively-once workflow logic</b> on top of <b>at-least-once activities</b>. Exactly-once <i>effects</i> additionally need idempotent activities (step 7).</div>'
           },
           {
@@ -161,7 +161,7 @@
           hide([S.codeG, S.actG, S.srvG, S.wA, S.wAct, S.pool, S.poolT, S.qlWf, S.qlAct, S.qlGpu, S.cmdL]); hide(S.gpu);
           /* beat 0: the program we must not lose */
           return ctx.reveal(S.codeG, { from: 'left' }).then(function () {
-            ctx.hud('Llama 3: 419 interruptions in 54 days');
+            ctx.hud('Llama 3: 419 unexpected interruptions, 54 days');
             return ctx.pulse(S.code, { color: 'red', times: 2, dur: 600 });
           }).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: workflow code, on a workflow worker */
@@ -298,7 +298,7 @@
             say: 'Workers do not receive pushes; they long-poll task queues. The workflow worker polls for decisions, the activity worker polls for LLM calls, and each poll is a request that waits until work exists.',
             card: { tag: 'KEY IDEA', title: 'Pull, not push', body: 'Workers <b>long-poll</b> for tasks. The server never needs to know where workers live, and a busy worker simply stops polling.' },
             deep: '<ul><li><b>Matching service</b> owns task queues (partitioned, 4 partitions by default). Workers issue long-poll RPCs (~60&nbsp;s); a task is handed to whichever poller is waiting: natural <b>pull-based load balancing</b> and back-pressure.</li>' +
-              '<li><b>Sticky execution</b>: after a workflow task, the worker keeps the workflow state in an LRU cache and the next task goes to its sticky queue (5&nbsp;s timeout, then the normal queue). Cache hit ⇒ no replay.</li></ul>'
+              '<li><b>Sticky execution</b>: after a workflow task, the worker keeps the workflow state in an in-memory cache and the next task goes to its sticky queue (5&nbsp;s timeout, then the normal queue). Cache hit ⇒ no replay.</li></ul>'
           },
           {
             say: 'GPU workers poll a dedicated render queue, so a GPU only accepts work when it actually has capacity. Six render tasks arrive, but only three GPU nodes are free.',
@@ -419,7 +419,7 @@
           {
             say: 'Each await that already has a completion event in the history returns the recorded result instantly, without calling the LLM or the GPU again.',
             card: { tag: 'NUMBERS', title: 'Nothing is paid twice', stat: { v: '0', u: 're-runs', l: 'LLM calls or GPU-seconds re-spent during replay' } },
-            deep: '<ul><li>Replay is <b>CPU-only and fast</b>: 32 events replay in well under a millisecond of logic; the cost is fetching the history (paged gRPC).</li>' +
+            deep: '<ul><li>Replay is <b>CPU-only and cheap</b>: 32 events replay in milliseconds of workflow logic; the main cost is fetching the history (paged gRPC).</li>' +
               '<li>No activity is re-executed: the plan, script and storyboard LLM calls (and their tokens) are not paid twice, and renders already scheduled are not duplicated.</li></ul>'
           },
           {
@@ -504,8 +504,8 @@
           {
             say: 'Then the node fails with a hardware error: the GPU fell off the bus. The process is gone, and nobody tells the server.',
             card: { tag: 'PITFALL', title: 'Silent death is the norm', body: 'A dead GPU does not send a failure message. <b>Xid 79</b> means the device dropped off the PCIe bus; the only symptom is silence.' },
-            deep: '<p>Classify errors: <b>Xid 79</b> (GPU fell off the bus), <b>Xid 48</b> (double-bit ECC error), <b>Xid 94</b> (contained ECC error), CUDA OOM, preemption and 5xx are all <i>retryable</i>. <code>PolicyViolation</code> and invalid prompts are not.</p>' +
-              '<p>At Llama 3 scale about 78% of unexpected interruptions were attributed to hardware: this is the expected failure, not the exotic one.</p>'
+            deep: '<p>Classify errors: <b>Xid 79</b> (GPU fell off the bus), <b>Xid 48</b> (double-bit ECC error), <b>Xid 94</b> (contained memory error), CUDA OOM, preemption and 5xx are all <i>retryable</i>. <code>PolicyViolation</code> and invalid prompts are not.</p>' +
+              '<p>At Llama 3 scale about 78% of unexpected interruptions were attributed to confirmed or suspected hardware issues: this is the expected failure, not the exotic one.</p>'
           },
           {
             say: 'The heartbeats stop, and thirty seconds after the last one, the heartbeat timeout fires. The server does not wait for the twenty minute start to close timeout.',
@@ -682,10 +682,10 @@
           },
           {
             say: 'Each checkpoint is about ten megabytes: the latent tensor plus the step index and random state. That is tiny next to the work it protects.',
-            card: { tag: 'NUMBERS', title: 'A checkpoint is tiny', stat: { v: '9.7 MB', l: 'one checkpoint: a 16×21×90×160 bf16 latent, written in ~10s of ms' } },
+            card: { tag: 'NUMBERS', title: 'A checkpoint is tiny', stat: { v: '9.7 MB', l: 'one checkpoint: a 16×21×90×160 bf16 latent, written asynchronously' } },
             deep: '<p>Wan-2.x-style VAE (4× temporal, 8×8 spatial, 16 channels) on an 81-frame 720p clip (≈5&nbsp;s at 16&nbsp;fps):</p>' +
               '<div class="eq">z<sub>t</sub> ∈ ℝ<sup>16×21×90×160</sup> = 4.84 M values → 9.7 MB (bf16)</div>' +
-              '<p>This scene assumes ~2&nbsp;s per step on an 8-GPU sequence-parallel node (illustrative and optimistic: a 14B DiT at 720p with CFG is closer to 3–5&nbsp;s/step on 8×H100, which only strengthens the case). A checkpoint write every 10 steps costs &lt;1% overhead either way.</p>'
+              '<p>This scene assumes ~2&nbsp;s per step on an 8-GPU sequence-parallel node (illustrative: it is the running example’s ~95 s per shot spread over 50 steps, which assumes a production sampler; an undistilled 14B DiT at 720p with CFG typically needs several seconds per step even on 8 GPUs, which only strengthens the case). Assuming the write is asynchronous and takes about 0.1&nbsp;s, a checkpoint every 10 steps costs &lt;1% overhead either way.</p>'
           },
           {
             say: 'The checkpoint URI rides in the heartbeat details, so no extra database is needed. The next attempt simply reads it back.',
@@ -697,8 +697,8 @@
           {
             say: 'Now the node fails at step thirty seven. Attempt two reads the heartbeat details, loads the latent from step thirty, and resumes from there.',
             card: { tag: 'WHY IT MATTERS', title: 'Loss is bounded', body: 'With a checkpoint every 10 steps, a failure never costs more than <b>9 completed steps</b> of recomputation, whenever it strikes.',
-              more: '<p>Young–Daly: the interval that minimizes expected waste is τ ≈ √(2·δ·M), with checkpoint cost δ and mean time between failures M. For δ = 0.05&nbsp;s and M = 1&nbsp;h (a preemptible pool, where drains and preemptions dominate hardware faults) τ ≈ 19&nbsp;s, about 10 steps at 2&nbsp;s each.</p>' },
-            deep: '<p>The last heartbeat reported step 37; the last checkpoint was at step 30. Steps 31 to 37 (about 14&nbsp;s at 2&nbsp;s per step) are recomputed; everything before is loaded from storage in a few tens of milliseconds.</p>' +
+              more: '<p>Young–Daly: the interval that minimizes expected waste is τ ≈ √(2·δ·M), with checkpoint cost δ and mean time between failures M. For an assumed blocking cost δ = 0.05&nbsp;s and M = 1&nbsp;h (a preemptible pool, where drains and preemptions dominate hardware faults) τ ≈ 19&nbsp;s, about 10 steps at 2&nbsp;s each.</p>' },
+            deep: '<p>The last heartbeat reported step 37; the last checkpoint was at step 30. Steps 31 to 37 (about 14&nbsp;s at 2&nbsp;s per step) are recomputed; everything before is loaded from storage in well under a second.</p>' +
               '<p>The interval trades write overhead (&lt;1%) against expected recomputation: with a checkpoint every <i>c</i> steps the expected loss is about <i>c</i>/2 steps.</p>'
           },
           {
@@ -758,7 +758,7 @@
           ctx.text(60, 800, 'z_t: 16 × 21 × 90 × 160  (C, T, H, W)', { size: 13, font: 'mono', color: 'violet', parent: S.latT });
           ctx.text(60, 824, '4.84 M values · bf16 ≈ 9.7 MB', { size: 12, font: 'mono', color: 'dim', parent: S.latT });
           ctx.text(60, 848, '+ step k · sampler state · RNG', { size: 12, font: 'mono', color: 'dim', parent: S.latT });
-          ctx.text(60, 872, 'write ≈ 10s of ms vs step ≈ 2 s', { size: 12, font: 'mono', color: 'teal', parent: S.latT });
+          ctx.text(60, 872, 'async write ≈ 0.1 s (assumed) vs step ≈ 2 s', { size: 12, font: 'mono', color: 'teal', parent: S.latT });
           S.s3 = ctx.node({ x: 440, y: 700, w: 170, h: 84, kind: 'cyl', title: 'ckpt store', sub: 'step30.safetensors', color: 'teal', titleSize: 14, subSize: 10.5, parent: S.ckG });
           S.sv = ctx.link({ x: 290, y: 690 }, S.s3, { to: 'l', color: 'teal', parent: S.ckG });
           S.code = ctx.code({ x: 560, y: 636, w: 516, title: 'render_shot · resumable activity', lang: 'py', size: 12, color: 'teal', parent: S.ckG, lines: nb([
@@ -878,7 +878,7 @@
             card: { tag: 'KEY IDEA', title: 'At-least-once needs idempotency', body: 'A retried activity may repeat its side effect. An <b>idempotency key</b> turns a repeated call into a no-op that returns the stored result.' },
             deep: '<p><b>Idempotency key</b> = stable across retries, unique per logical effect:</p>' +
               '<div class="eq">key = hash(workflow_id, activity_id) &nbsp;(never the attempt number)</div>' +
-              '<ul><li>Server side: <code>INSERT INTO idem(key, status) ON CONFLICT DO NOTHING</code>; on conflict return the stored response (Stripe-style keys are kept ≥24&nbsp;h). A concurrent duplicate while <i>pending</i> → 409, and the client retries.</li></ul>'
+              '<ul><li>Server side: <code>INSERT INTO idem(key, status) ON CONFLICT DO NOTHING</code>; on conflict return the stored response (Stripe may prune a key once it is at least 24&nbsp;h old). A concurrent duplicate while <i>pending</i> → 409, and the client retries.</li></ul>'
           },
           {
             say: "But the worker dies before the acknowledgement is recorded in the history, so from the workflow's point of view the call never finished.",
@@ -889,8 +889,8 @@
           {
             say: 'The retry sends the same idempotency key, derived from the workflow and activity IDs, and billing returns the stored result instead of charging twice.',
             card: { tag: 'HOW IT WORKS', title: 'Same key, same answer', body: 'A key hit returns the <b>stored response</b> with no second charge. The key is derived from workflow and activity IDs, never from the attempt number.',
-              more: '<p>Stripe and the IETF <code>Idempotency-Key</code> draft share these semantics: the same key with the same parameters returns the stored response; the same key with different parameters is rejected (the draft uses 422; Stripe returns a 400-class error), which catches accidental key reuse. Keys are kept for a bounded window (Stripe: at least 24&nbsp;h), and an in-flight duplicate gets 409 until the first request finishes.</p>' },
-            deep: '<ul><li>Object store: content-addressed keys (<code>sha256</code>) + conditional <code>PUT If-None-Match: *</code> make uploads naturally idempotent.</li>' +
+              more: '<p>Stripe and the IETF <code>Idempotency-Key</code> Internet-Draft (expired at version 07, never an RFC) share these semantics: the same key with the same parameters returns the stored response; the same key with different parameters is rejected (the draft uses 422; Stripe returns a 400-class error), which catches accidental key reuse. Keys are kept for a bounded window (Stripe may prune them once they are at least 24&nbsp;h old), and an in-flight duplicate gets 409 until the first request finishes.</p>' },
+            deep: '<ul><li>Object store: content-addressed keys (<code>sha256</code>) + conditional <code>PUT If-None-Match: *</code> make uploads naturally idempotent: a repeated PUT of the same key gets 412 Precondition Failed, which the caller reads as “already stored”.</li>' +
               '<li>GPU renders: the render is deterministic given (seed, cond, model), so key the output path by that hash and a duplicate attempt overwrites identical bytes.</li></ul>'
           },
           {
@@ -1192,7 +1192,7 @@
           {
             say: 'And when we deploy a new critic, patching and worker versioning let in-flight histories keep replaying the old code path. Every side effect happens once, and the film finishes despite the crash.',
             card: { tag: 'STATE OF THE ART', title: 'Deploy without breaking replays', body: '<code>workflow.patched("critic-v2")</code> or worker versioning pins running histories to the code that started them, so replay stays deterministic.' },
-            deep: '<ul><li><b>Versioning</b>: <code>if workflow.patched("critic-v2"): …</code> writes a marker so new runs take the new branch while old histories replay the old one; or <b>worker versioning</b> (build IDs / deployment versions) pins running workflows to the build that started them.</li>' +
+            deep: '<ul><li><b>Versioning</b>: <code>if workflow.patched("critic-v2"): …</code> writes a marker so new runs take the new branch while old histories replay the old one; or <b>Worker Versioning</b> (Worker Deployment Versions) pins running workflows to the build that started them.</li>' +
               '<li><b>continue_as_new</b> for workflows that would exceed history limits (e.g. a series generator looping over episodes).</li></ul>'
           }
         ],

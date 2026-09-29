@@ -60,13 +60,18 @@
   Atlas.register({
     id: 'training',
     refs: [
-      'Hoffmann et al., <i>Training Compute-Optimal Large Language Models</i> (Chinchilla), NeurIPS 2022; Besiroglu et al., <i>Chinchilla Scaling: A Replication Attempt</i>, 2024',
-      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024; Penedo et al., <i>The FineWeb Datasets</i>, NeurIPS 2024',
+      'Hoffmann et al., <i>Training Compute-Optimal Large Language Models</i> (Chinchilla), NeurIPS 2022',
+      'Besiroglu et al., <i>Chinchilla Scaling: A Replication Attempt</i>, 2024',
+      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
+      'Penedo et al., <i>The FineWeb Datasets: Decanting the Web for the Finest Text Data at Scale</i>, NeurIPS 2024 Datasets and Benchmarks',
       'Ouyang et al., <i>Training Language Models to Follow Instructions with Human Feedback</i> (InstructGPT), NeurIPS 2022',
       'Rafailov et al., <i>Direct Preference Optimization: Your Language Model is Secretly a Reward Model</i>, NeurIPS 2023',
-      'Shao et al., <i>DeepSeekMath</i> (GRPO), 2024; DeepSeek-AI, <i>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning</i>, 2025',
-      'Yu et al., <i>DAPO: An Open-Source LLM Reinforcement Learning System at Scale</i>, 2025; Liu et al., <i>Understanding R1-Zero-Like Training</i> (Dr. GRPO), 2025',
-      'Kimi Team, <i>Kimi K2: Open Agentic Intelligence</i>, 2025; Baker et al. (OpenAI), <i>Monitoring Reasoning Models for Misbehavior</i>, 2025',
+      'Shao et al., <i>DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models</i> (GRPO), 2024',
+      'DeepSeek-AI, <i>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning</i>, 2025',
+      'Yu et al., <i>DAPO: An Open-Source LLM Reinforcement Learning System at Scale</i>, 2025',
+      'Liu et al., <i>Understanding R1-Zero-Like Training: A Critical Perspective</i> (Dr. GRPO), 2025',
+      'Kimi Team, <i>Kimi K2: Open Agentic Intelligence</i>, 2025',
+      'Baker et al. (OpenAI), <i>Monitoring Reasoning Models for Misbehavior and the Risks of Promoting Obfuscation</i>, 2025',
       'Agarwal et al., <i>On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes</i> (GKD), ICLR 2024',
       'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024'
     ],
@@ -101,18 +106,18 @@
           },
           {
             say: 'Reinforcement learning with verifiable rewards teaches reasoning, agentic reinforcement learning teaches multi step tool use, and distillation packs it all into smaller, faster models.',
-            card: { tag: 'STATE OF THE ART', title: 'RL is the new frontier', body: 'Verifiable-reward RL added long chain-of-thought reasoning in 2025; agentic RL adds multi-turn tool use in real environments.' },
+            card: { tag: 'STATE OF THE ART', title: 'RL is the new frontier', body: 'Verifiable-reward RL produced long chain-of-thought reasoning models such as DeepSeek-R1; agentic RL adds multi-turn tool use in real environments.' },
             deep: '<p><b>RLVR</b> optimises against programmatic verifiers (math answers, unit tests) with GRPO or PPO and elicits long reasoning. <b>Agentic RL</b> extends the episode to many tool-using turns with a task-level reward. <b>Distillation</b> transfers the result into small, cheap models such as our critic.</p>' +
               '<p>Stages are often iterated: Llama 3 ran six rounds of SFT + rejection sampling + DPO, and reasoning models alternate RL with rejection-sampled SFT.</p>'
           },
           {
-            say: 'Pretraining still dominates the compute bill in most published recipes, though reinforcement learning\'s share is growing fast. Together the stages turn one next token machine into a film crew.',
+            say: 'Pretraining still dominates the compute bill in most published recipes, though reinforcement learning\'s share is growing. Together the stages turn one next token machine into a film crew.',
             card: { tag: 'NUMBERS', title: 'Where the GPU-hours go', stat: { v: '95.6%', l: 'of DeepSeek-V3\'s 2.79 M H800-hours went to pretraining; post-training used about 0.2%' } },
             deep: '<table><tr><th>DeepSeek-V3 stage</th><th>H800 GPU-hours</th><th>Share</th></tr>' +
               '<tr><td>Pretraining (14.8 T tokens)</td><td>2,664 K</td><td>95.6%</td></tr>' +
               '<tr><td>Context extension (4k → 32k → 128k)</td><td>119 K</td><td>4.3%</td></tr>' +
               '<tr><td>Post-training (SFT + RL)</td><td>5 K</td><td>0.2%</td></tr></table>' +
-              '<p>2025 reasoning models shift this balance: long RL rollouts are expensive, and frontier labs report RL compute growing to a substantial fraction. The first bar on the stage is the reported DeepSeek-V3 split; the second is a schematic of a reasoning-model recipe, not a measurement.</p>'
+              '<p>Reasoning-model recipes shift this balance: long RL rollouts are expensive, so the post-training share rises. The first bar on the stage is the reported DeepSeek-V3 split; the second is a schematic of a reasoning-model recipe, not a measurement.</p>'
           }
         ],
         run: function (ctx) {
@@ -161,7 +166,7 @@
             x0 += w;
             return r;
           });
-          ctx.text(1540, 542, 'long RL rollouts are expensive: the post-training slice is growing fast', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: cbB });
+          ctx.text(1540, 542, 'long RL rollouts are expensive: the post-training slice is growing', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: cbB });
           hide(cbA, cbB);
 
           var B = textCard(ctx, g, 60, 560, 1480, 300, 'amber', 'WHAT EACH STAGE GIVES OUR FILM CREW', [
@@ -251,7 +256,7 @@
             say: 'Rare continuations like fox after the are expensive; easy ones like on after lands are cheap.',
             card: { tag: 'NUMBERS', title: 'Surprise costs nats', stat: { v: '3.22 vs 0.34', l: 'nats for a 4% guess (fox after the) versus a 71% guess (on after lands)' } },
             deep: '<p>fox after “The”: p = 0.04 gives −ln 0.04 = <b>3.22</b> nats. on after “lands”: p = 0.71 gives −ln 0.71 = <b>0.34</b> nats. Averaged over the ten demo positions the loss is 1.36 nats, a perplexity of 3.9.</p>' +
-              '<p>Perplexity e<sup>L</sup> is the effective number of equally likely choices per token. Real web text is far less predictable than this demo: strong models sit near 1.7 to 2.2 nats per token on web text, a perplexity of roughly 5 to 9 depending on tokenizer and corpus, and the fitted floor E ≈ 1.8 on the next page is the irreducible entropy of the text itself.</p>'
+              '<p>Perplexity e<sup>L</sup> is the effective number of equally likely choices per token. Real web text is far less predictable than this demo: in the Chinchilla-style fit on the next page the loss floor is E ≈ 1.8 nats per token (perplexity about 6), the estimated irreducible entropy of that corpus, and a model at the Chinchilla compute optimum reaches about 2.0 nats (perplexity about 7). Both values depend on the corpus and the tokenizer.</p>'
           },
           {
             say: 'Averaged over tens of trillions of tokens this simple loss forces the model to learn grammar, facts and even physics of the world.',
@@ -261,13 +266,13 @@
           },
           {
             say: 'The bill is roughly six times parameters times tokens: for Llama 3 405B that is about four times ten to the twenty fifth floating point operations.',
-            card: { tag: 'NUMBERS', title: 'The compute bill', stat: { v: '3.8 × 10²⁵', u: 'FLOPs', l: 'to pretrain Llama 3 405B on 15.6 T tokens: 6 × N × D' }, more: '<p>A dense transformer with N parameters does 2N FLOPs per token in the forward pass (one multiply and one add per weight). The backward pass needs gradients with respect to activations and to weights, about twice the forward cost, so 4N. The total is 6N per token, or 6ND for D tokens. Attention’s score terms add about 12·L·d·n FLOPs per token at context n: negligible at 4k tokens, not at 128k, which is why 6ND is an approximation.</p>' },
+            card: { tag: 'NUMBERS', title: 'The compute bill', stat: { v: '3.8 × 10²⁵', u: 'FLOPs', l: 'to pretrain Llama 3 405B on 15.6 T tokens: 6 × N × D' }, more: '<p>A dense transformer with N parameters does 2N FLOPs per token in the forward pass (one multiply and one add per weight). The backward pass needs gradients with respect to activations and to weights, about twice the forward cost, so 4N. The total is 6N per token, or 6ND for D tokens. Attention’s score terms add about 12·L·d·n FLOPs per token at context n: small at 4k tokens, not at 128k, which is why 6ND is an approximation.</p>' },
             deep: '<div class="eq">C ≈ 6·N·D &nbsp; (2ND forward + 4ND backward)</div>' +
               '<table><tr><th>Model</th><th>N</th><th>D</th><th>Compute</th></tr>' +
               '<tr><td>Llama 3 405B</td><td>405 B dense</td><td>15.6 T</td><td>≈ 3.8×10<sup>25</sup> FLOPs; 30.8 M H100-hours</td></tr>' +
               '<tr><td>DeepSeek-V3</td><td>37 B active / 671 B</td><td>14.8 T</td><td>2.79 M H800-hours (full training)</td></tr>' +
               '<tr><td>Qwen3</td><td>up to 235 B-A22B</td><td>36 T</td><td>—</td></tr></table>' +
-              '<p>Training runs in BF16 (or FP8 GEMMs, as in DeepSeek-V3) with FP32 master weights and AdamW, sharded over thousands of GPUs with data, tensor, pipeline, expert and context parallelism; Llama 3 reports 38–43% MFU. Loss spikes are handled with z-loss, QK-norm, gradient clipping and restarts.</p>'
+              '<p>Training runs in BF16 (or FP8 GEMMs, as in DeepSeek-V3) with FP32 master weights and AdamW, sharded over thousands of GPUs with data, tensor, pipeline, expert and context parallelism; Llama 3 reports 38–43% MFU. Loss spikes are handled in practice with tools such as z-loss, QK-norm, gradient clipping and restarts.</p>'
           }
         ],
         run: function (ctx) {
@@ -372,7 +377,7 @@
         beats: [
           {
             say: 'How big, and how long? The Chinchilla study fit loss as a function of parameters and tokens and found that, for a fixed compute budget, the optimum is roughly twenty tokens per parameter.',
-            card: { tag: 'NUMBERS', title: 'The Chinchilla ratio', stat: { v: '≈ 20', u: 'tokens / param', l: 'compute-optimal ratio: Chinchilla\'s 70 B model saw 1.4 T tokens' }, more: '<p>Minimise L(N, D) = E + A/N<sup>α</sup> + B/D<sup>β</sup> subject to 6ND = C. Setting the derivative to zero gives αA/N<sup>α</sup> = βB/D<sup>β</sup>, so N<sub>opt</sub> ∝ C<sup>β/(α+β)</sup> and D<sub>opt</sub> ∝ C<sup>α/(α+β)</sup>. With α ≈ 0.35 and β ≈ 0.37 both exponents are close to 0.5: parameters and tokens should grow together, at about 20 tokens per parameter.</p>' },
+            card: { tag: 'NUMBERS', title: 'The Chinchilla ratio', stat: { v: '≈ 20', u: 'tokens / param', l: 'compute-optimal ratio: Chinchilla\'s 70 B model saw 1.4 T tokens' }, more: '<p>Minimise L(N, D) = E + A/N<sup>α</sup> + B/D<sup>β</sup> subject to 6ND = C. Setting the derivative to zero gives αA/N<sup>α</sup> = βB/D<sup>β</sup>, so N<sub>opt</sub> ∝ C<sup>β/(α+β)</sup> and D<sub>opt</sub> ∝ C<sup>α/(α+β)</sup>. With the replication fit (α ≈ 0.35, β ≈ 0.37) both exponents are close to 0.5: parameters and tokens should grow together, at about 20 tokens per parameter.</p>' },
             deep: '<div class="eq">L(N, D) = E + A/N<sup>α</sup> + B/D<sup>β</sup>, &nbsp; C = 6ND</div>' +
               '<p>Fit (Besiroglu et al. replication of Chinchilla): E = 1.82, A = 482, B = 2085, α = 0.348, β = 0.366. Minimising at fixed C gives N<sub>opt</sub> ∝ C<sup>0.51</sup>, D<sub>opt</sub> ∝ C<sup>0.49</sup>, i.e. ~20 tokens/param; at Chinchilla’s 5.76×10<sup>23</sup> FLOPs the fit gives N ≈ 72 B, D ≈ 1.3 T (Chinchilla itself: 70 B on 1.4 T).</p>'
           },
@@ -396,8 +401,8 @@
           {
             say: 'The data matters as much as the size: web crawls are extracted, filtered by quality classifiers, and deduplicated with MinHash.',
             card: { tag: 'HOW IT WORKS', title: 'From crawl to corpus', body: 'Extraction, language ID, quality filters and near-duplicate removal shrink raw crawls to the fraction worth training on.' },
-            deep: '<ul><li><b>Filtering</b>: heuristic rules + model-based classifiers (e.g. FineWeb-Edu’s educational-value classifier) over 96 Common Crawl snapshots → 15 T tokens.</li>' +
-              '<li><b>Dedup</b>: exact/URL, MinHash-LSH near-duplicates (5-gram shingles), suffix-array substring removal: less memorisation, better generalisation.</li></ul>' +
+            deep: '<ul><li><b>Filtering</b>: heuristic rules plus model-based classifiers. FineWeb applies heuristic filters to 96 Common Crawl snapshots and keeps 15 T tokens; its FineWeb-Edu subset adds an educational-value classifier and keeps about 1.3 T.</li>' +
+              '<li><b>Dedup</b>: MinHash-LSH near-duplicate removal (FineWeb: 5-gram shingles, 112 hashes in 14 buckets of 8, run per snapshot because global dedup hurt quality); some pipelines add URL, exact-line or suffix-array substring dedup. Less memorisation, better generalisation.</li></ul>' +
               '<p>Text extraction (boilerplate removal) and language identification come first. Near-duplicate removal matters because repeated documents are memorised and waste tokens that could teach something new.</p>'
           },
           {
@@ -405,7 +410,7 @@
             card: { tag: 'NUMBERS', title: 'The final mixture', stat: { v: '50·25·17·8', u: '%', l: 'Llama 3 mix: general knowledge, math and reasoning, code, multilingual' } },
             deep: '<ul><li><b>Decontamination</b> against benchmarks, PII and safety filtering.</li>' +
               '<li><b>Mixture</b> (Llama 3 final): ~50% general knowledge, 25% math and reasoning, 17% code, 8% multilingual; weights tuned with small proxy models and scaling-law extrapolation.</li></ul>' +
-              '<p>Dedup reduces memorisation; decontamination keeps benchmark scores honest. Code and math are upsampled relative to their share of the web because they teach reasoning structure; multilingual data is capped so that English quality holds at a fixed parameter budget.</p>'
+              '<p>Dedup reduces memorisation; decontamination keeps benchmark scores honest. Math and reasoning (25%) and code (17%) get a deliberate share in Llama 3 because they teach reasoning structure, while multilingual data is a smaller slice (8%).</p>'
           }
         ],
         run: function (ctx) {
@@ -413,17 +418,17 @@
           var g = page(ctx, S);
           var C = 5.76e23;
           function lossAt(lgN) { var N = Math.pow(10, lgN), D = C / (6 * N); return 1.82 + 482.01 / Math.pow(N, 0.3478) + 2085.43 / Math.pow(D, 0.3658); }
-          var L = card(ctx, g, 60, 176, 720, 390, 'amber', 'ISO-FLOP CURVE · C = 5.76e23 (Chinchilla budget)');
+          var L = card(ctx, g, 60, 176, 720, 404, 'amber', 'ISO-FLOP CURVE · C = 5.76e23 (Chinchilla budget)');
           S.iso = ctx.plot(130, 226, 610, 270, lossAt, { xDomain: [9.5, 12], yDomain: [1.96, 2.09], color: 'amber', sw: 2.5, parent: L, samples: 100 });
           [[10, '10B'], [10.5, '32B'], [11, '100B'], [11.5, '316B'], [12, '1T']].forEach(function (t) { var p = S.iso.toPx(t[0], 1.96); ctx.text(p.x, 512, t[1], { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: L }); });
           [1.98, 2.02, 2.06].forEach(function (v) { var p = S.iso.toPx(9.5, v); ctx.text(122, p.y, v.toFixed(2), { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: L }); });
-          ctx.text(740, 534, 'parameters N (log) · D = C / 6N', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: L });
+          ctx.text(130, 534, 'parameters N (log) · D = C / 6N', { size: 11, font: 'mono', color: 'dim', parent: L });
           var best = 9.5, bl = 9;
           for (var q = 9.5; q <= 12; q += 0.01) { var v = lossAt(q); if (v < bl) { bl = v; best = q; } }
           var bp = S.iso.toPx(best, bl);
           S.opt = ctx.group({ parent: L });
           ctx.circle(bp.x, bp.y, 7, { fill: 'white', parent: S.opt, glow: true });
-          ctx.text(bp.x, bp.y + 26, 'optimum N ≈ ' + Math.round(Math.pow(10, best) / 1e9) + ' B, D ≈ ' + (C / 6 / Math.pow(10, best) / 1e12).toFixed(1) + ' T  (~' + Math.round(C / 6 / Math.pow(10, 2 * best)) + ' tok/param)', { size: 12, font: 'mono', color: 'white', anchor: 'middle', parent: S.opt });
+          ctx.text(435, 560, 'optimum N ≈ ' + Math.round(Math.pow(10, best) / 1e9) + ' B, D ≈ ' + (C / 6 / Math.pow(10, best) / 1e12).toFixed(1) + ' T  (~' + Math.round(C / 6 / Math.pow(10, 2 * best)) + ' tok/param)', { size: 12, font: 'mono', color: 'white', anchor: 'middle', parent: S.opt });
           ctx.text(200, 250, 'too small: under-fit', { size: 11, font: 'mono', color: 'dim', parent: L });
           ctx.text(730, 250, 'too big: under-trained', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: L });
 
@@ -456,7 +461,7 @@
           pickN(best);
           hide(L, S.iso.curve, S.opt, S.mkG, S.readout);
 
-          var R = card(ctx, g, 810, 176, 730, 390, 'orange', 'TOKENS PER PARAMETER (log): overtraining');
+          var R = card(ctx, g, 810, 176, 730, 404, 'orange', 'TOKENS PER PARAMETER (log): overtraining');
           var rows = [['Chinchilla 70B', 20], ['Llama 2 70B', 29], ['Llama 3 70B', 214], ['DeepSeek-V3 (active)', 400], ['Llama 3 8B', 1875]];
           function lx(v) { return 1030 + Math.log10(v) / 4 * 480; }
           S.tp = rows.map(function (r, i) {
@@ -468,8 +473,8 @@
           });
           var cx = lx(20);
           ctx.line(cx, 216, cx, 520, { color: ctx.alpha('white', 0.5), dash: '4 4', parent: R });
-          ctx.text(cx + 6, 536, 'compute-optimal ≈ 20', { size: 11, font: 'mono', color: 'white', parent: R });
-          ctx.text(1520, 552, 'smaller + longer = cheaper to serve', { size: 12, font: 'mono', color: 'orange', anchor: 'end', parent: R });
+          ctx.text(cx + 6, 534, 'compute-optimal ≈ 20', { size: 11, font: 'mono', color: 'white', parent: R });
+          ctx.text(1520, 562, 'smaller + longer = cheaper to serve', { size: 12, font: 'mono', color: 'orange', anchor: 'end', parent: R });
           hide(R);
 
           var B = card(ctx, g, 60, 590, 1480, 270, 'teal', 'DATA PIPELINE (web → training mix)');
@@ -494,7 +499,7 @@
           return ctx.reveal(L, { from: 'left' }).then(function () {
             return ctx.reveal(S.iso.curve, { from: 'draw', dur: 1300 });
           }).then(function () {
-            return ctx.reveal(S.opt, { from: 'scale' });
+            return ctx.reveal(S.opt, { dur: 500 });
           }).then(function () {
             return ctx.beat(1);
           }).then(function () {
@@ -937,8 +942,8 @@
           },
           {
             say: 'Trained this way at scale, DeepSeek R1 Zero learned on its own to think longer, re-check its work, and backtrack.',
-            card: { tag: 'NUMBERS', title: 'Reasoning emerges', stat: { v: '15.6 → 71.0%', l: 'AIME 2024 pass@1 of DeepSeek-R1-Zero during RL, with responses growing longer' } },
-            deep: '<ul><li><b>Emergence</b>: DeepSeek-R1-Zero’s responses grew from hundreds to thousands of tokens and AIME 2024 pass@1 rose from 15.6% to 71.0% (86.7% with majority voting), with spontaneous reflection (“wait, let me re-check”).</li>' +
+            card: { tag: 'NUMBERS', title: 'Reasoning emerges', stat: { v: '15.6 → 71.0%', l: 'AIME 2024 pass@1 of DeepSeek-R1-Zero during RL, as first reported in January 2025 (77.9% in the revised Nature paper)' } },
+            deep: '<ul><li><b>Emergence</b>: DeepSeek-R1-Zero’s responses grew steadily longer during RL and AIME 2024 pass@1 rose from 15.6% to 71.0% in the January 2025 report (77.9% in the revised Nature version; 86.7% with majority voting), with spontaneous reflection (“wait, let me re-check”).</li>' +
               '<li><b>2025 refinements</b>: DAPO (clip-higher ε<sub>high</sub> = 0.28, dynamic sampling that drops all-pass/all-fail groups whose A ≡ 0, token-level loss); Dr. GRPO removes length and std normalisation biases.</li></ul>' +
               '<p class="muted">Curves on the stage are schematic.</p>'
           }
@@ -1135,8 +1140,8 @@
           var Env = card(ctx, g, 60, 386, 560, 230, 'teal', 'THE ENVIRONMENT LOOP');
           S.pol = ctx.node({ x: 170, y: 490, w: 170, h: 60, title: 'policy π_θ', sub: 'the agent', icon: 'brain', color: 'amber', titleSize: 14, subSize: 11, parent: Env });
           S.env = ctx.node({ x: 497, y: 490, w: 190, h: 60, title: 'sandbox', sub: 'tools · files · APIs', icon: 'tool', color: 'teal', titleSize: 14, subSize: 11, parent: Env });
-          S.a1 = ctx.link(S.pol, S.env, { color: 'magenta', from: 'r', to: 'l', bend: { x: 328, y: 420 }, label: 'action', labelDy: -6, parent: Env });
-          S.a2 = ctx.link(S.env, S.pol, { color: 'teal', from: 'l', to: 'r', bend: { x: 328, y: 560 }, label: 'observation', labelDy: 8, parent: Env });
+          S.a1 = ctx.link(S.pol, S.env, { color: 'magenta', from: 't', to: 't', bend: { x: 334, y: 410 }, label: 'action', labelDy: -4, parent: Env });
+          S.a2 = ctx.link(S.env, S.pol, { color: 'teal', from: 'b', to: 'b', bend: { x: 334, y: 572 }, label: 'observation', labelDy: 4, parent: Env });
           ctx.text(340, 596, 'thousands of parallel containers · async rollouts', { size: 12, font: 'mono', color: 'dim', anchor: 'middle', parent: Env });
           hide(Env);
 
@@ -1223,7 +1228,7 @@
             say: 'On policy distillation goes further: the student generates its own answers, and the teacher grades every token, giving a dense signal on the student\'s own distribution.',
             card: { tag: 'STATE OF THE ART', title: 'On-policy distillation', body: 'Dense per-token feedback like SFT, on-distribution like RL, and far cheaper than RL from scratch.', more: '<p>Forward KL(p<sub>T</sub>‖p<sub>S</sub>) is mass-covering: the student must put probability wherever the teacher does, and a small student often spreads mass over implausible text. Reverse KL(p<sub>S</sub>‖p<sub>T</sub>) is mode-seeking: the student is penalised only where <i>it</i> puts mass the teacher would not, so it concentrates on the teacher’s best behaviours. Evaluated on the student’s own samples, it also removes the train/inference distribution mismatch of SFT.</p>' },
             deep: '<div class="eq">on-policy: L = E<sub>y~S</sub> Σ<sub>t</sub> KL( p<sub>S</sub>(·|y<sub>&lt;t</sub>) ‖ p<sub>T</sub>(·|y<sub>&lt;t</sub>) )</div>' +
-              '<p><b>On-policy distillation</b> (GKD and successors) trains on the student’s own samples with a per-token reverse-KL signal from the teacher: dense reward like SFT, on-distribution like RL, far cheaper than RL from scratch. Reverse KL is mode-seeking, so the student commits to the teacher’s best behaviours rather than averaging.</p>'
+              '<p><b>On-policy distillation</b> (GKD and its successors) trains on the student’s own samples with a per-token divergence from the teacher, often reverse KL: dense reward like SFT, on-distribution like RL, far cheaper than RL from scratch. Reverse KL is mode-seeking, so the student commits to the teacher’s best behaviours rather than averaging.</p>'
           },
           {
             say: 'In our film crew, the director may be a frontier model, while the critic scoring every shot is a small, fast, distilled one.',
@@ -1263,9 +1268,9 @@
           var B = card(ctx, g, 60, 590, 1480, 270, 'magenta', 'RECAP: WHICH STAGE BUILT WHICH SKILL OF THE CREW');
           var roles = ['knowledge', 'long context', 'tool JSON', 'taste & safety', 'reasoning', 'multi-step tools', 'cheap critic'];
           S.recap = STAGES.map(function (s, i) {
-            var xx = 150 + i * 212;
+            var xx = 176 + i * 208;
             var rg = ctx.group({ parent: B });
-            rg.node = ctx.node({ x: xx, y: 668, w: 180, h: 50, title: s[0], color: s[4], kind: 'pill', titleSize: 14, glow: false, parent: rg });
+            rg.node = ctx.node({ x: xx, y: 668, w: 170, h: 50, title: s[0], color: s[4], kind: 'pill', titleSize: 14, glow: false, parent: rg });
             ctx.text(xx, 716, roles[i], { size: 12, font: 'mono', color: 'text', anchor: 'middle', parent: rg });
             return rg;
           });

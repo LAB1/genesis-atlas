@@ -104,6 +104,7 @@ Rules for `run` and gates (enforced by `tools/check.py` and `tools/smoke.py`):
     id: 'agent-loop',                        // must match catalog + file name
     refs: ['Author et al., <i>Paper</i>, Venue Year', ...],   // HTML strings, 4–8 real references
     setup: function (ctx) { ... },           // optional backdrop drawn before step 1
+    poster: 6,                               // optional: pin the step (1-based) whose end picture is the "Play this topic" backdrop
     steps: [ { title, beats, run }, ... ]
   });
 })();
@@ -143,7 +144,9 @@ deduplicated across chambers by text. Write each reference in a stable canonical
   (about 12 units of radius, its ripple reaches ~30). Keep that corner free of text, and give hotspot elements a bit of room above
   them (the hover label "ZOOM" appears there). A chamber opened from a hotspot starts paused ("Play this topic") behind the
   chamber's complete system diagram, which the engine builds by silently replaying your steps and picking the fullest picture,
-  so make sure some step shows the whole system at once.
+  so make sure some step shows the whole system at once. The picker scores the end picture of every step (visible text, shapes and
+  nodes at opacity 0.5 or more, canvas coverage, visible hotspots; steps that draw on a 2D canvas overlay are penalised because the
+  backdrop is an SVG clone). If it picks a poor step, pin the right one with `poster: N` in `Atlas.register`.
 
 ## Content standard
 * Audience: CS/EE PhD engineers. Precise and state-of-the-art (2025–2026): real algorithms, equations, tensor shapes,

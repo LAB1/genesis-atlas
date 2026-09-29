@@ -6,10 +6,11 @@ Atlas.register({
   refs: [
     'Yao et al., <i>ReAct: Synergizing Reasoning and Acting in Language Models</i>, ICLR 2023',
     'Peebles &amp; Xie, <i>Scalable Diffusion Models with Transformers (DiT)</i>, ICCV 2023',
-    'Kwon et al., <i>Efficient Memory Management for LLM Serving with PagedAttention</i>, SOSP 2023',
+    'Kwon et al., <i>Efficient Memory Management for Large Language Model Serving with PagedAttention</i>, SOSP 2023',
     'OpenAI, <i>Video generation models as world simulators</i> (Sora technical report), 2024',
-    'Anthropic, <i>Model Context Protocol</i> specification, 2024–2025',
-    'Google DeepMind, <i>Veo 3</i> technical report, 2025; Wan Team, <i>Wan 2.x: Open Large-Scale Video Generative Models</i>, 2025'
+    'Model Context Protocol project (originated at Anthropic), <i>Model Context Protocol</i> specification, revisions 2024-11-05 to 2026-07-28',
+    'Google DeepMind, <i>Veo 3</i> technical report, 2025',
+    'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025'
   ],
   steps: [
     {
@@ -22,7 +23,7 @@ Atlas.register({
         },
         {
           say: 'She attaches three concept sketches and a voice memo, and presses enter.',
-          card: { tag: 'NUMBERS', title: 'What actually arrives', stat: { v: '3 + 1', l: 'sketches + one 42 second voice memo, plus a 40 word prompt' } },
+          card: { tag: 'NUMBERS', title: 'What actually arrives', stat: { v: '3 + 1', l: 'sketches + one 42 second voice memo, plus a 25 word prompt' } },
           deep: '<div class="note">Mental model: an <b>LLM-driven control plane</b> (agents, orchestration) steering a <b>GPU-heavy data plane</b> (encoders, diffusion transformers, codecs).</div>'
         },
         {
@@ -200,12 +201,12 @@ Atlas.register({
         });
         S.agentBox = ctx.node({ x: 732, y: 552, w: 300, h: 104, kind: 'ghost', color: 'magenta' });
         S.llm = ctx.node({ x: 1060, y: 250, w: 220, h: 64, title: 'LLM Service', sub: 'reasoning · tools', icon: 'brain', color: 'amber' });
-        S.mm = ctx.node({ x: 1060, y: 370, w: 220, h: 64, title: 'Multimodal Encoders', sub: 'vision · audio', icon: 'eye', color: 'violet', titleSize: 15 });
+        S.mm = ctx.node({ x: 1060, y: 370, w: 220, h: 64, title: 'Multimodal Encoders', sub: 'vision · audio', icon: 'eye', color: 'violet', titleSize: 14 });
         S.vg = ctx.node({ x: 1060, y: 490, w: 220, h: 64, title: 'Video Generation', sub: 'latent DiT', icon: 'film', color: 'lime' });
         S.m1 = ctx.link(S.orch, S.llm, { color: 'amber', from: 'r', to: 'l' });
         S.m2 = ctx.link(S.orch, S.mm, { color: 'violet', from: 'r', to: 'l' });
         S.m3 = ctx.link(S.orch, S.vg, { color: 'lime', from: 'r', to: 'l' });
-        ctx.hotspot(S.agentBox, 'multi-agent', { hint: 'AGENTS ⤢' });
+        ctx.hotspot(S.agentBox, 'orchestration', { hint: 'AGENTS ⤢' });
         ctx.hotspot(S.llm, 'llm');
         ctx.hotspot(S.mm, 'multimodal');
         ctx.hotspot(S.vg, 'videogen');
@@ -335,7 +336,7 @@ Atlas.register({
         {
           say: 'Then an edit stitches the clips on a timeline, upscales, interpolates frames, and encodes an adaptive bitrate ladder.',
           card: { tag: 'HOW IT WORKS', title: 'The edit is data', body: 'The editor agent writes an <b>edit decision list</b>; a deterministic compositor executes it.' },
-          deep: '<p><b>Assembly</b>: an EDL produced by the editor agent drives a deterministic compositor (ffmpeg or a GPU compositor). <b>Encode</b>: NVENC H.264, HEVC or AV1, packaged as an HLS/DASH ladder, for example 1080p at 6&nbsp;Mb/s down to 360p at 0.6&nbsp;Mb/s.</p>'
+          deep: '<p><b>Assembly</b>: an EDL produced by the editor agent drives a deterministic compositor (ffmpeg or a GPU compositor). <b>Encode</b>: NVENC H.264, HEVC or AV1, packaged as an HLS/DASH ladder of five renditions, for example (HEVC) 1080p at 4.5&nbsp;Mb/s down to 360p at 0.6&nbsp;Mb/s.</p>'
         },
         {
           say: 'The finished film is pushed to a content delivery network, and the client streams it back, while progress events have been flowing to the user the whole time.',
@@ -411,7 +412,13 @@ Atlas.register({
         {
           say: 'Here is the critical path of our trailer. Planning takes seconds, and understanding the references takes a few more.',
           card: { tag: 'NUMBERS', title: 'Wall-clock', stat: { v: '≈ 150', u: 's', l: 'from enter to a playable film on a well-provisioned cluster' } },
-          deep: '<p>Illustrative critical path (seconds) for a 30&nbsp;s trailer:</p><pre>plan (LLM, 3 agents)        ██ 12\nunderstand refs (encoders)    █ 4\nshots ×6 (parallel DiT)       ████████████ 95\ncritic + 1 re-render            ████ 30\naudio (overlaps shots)        ███ 20\nedit + encode + CDN              ██ 14</pre>'
+          deep: '<p>Illustrative critical path (seconds) for a 30&nbsp;s trailer:</p><table><tr><th>Stage</th><th>Window (s)</th><th>Length</th></tr>' +
+            '<tr><td>plan (LLM, 3 agents)</td><td>0–12</td><td>12</td></tr>' +
+            '<tr><td>understand refs (encoders)</td><td>8–12</td><td>4</td></tr>' +
+            '<tr><td>shots ×6 (parallel DiT)</td><td>12–107</td><td>95</td></tr>' +
+            '<tr><td>critic + window re-render</td><td>107–137</td><td>30</td></tr>' +
+            '<tr><td>audio (overlaps shots)</td><td>20–40</td><td>20</td></tr>' +
+            '<tr><td>edit + encode + CDN</td><td>137–151</td><td>14</td></tr></table>'
         },
         {
           say: 'Then the six shots render in parallel on the video pool, which dominates the wall-clock time and the bill. Audio overlaps with rendering, and the edit and encode close it out.',

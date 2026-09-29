@@ -229,12 +229,12 @@
   Atlas.register({
     id: 'client',
     refs: [
-      'Iyengar &amp; Thomson, <i>RFC 9000: QUIC, a UDP-Based Multiplexed and Secure Transport</i>, IETF 2021; Bishop, <i>RFC 9114: HTTP/3</i>, 2022',
+      'Iyengar &amp; Thomson, <i>RFC 9000: QUIC: A UDP-Based Multiplexed and Secure Transport</i>, IETF 2021; Bishop, <i>RFC 9114: HTTP/3</i>, IETF 2022',
       'Rescorla, <i>RFC 8446: The Transport Layer Security (TLS) Protocol Version 1.3</i>, IETF 2018',
-      'Sakimura et al., <i>RFC 7636: Proof Key for Code Exchange (PKCE)</i>, 2015; Lodderstedt et al., <i>RFC 9700: Best Current Practice for OAuth 2.0 Security</i>, IETF 2025',
+      'Sakimura et al., <i>RFC 7636: Proof Key for Code Exchange by OAuth Public Clients</i>, IETF 2015; Lodderstedt et al., <i>RFC 9700: Best Current Practice for OAuth 2.0 Security</i>, IETF 2025',
       'Fett et al., <i>RFC 9449: OAuth 2.0 Demonstrating Proof of Possession (DPoP)</i>, IETF 2023',
-      'WHATWG, <i>HTML Living Standard, §9.2 Server-sent events</i>; IETF, <i>The Idempotency-Key HTTP Header Field</i> (draft-ietf-httpapi-idempotency-key-header)',
-      'Amazon Web Services, <i>Amazon S3 User Guide: multipart upload limits and additional checksums</i>, 2025; tus.io, <i>tus resumable upload protocol 1.0</i>; IETF, <i>Resumable Uploads for HTTP</i> (draft-ietf-httpbis-resumable-upload)',
+      'WHATWG, <i>HTML Living Standard, §9.2 Server-sent events</i>; Jena &amp; Dalal, <i>The Idempotency-Key HTTP Header Field</i>, IETF Internet-Draft draft-ietf-httpapi-idempotency-key-header-07, 2025',
+      'Amazon Web Services, <i>Amazon S3 User Guide: multipart upload limits and additional checksums</i>, 2025; tus.io, <i>tus resumable upload protocol 1.0.0</i>, 2016; Kleidl, Zhang &amp; Pardue, <i>Resumable Uploads for HTTP</i>, IETF Internet-Draft draft-ietf-httpbis-resumable-upload-12, 2026',
       'Spiteri, Urgaonkar &amp; Sitaraman, <i>BOLA: Near-Optimal Bitrate Adaptation for Online Videos</i>, IEEE INFOCOM 2016',
       'Huang et al., <i>A Buffer-Based Approach to Rate Adaptation: Evidence from a Large Video Streaming Service</i>, ACM SIGCOMM 2014'
     ],
@@ -281,7 +281,7 @@
             say: 'None of this needs native code. Workers and WebAssembly do the hashing, IndexedDB persists state, WebCodecs transcodes audio, fetch streams move bytes, EventSource listens, service workers sync, and Media Source Extensions play the film.',
             card: { tag: 'STATE OF THE ART', title: 'The browser is the runtime', body: 'Every module maps to a web platform API. WebAssembly and WebCodecs made serious client-side media work practical.' },
             deep: '<ul><li><b>Web Worker + WASM</b>: SHA-256 and EXIF rewriting off the UI thread.</li>' +
-              '<li><b>IndexedDB</b>: durable state; call <code>navigator.storage.persist()</code> so the browser does not evict it under pressure.</li>' +
+              '<li><b>IndexedDB</b>: durable state; call <code>navigator.storage.persist()</code> to ask the browser not to evict it under pressure.</li>' +
               '<li><b>WebCodecs</b>: direct access to the browser\'s own video and audio codecs (hardware-accelerated for video where the platform allows) without shipping a codec in WASM.</li>' +
               '<li><b>fetch + Streams</b>: streamed response bodies everywhere; streamed request bodies in Chromium over h2 or h3.</li>' +
               '<li><b>Service Worker sync</b>: Chromium only. iOS Safari lacks Background Sync, so uploads pause when the app is backgrounded and resume on foreground.</li>' +
@@ -409,15 +409,15 @@
           },
           {
             say: 'It renders a small thumbnail so the interface feels instant, and a sixty-four bit perceptual hash, so near-duplicate sketches can be spotted even after resizing or recompression.',
-            card: { tag: 'NUMBERS', title: 'A fingerprint for looks', stat: { v: '64 bit', u: 'pHash', l: 'DCT-based perceptual hash: two images are near-duplicates when the Hamming distance is 8 or less' } },
-            deep: '<p><b>Thumbnail</b>: a 256² WebP for an instant grid, plus a BlurHash placeholder of about 30 bytes.</p>' +
-              '<p><b>Perceptual hash</b> (pHash): grayscale, resize to 32×32, 2-D DCT, keep the 8×8 lowest frequencies, threshold each coefficient against the median: 64 bits. Near-duplicates have a small Hamming distance (roughly 6–10 of 64), robust to resizing and recompression, unlike a cryptographic digest where one flipped bit changes everything.</p>' +
+            card: { tag: 'NUMBERS', title: 'A fingerprint for looks', stat: { v: '64 bit', u: 'pHash', l: 'DCT-based perceptual hash: near-duplicates differ in only a few bits, and a Hamming distance of about 8 or less is a common cutoff' } },
+            deep: '<p><b>Thumbnail</b>: a 256² WebP for an instant grid, plus a BlurHash placeholder of roughly 20 to 30 characters.</p>' +
+              '<p><b>Perceptual hash</b> (pHash): grayscale, resize to 32×32, 2-D DCT, keep the low-frequency 8×8 corner, threshold each coefficient against the median: 64 bits. Resized or recompressed copies usually land within a few bits (Hamming distance), and cutoffs of about 5 to 10 of 64 are common, tuned per dataset. That is the opposite of a cryptographic digest, where one flipped bit changes everything.</p>' +
               '<span class="muted">The stage draws the idea with block averages; real pHash uses the DCT.</span>'
           },
           {
             say: 'For the voice memo it transcodes the audio into a tiny Opus proxy with WebCodecs, so speech recognition and the speaker embedding can start while the original is still uploading.',
             card: { tag: 'NUMBERS', title: 'A ten times smaller proxy', stat: { v: '≈ 10×', u: 'smaller', l: 'AAC 256 kb/s to Opus 24 kb/s mono: the 42 second memo shrinks from 1.3 MB to 0.13 MB' } },
-            deep: '<p><b>Proxy transcode</b> (WebCodecs <code>AudioEncoder</code>): AAC 256 kb/s becomes Opus 24 kb/s mono. Speech recognition needs only 16 kHz mono anyway, so nothing the ASR model hears is lost.</p>' +
+            deep: '<p><b>Proxy transcode</b> (WebCodecs <code>AudioEncoder</code>): AAC 256 kb/s becomes Opus 24 kb/s mono. Speech recognition models typically resample to 16 kHz mono anyway, and Opus at this rate can code wideband speech (up to 8 kHz), so little that ASR needs is lost.</p>' +
               '<p>ASR and the speaker embedding start on the proxy; the original follows for voice-cloning quality. Upload and understanding overlap instead of running in sequence.</p>' +
               '<details><summary>Go deeper</summary><p>Where WebCodecs audio encoding is unavailable, libopus compiled to WASM produces the same bitstream. At 24 kb/s a 20 ms frame is 60 bytes, so 42 s of speech is about 126 KB before container overhead.</p></details>'
           },
@@ -595,13 +595,13 @@
               body: 'SigV4 scopes each URL to one bucket, key, upload id and part number. If it leaks, it grants a single PUT for fifteen minutes.',
               more: '<p>SigV4 derives the signing key by chained HMAC-SHA256: <code>kDate = HMAC("AWS4"+secret, date)</code>, then region, service, and the literal <code>aws4_request</code>. The signature is <code>HMAC(kSigning, stringToSign)</code>, so the account secret itself never appears in a URL.</p>'
             },
-            deep: '<p><b>S3-style multipart</b>: parts are 5&nbsp;MiB–5&nbsp;GiB (the last may be smaller), at most 10,000 parts, uploaded in any order and in parallel. <code>CompleteMultipartUpload</code> lists <code>(PartNumber, ETag)</code> in ascending order and the store assembles them atomically.</p>' +
-              '<ul><li><b>Pre-signed URL</b>: SigV4 HMAC over the canonical request, scoped to bucket, key, <code>uploadId</code> and <code>partNumber</code>, with <code>X-Amz-Expires=900</code>. A leaked URL grants one PUT for 15 min, nothing else.</li></ul>' +
+            deep: '<p><b>S3-style multipart</b>: parts are 5&nbsp;MiB–5&nbsp;GiB (the last may be smaller), at most 10,000 parts (so up to 48.8&nbsp;TiB per object since S3 raised the cap from 5&nbsp;TiB in December 2025), uploaded in any order and in parallel. <code>CompleteMultipartUpload</code> lists <code>(PartNumber, ETag)</code> in ascending order and the store assembles them atomically.</p>' +
+              '<ul><li><b>Pre-signed URL</b>: a SigV4 signature (an HMAC over a string that hashes the canonical request), scoped to bucket, key, <code>uploadId</code> and <code>partNumber</code>, with <code>X-Amz-Expires=900</code>. A leaked URL grants one PUT for 15 min, nothing else.</li></ul>' +
               '<p>The API tier only mints URLs. It never sees a media byte.</p>'
           },
           {
             say: 'The file is cut into five mebibyte parts, and the parts travel over three parallel connections. Each lane is an independent HTTP request straight to the object store.',
-            card: { tag: 'NUMBERS', title: 'Parts are the unit of work', stat: { v: '5 MiB', u: 'per part', l: 'the S3 minimum: up to 10,000 parts of 5 MiB to 5 GiB each, so objects reach 5 TiB' } },
+            card: { tag: 'NUMBERS', title: 'Parts are the unit of work', stat: { v: '5 MiB', u: 'per part', l: 'the S3 minimum: up to 10,000 parts of 5 MiB to 5 GiB each, so objects can reach 48.8 TiB' } },
             deep: '<div class="eq">T ≈ max( S/B<sub>up</sub>, ⌈N/k⌉·(RTT+P/b) )</div>' +
               '<p>Here S is the object size, B<sub>up</sub> the uplink, P the part size, N = ⌈S/P⌉ the part count, k the lanes and b the throughput of one connection. With S = 23.4 MiB, P = 5 MiB, N = 5 and k = 3 there are ⌈5/3⌉ = 2 rounds. Parallelism only helps while a single stream is window- or loss-limited (b ≈ cwnd/RTT). Once the uplink saturates, more lanes add contention instead of speed.</p>' +
               '<details><summary>Go deeper</summary><p>The useful lane count is roughly k* ≈ B<sub>up</sub> / b. On a 20 Mb/s uplink where one TCP stream reaches 8 Mb/s, k* ≈ 2.5, so three lanes just saturate it. Adaptive clients add a lane only while aggregate throughput still rises.</p></details>'
@@ -609,7 +609,7 @@
           {
             say: 'When part three hits a connection reset, only that part is retried, after a short back-off. The other lanes keep going, and nothing that already arrived is sent again. Click any part to reset it yourself.',
             card: { tag: 'TRY IT', title: 'Click a part to reset it', body: 'Only that part is re-sent, about 5 MiB and never the whole 23.4 MiB file. Reset several: each retries alone while the other lanes keep going.' },
-            deep: '<p>Expected re-sent bytes per failure ≈ P. Smaller parts waste less on flaky mobile links but cost more requests, because each PUT pays a round trip and a signature. Adaptive sizing is common: 5 MiB on cellular, 8–64 MiB on good links.</p>' +
+            deep: '<p>Expected re-sent bytes per failure ≈ P. Smaller parts waste less on flaky mobile links but cost more requests, because each PUT pays a round trip and a signature. Adaptive sizing is common, for example the 5 MiB minimum on cellular and larger parts on fast links.</p>' +
               '<p>Retries use exponential backoff with full jitter and a per-part attempt limit; a part that keeps failing fails the upload instead of looping forever.</p>' +
               '<p><b>Resume</b>: <code>uploadId</code> and the completed parts live in IndexedDB. After a crash, <code>ListParts</code> reconciles the two and only the missing parts are sent.</p>' +
               '<details><summary>Go deeper</summary><p>Optimal part size. Give each attempt an overhead c (a round trip plus signing), let one connection carry b bytes per second, and let failures strike at a hazard λ per byte. A P-byte part then succeeds with probability e<sup>−λP</sup> and is tried e<sup>λP</sup> times on average:</p>' +
@@ -619,15 +619,15 @@
           {
             say: 'Each part returns an ETag, and the client can send a checksum along with it. When all five are in, one complete call lists them in order and the store stitches them into a single object.',
             card: { tag: 'KEY IDEA', title: 'Whole object or nothing', body: 'Parts are invisible until <code>CompleteMultipartUpload</code>. The object then appears atomically, and a verifier re-hashes it against the content address.' },
-            deep: '<p><b>Integrity</b>: each part carries <code>x-amz-checksum-sha256</code> (or CRC32C / CRC64NVME), verified server-side before the part is accepted. For multipart objects S3 reports a <i>composite</i> checksum by default, a checksum of the part checksums (the CRC family can also report a full-object value), so a verifier job streams the object once and recomputes the whole-file SHA-256 to confirm the content address.</p>' +
+            deep: '<p><b>Integrity</b>: each part carries <code>x-amz-checksum-sha256</code> (or CRC32C / CRC64NVME), verified server-side before the part is accepted. For multipart objects SHA-256 is supported only as a <i>composite</i> checksum, a checksum of the part checksums (the CRC family can also report a full-object value), so a verifier job streams the object once and recomputes the whole-file SHA-256 to confirm the content address.</p>' +
               '<p><b>Hygiene</b>: a lifecycle rule <code>AbortIncompleteMultipartUpload</code> after one to seven days, or orphaned parts are stored and billed forever.</p>'
           },
           {
             say: 'The IETF resumable upload draft and the tus protocol take a simpler route: one URL, ask the server for its offset, then continue from there. It suits a single stream, but parallelism needs extra machinery.',
-            card: { tag: 'STATE OF THE ART', title: 'Resumability becomes HTTP', body: 'The IETF resumable-upload draft standardizes what tus proved: <code>HEAD</code> returns the offset, <code>PATCH</code> appends from it.' },
-            deep: '<p><b>tus / IETF resumable upload</b>: a single URL. <code>HEAD</code> returns <code>Upload-Offset</code>; <code>PATCH</code> appends from that offset and answers with the new one. The offset is the only state.</p>' +
+            card: { tag: 'STATE OF THE ART', title: 'Resumability becomes HTTP', body: 'The IETF resumable-upload draft, still in progress, generalizes what tus proved: <code>HEAD</code> returns the offset, <code>PATCH</code> appends from it.' },
+            deep: '<p><b>tus and the IETF resumable upload draft</b>: a single upload URL. <code>HEAD</code> returns <code>Upload-Offset</code>; <code>PATCH</code> appends from that offset. In tus the <code>204</code> answer carries the new offset; the IETF draft (version 12, July 2026) reports progress with <code>Upload-Complete</code> instead. The offset is the only state.</p>' +
               '<table><tr><th></th><th>S3 multipart</th><th>tus / IETF draft</th></tr>' +
-              '<tr><td>Parallel parts</td><td>native</td><td>needs the Concatenation extension</td></tr>' +
+              '<tr><td>Parallel parts</td><td>native</td><td>tus needs its Concatenation extension; the draft appends serially</td></tr>' +
               '<tr><td>Resume state</td><td>uploadId + part list</td><td>a single offset</td></tr>' +
               '<tr><td>Auth</td><td>per-part signed URL</td><td>bearer on one URL</td></tr></table>'
           }
@@ -769,7 +769,7 @@
           }
           /* beat 4: the tus alternative */
           function b4() {
-            var tus = ctx.para(1250, 490, ['tus / IETF resumable upload:', 'HEAD → Upload-Offset: 15728640', 'PATCH  Upload-Offset: 15728640', '  → 204  Upload-Offset: 20971520'], { size: 12, font: 'code', color: 'text', lh: 18, parent: B });
+            var tus = ctx.para(1250, 490, ['tus 1.0 resumable upload:', 'HEAD → Upload-Offset: 15728640', 'PATCH  Upload-Offset: 15728640', '  → 204  Upload-Offset: 20971520'], { size: 12, font: 'code', color: 'text', lh: 18, parent: B });
             return ctx.reveal(tus, { from: 'up' }).then(function () {
               var hl = ctx.highlight(tus, { color: 'violet', pad: 8, parent: B });
               return ctx.pulse(hl, { color: 'violet', dur: 700 });
@@ -799,19 +799,19 @@
             },
             deep: '<div class="eq">code_challenge = BASE64URL( SHA-256( code_verifier ) ), &nbsp; |verifier| ∈ [43, 128]</div>' +
               '<p>An attacker who intercepts the authorization code (a hijacked custom URL scheme, a leaked referrer) cannot redeem it without the verifier, which never left the device. Preimage resistance of SHA-256 means seeing the challenge does not reveal the verifier.</p>' +
-              '<p>The user authenticates with a <b>passkey</b> (WebAuthn): a device-bound key pair, phishing-resistant because the browser scopes the signature to the site origin.</p>'
+              '<p>The user authenticates with a <b>passkey</b> (a WebAuthn credential): a public-key pair whose signature the browser scopes to the site origin, which makes it phishing-resistant.</p>'
           },
           {
             say: 'Later the app trades the code for tokens and proves it knows the verifier. The server hashes it and compares. It gets back a short-lived signed JWT access token and a rotating refresh token.',
             card: { tag: 'NUMBERS', title: 'Short-lived by design', stat: { v: '10 min', u: 'access token', l: 'short lifetime bounds a leak: a signed JWT cannot be recalled before it expires' } },
             deep: '<p><b>Access token</b>: a JWS (ES256 or EdDSA) with the claims <code>iss, sub, aud, exp, scope, tenant</code>. The <code>scope</code> string (<code>jobs:write media:put</code>) is the capability the gateway later enforces. The refresh token is opaque and stored server-side, so it can be revoked individually.</p>' +
-              '<p>Before issuing anything the server checks, in constant time, that <code>BASE64URL(SHA-256(verifier))</code> equals the challenge stored with the code. A code is single-use and lives about a minute.</p>'
+              '<p>Before issuing anything the server checks, in constant time, that <code>BASE64URL(SHA-256(verifier))</code> equals the challenge stored with the code. A code is single-use and short-lived: RFC 6749 recommends ten minutes at most, and about a minute is a sensible choice.</p>'
           },
           {
             say: 'Every API call now carries the token, and the gateway verifies the signature locally against cached public keys, without ever calling the identity server.',
             card: { tag: 'STATE OF THE ART', title: 'Bind the token to a key', body: 'DPoP makes each request carry a proof signed by a device key, so a stolen bearer token is useless without that key.' },
-            deep: '<p>The gateway validates the JWT <i>statelessly</i>: fetch the JWKS once, cache by <code>kid</code>, then check the signature, <code>exp</code> and <code>nbf</code> with at most 60 s of clock skew, <code>aud</code> and the scopes. That is roughly 50 µs of CPU and zero network hops.</p>' +
-              '<ul><li><b>DPoP</b> (RFC 9449): the proof JWT covers the HTTP method, URL and a nonce; <code>cnf.jkt</code> in the access token pins it to the device key thumbprint.</li>' +
+            deep: '<p>The gateway validates the JWT <i>statelessly</i>: fetch the JWKS once, cache by <code>kid</code>, then check the signature, <code>exp</code> and <code>nbf</code> with at most 60 s of clock skew, <code>aud</code> and the scopes. That is on the order of tens of microseconds of CPU and zero network hops.</p>' +
+              '<ul><li><b>DPoP</b> (RFC 9449): the proof JWT covers the HTTP method, the URL, a timestamp and a hash of the access token, plus a server-supplied nonce when the server demands one; <code>cnf.jkt</code> in the access token pins it to the device key thumbprint.</li>' +
               '<li>Unknown <code>kid</code>: one rate-limited JWKS refresh, so key rotation needs no outage.</li></ul>'
           },
           {
@@ -947,7 +947,7 @@
           {
             say: 'Because the retry carries the same idempotency key, the server returns the stored response instead of launching a second, very expensive GPU job. Exactly one job enters the queue.',
             card: { tag: 'NUMBERS', title: 'The duplicate that never ran', stat: { v: '≈ 5,400', u: 'GPU-s', l: 'a second trailer would have cost this: 6 shots × 8 GPUs × 95 s, plus planning and one re-render. The key turns a retry into a lookup' } },
-            deep: '<p><b>Idempotency-Key</b> (IETF httpapi draft; Stripe-style): the server stores <code>key → (fingerprint(body), state, response)</code> for about 24 h.</p>' +
+            deep: '<p><b>Idempotency-Key</b> (an IETF httpapi draft, expired at version 07, and Stripe-style in practice): the server stores <code>key → (fingerprint(body), state, response)</code> for a bounded window, for example 24 h as at Stripe.</p>' +
               '<pre>on POST(key, body):\n  row = get_or_insert(key)   # atomic\n  if row.existed:\n    if row.fp != hash(body): 422\n    if row.state == IN_FLIGHT: 409\n    return row.response      # replay\n  BEGIN\n    insert job; insert outbox event\n    row.response = 202{job_id}\n  COMMIT</pre>' +
               '<p>The job, the key row and an <b>outbox</b> event are written in one transaction, so “accepted” and “enqueued” are atomic. The relay publishes the outbox at least once and consumers dedupe by <code>job_id</code>, which gives effectively-once.</p>'
           },
@@ -1195,9 +1195,9 @@
           },
           {
             say: 'Every event carries a type and an id. The server appends typed events to a per-job log, and the id is simply the position in that log.',
-            card: { tag: 'HOW IT WORKS', title: 'The id is a log offset', body: 'Events are appended to Redis Streams or Kafka. The SSE <code>id</code> is the entry offset, so a position in the stream is a position in history.' },
-            deep: '<p><b>Typed event schema</b> (versioned, JSON Schema or protobuf): <code>job.accepted · plan.delta · shot.progress · preview.ready · shot.done · job.failed</code>. Events are appended to a per-job log (Redis Streams or Kafka, retained for hours) and the SSE <code>id</code> is the log offset.</p>' +
-              '<p>Over HTTP/1.1 browsers cap a site at 6 connections, so SSE really needs h2 or h3 multiplexing (100+ concurrent streams by default) or a second tab starves the first.</p>'
+            card: { tag: 'HOW IT WORKS', title: 'The id is a log position', body: 'Events are appended to a per-job log such as Kafka or Redis Streams. The SSE <code>id</code> is the entry position, so an id in the stream is a position in history.' },
+            deep: '<p><b>Typed event schema</b> (versioned, JSON Schema or protobuf): <code>job.accepted · plan.delta · shot.progress · preview.ready · shot.done · job.failed</code>. Events are appended to a per-job log (Redis Streams or Kafka, retained for hours) and the SSE <code>id</code> is the log position (a Kafka offset or a Redis Streams entry id).</p>' +
+              '<p>Over HTTP/1.1 browsers cap SSE at 6 connections per browser and domain, so it really needs h2 or h3 multiplexing (100 concurrent streams by default in browsers) or a second tab starves the first.</p>'
           },
           {
             say: 'When the connection drops, the browser reconnects on its own and sends the last id it saw. The server replays whatever was missed from the log, then tails live events, so the client never sees a gap.',
@@ -1367,7 +1367,7 @@
             deep: '<p><b>Progressive previews</b> (illustrative timings for one 5 s shot):</p>' +
               '<table><tr><th>tier</th><th>model</th><th>res</th><th>ready</th></tr>' +
               '<tr><td>draft</td><td>4-step distilled student</td><td>240p</td><td>~9 s</td></tr></table>' +
-              '<p>A step-distilled student (consistency or distribution-matching distillation) trades some fidelity for a 10 to 25 times cut in denoising steps. Seeded with the same initial noise and the same text conditioning as the teacher, its draft tends to share the final shot\'s composition.</p>'
+              '<p>A step-distilled student (consistency or distribution-matching distillation) trades some fidelity for far fewer network evaluations: four steps instead of tens, and no second guidance pass. Against a baseline of 50 steps with two-pass guidance that is 100 evaluations down to 4, up to a 25 times saving. A student trained on the teacher\'s trajectories, seeded with the same initial noise and text conditioning, tends to share the final shot\'s composition.</p>'
           },
           {
             say: 'Then a sharper preview arrives, and finally the full quality shot replaces it in place, at the same timestamp, without the player restarting.',
@@ -1376,12 +1376,12 @@
               '<tr><td>draft</td><td>4-step distilled student</td><td>240p</td><td>~9 s</td></tr>' +
               '<tr><td>preview</td><td>12 steps, step caching</td><td>480p</td><td>~35 s</td></tr>' +
               '<tr><td>final</td><td>full model + VAE decode + SR</td><td>1080p</td><td>~95 s</td></tr></table>' +
-              '<p>Each tier arrives as a <code>preview.ready</code> event carrying a URL; the player swaps sources at the same playhead position, so the creator watches the shot sharpen instead of waiting for a spinner.</p>'
+              '<p>Each tier arrives as a <code>preview.ready</code> event carrying a URL; the player swaps sources at the same playhead position, so the creator watches the shot sharpen instead of waiting for a spinner. The 95 s is the shot\'s diffusion time; decode and upscaling add a little more, which this illustration ignores.</p>'
           },
           {
             say: 'Best of all, the creator can cancel or redirect after the draft, long before the expensive final render finishes, and the saved GPU time is never spent.',
             card: { tag: 'NUMBERS', title: 'The GPU-seconds never spent', stat: { v: '≈ 690', u: 'GPU-s', l: 'GPU-seconds saved per shot when a bad draft is rejected at 9 s instead of after all 95 s on eight GPUs' } },
-            deep: '<p>Early human feedback prunes the most expensive work. Rejecting a bad draft at 9 s saves the remaining 86 s of an eight-GPU render: 86 × 8 ≈ 690 GPU-seconds, more than ten times the cost of the draft itself.</p>' +
+            deep: '<p>Early human feedback prunes the most expensive work. Rejecting a bad draft at 9 s saves the remaining 86 s of an eight-GPU render: 86 × 8 ≈ 690 GPU-seconds, nearly ten times the roughly 72 GPU-seconds (9 s × 8) the draft itself would use if it ran on the same eight GPUs.</p>' +
               '<div class="note">The best GPU-second is the one never spent.</div>' +
               '<p>The same events feed the critic agent: a draft is cheap enough to score automatically, so the system can discard weak shots before paying for full resolution.</p>'
           }
@@ -1510,12 +1510,12 @@
             say: 'Finally, playback. The finished trailer is packaged as short CMAF segments in a bitrate ladder, described by an HLS or DASH manifest.',
             card: { tag: 'NUMBERS', title: 'A ladder of two second segments', stat: { v: '2 s', u: 'segments', l: 'four rungs from 0.6 to 6 Mb/s: every ABR decision picks one rung for the next segment' } },
             deep: '<p><b>Packaging</b>: the same CMAF (fragmented MP4) segments serve both HLS (<code>.m3u8</code>) and DASH (<code>.mpd</code>), so one set of files on the CDN covers Safari, Chrome and smart TVs. A master playlist lists the rungs; each rung has its own media playlist of 2 s segments.</p>' +
-              '<p>The ladder is often chosen per title: a mostly static animation reaches good quality at lower bitrates than a fast-moving action shot, so rungs are fitted to the content\'s rate-distortion curve. Production ladders usually carry five to eight rungs; four are drawn here so the simulation stays readable.</p>'
+              '<p>The ladder is often chosen per title: a mostly static animation reaches good quality at lower bitrates than a fast-moving action shot, so rungs are fitted to the content\'s rate-distortion curve. Production ladders often carry more rungs than the four drawn here, which keep the simulation readable. The trailer\'s delivery package in the Compositing, Encoding &amp; Streaming chamber uses five rungs (HEVC, 4.5 down to 0.6 Mb/s) and 4 s segments, which trade a little switching agility for fewer requests; this simulation uses 2 s segments and a wider rung spacing.</p>'
           },
           {
             say: 'The player fetches segments from the CDN and appends them to a Media Source Extensions buffer, which the hardware decoder drains.',
             card: { tag: 'HOW IT WORKS', title: 'A buffer between two speeds', body: 'Fetch, <code>appendBuffer</code>, decode. The buffer is the shock absorber between a noisy network and steady playback.' },
-            deep: '<p><b>Pipeline</b>: manifest (<code>.m3u8</code> or <code>.mpd</code>) → fetch a 2 s CMAF fMP4 segment → <code>SourceBuffer.appendBuffer()</code> → hardware decode. Low-latency variants use chunked transfer of partial segments (LL-HLS parts, about 200–500 ms).</p>' +
+            deep: '<p><b>Pipeline</b>: manifest (<code>.m3u8</code> or <code>.mpd</code>) → fetch a 2 s CMAF fMP4 segment → <code>SourceBuffer.appendBuffer()</code> → hardware decode. Low-latency variants use chunked transfer of partial segments (LL-HLS parts, a few hundred milliseconds each).</p>' +
               '<p>Everything the ABR logic can control is one decision per segment: which rung to request next. Everything else, including how many seconds are buffered, is a consequence.</p>'
           },
           {
@@ -1528,7 +1528,7 @@
               '<p><b>BOLA</b> (Lyapunov drift-plus-penalty): with buffer Q in segments and utilities v<sub>m</sub> = ln(S<sub>m</sub>/S<sub>1</sub>),</p>' +
               '<div class="eq">m* = argmax<sub>m</sub> [ V·(v<sub>m</sub> + γp) − Q ] / S<sub>m</sub> &nbsp; (download nothing if all ≤ 0)</div>' +
               '<p>The buffer-based idea goes back to Huang et al. (SIGCOMM 2014), who mapped buffer level directly to a rung.</p>' +
-              '<p>Learned policies such as Pensieve (SIGCOMM 2017) looked strong in simulation, but the Puffer randomized trial (Yan et al., NSDI 2020) found that Fugu, model-predictive control driven by a learned transfer-time predictor, beat both buffer-based rules and Pensieve on real viewers\' stalls and picture quality.</p>'
+              '<p>Learned policies such as Pensieve (SIGCOMM 2017) looked strong in simulation, but the Puffer randomized trial (Yan et al., NSDI 2020) found that a simple buffer-based rule was hard to beat on real viewers. The scheme that robustly outperformed the others, Pensieve included, was Fugu: classical model-predictive control driven by a learned transfer-time predictor.</p>'
           },
           {
             say: 'When the train enters a tunnel at sixteen seconds, the throughput rule notices only after a slow download, then steps down twice. The buffer shrinks to under two seconds, but nothing stalls.',
@@ -1541,7 +1541,7 @@
             say: 'BOLA ignores bandwidth entirely. It keeps the top rung while the buffer is deep, steps down only as the buffer drains toward its thresholds, and holds a much larger safety margin, at the cost of more switching.',
             card: { tag: 'NUMBERS', title: 'Quality and margin, more switches', stat: { v: '+40%', u: 'mean bitrate', l: 'BOLA 4.8 versus 3.4 Mb/s for the throughput rule here, with a 7.5 s minimum buffer, but 15 rung switches instead of 4' } },
             deep: '<p>This yields buffer thresholds per rung; BOLA is provably within O(1/V) of the optimal utility with no bandwidth prediction. Here V = (Q<sub>max</sub>−1)/(v<sub>M</sub>+γp), γp = 5, Q<sub>max</sub> = 10 segments, which puts the rung switch points at 10.6, 12.5 and 14.6 s of buffer (dashed lines).</p>' +
-              '<p>dash.js <i>DYNAMIC</i> switches between the two: throughput rule at startup and after seeks, BOLA once the buffer is healthy. hls.js and Shaka use EWMA throughput estimators.</p>' +
+              '<p>dash.js <i>DYNAMIC</i> switches between the two: throughput rule at startup and after seeks, BOLA once the buffer passes about 10 s. hls.js and Shaka use EWMA throughput estimators.</p>' +
               '<details><summary>Go deeper</summary><p>A common QoE objective (MPC-style): Σ q(R<sub>k</sub>) − λ·rebuffer − μ·Σ|q(R<sub>k+1</sub>) − q(R<sub>k</sub>)|. Its switch penalty is why production players add hysteresis or a minimum dwell time on top of raw BOLA.</p></details>'
           },
           {

@@ -123,11 +123,15 @@
       'Holtzman et al., <i>The Curious Case of Neural Text Degeneration</i> (nucleus sampling), ICLR 2020',
       'Nguyen et al., <i>Turning Up the Heat: Min-p Sampling for Creative and Coherent LLM Outputs</i>, ICLR 2025',
       'Willard &amp; Louf, <i>Efficient Guided Generation for Large Language Models</i> (Outlines), arXiv 2023',
-      'Dong et al., <i>XGrammar: Flexible and Efficient Structured Generation Engine for LLMs</i>, MLSys 2025',
-      'Leviathan, Kalman &amp; Matias, <i>Fast Inference from Transformers via Speculative Decoding</i>, ICML 2023; Chen et al., <i>Accelerating LLM Decoding with Speculative Sampling</i>, 2023',
-      'Cai et al., <i>Medusa</i>, ICML 2024; Li et al., <i>EAGLE</i> (ICML 2024) and <i>EAGLE-3</i>, 2025',
-      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i> (multi-token prediction), 2024',
-      'Tam et al., <i>Let Me Speak Freely? A Study on the Impact of Format Restrictions on LLM Performance</i>, EMNLP 2024 Industry'
+      'Dong et al., <i>XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models</i>, MLSys 2025',
+      'Leviathan, Kalman &amp; Matias, <i>Fast Inference from Transformers via Speculative Decoding</i>, ICML 2023',
+      'Chen et al., <i>Accelerating Large Language Model Decoding with Speculative Sampling</i>, arXiv 2023',
+      'Cai et al., <i>Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads</i>, ICML 2024',
+      'Li et al., <i>EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty</i>, ICML 2024',
+      'Li et al., <i>EAGLE-3: Scaling up Inference Acceleration of Large Language Models via Training-Time Test</i>, 2025',
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Tam et al., <i>Let Me Speak Freely? A Study on the Impact of Format Restrictions on Large Language Model Performance</i>, EMNLP 2024 Industry Track',
+      'Schaeffer et al., <i>Min-p, Max Exaggeration: A Critical Analysis of Min-p Sampling in Language Models</i>, arXiv 2025'
     ],
     steps: [
       /* 1 ------------------------------------------------------------------ */
@@ -149,7 +153,7 @@
           {
             say: 'A small pipeline of logit processors then reshapes those scores: a grammar mask, penalties, temperature and truncation.',
             card: { tag: 'HOW IT WORKS', title: 'Order matters in the pipeline', body: 'Mask first, so truncation can never keep only illegal tokens. Then penalties, temperature, and finally top-k, top-p or min-p.' },
-            deep: '<p>Processor order in vLLM V1: <code>grammar bitmask → penalties / logit bias → ÷T → min-p, top-k, top-p → sample</code>. The mask must precede truncation: otherwise top-p could keep only illegal tokens, and masking afterwards would leave an empty or mis-normalized set.</p>' +
+            deep: '<p>Processor order in vLLM V1: <code>grammar bitmask → logit bias / penalties → ÷T → min-p → top-k / top-p → sample</code>. The mask must precede truncation: otherwise top-p could keep only illegal tokens, and masking afterwards would leave an empty or mis-normalized set.</p>' +
               '<p>Each processor is an elementwise or sort/select operation over V = 128k floats per sequence: microseconds on a GPU.</p>'
           },
           {
@@ -164,6 +168,7 @@
               more: '<p>At batch <i>B</i> the weights are read once per step but used <i>B</i> times, so arithmetic intensity is about <i>B</i> FLOP/byte. An H100 needs roughly 295 FLOP/byte to saturate its tensor cores, so the weight matmuls only become compute-bound near <i>B</i> ≈ 300. In practice the KV-cache reads, which scale with <i>B</i>, keep attention memory-bound far beyond that.</p>' },
             deep: '<p><b>Cost asymmetry</b>: the processors cost microseconds; the forward pass costs milliseconds. At batch 1, every token must stream all weights from HBM:</p>' +
               '<div class="eq">t<sub>token</sub> ≳ W<sub>bytes</sub> / (n<sub>gpu</sub> · BW) = 140 GB / (2 × 3.35 TB/s) ≈ 21 ms</div>' +
+              '<p><span class="muted">Llama-3-70B in bf16 is about 140 GB; 3.35 TB/s is the HBM3 bandwidth of an H100 SXM.</span></p>' +
               '<p>That memory-bound regime is why batching, quantization and speculative decoding (later steps) matter so much for agents that emit thousands of tokens per turn.</p>'
           }
         ],
@@ -283,7 +288,7 @@
           {
             say: 'Raise it to one point five, and the tail fattens, so rarer words like crater or horizon get real probability.',
             card: { tag: 'TRADE-OFF', title: 'Diversity costs coherence', body: 'Hot sampling gives rare words real mass. Across a 128k vocabulary the tail adds up: more variety, more chances to derail a sentence.' },
-            deep: '<ul><li><b>Tool-call arguments</b>: T ≈ 0–0.3. <b>Script / creative text</b>: 0.7–1.0. Reasoning models are usually run at a fixed recommended setting (e.g. DeepSeek-R1: T = 0.6, top-p 0.95).</li>' +
+            deep: '<ul><li><b>Tool-call arguments</b>: T ≈ 0–0.3. <b>Script / creative text</b>: 0.7–1.0. Reasoning models are usually run at a fixed recommended setting (e.g. DeepSeek-R1: T = 0.6 recommended, top-p 0.95 in its evaluations).</li>' +
               '<li>At T = 1.5 the top token drops from 0.42 to 0.30 while <i>horizon</i>, the least likely candidate, rises from 0.013 to 0.029: a 2× gain for the tail, a 30% loss for the head.</li></ul>'
           },
           {
@@ -377,10 +382,10 @@
           },
           {
             say: "Min p keeps tokens with at least fifteen percent of the top token's probability, so it adapts: when the model is sure, it keeps few, and when the distribution is flat, it keeps more.",
-            card: { tag: 'STATE OF THE ART', title: 'Min-p scales with confidence', body: 'Threshold = 0.15 × p(top). Nguyen et al. (ICLR 2025) show it keeps quality at higher temperatures, where top-p degrades.' },
+            card: { tag: 'STATE OF THE ART', title: 'Min-p scales with confidence', body: 'Threshold = 0.15 × p(top). Nguyen et al. (ICLR 2025) report it keeps quality at higher temperatures, where top-p degrades.' },
             deep: '<ul><li><b>min-p</b>: keep p<sub>i</sub> ≥ p<sub>min</sub> · max<sub>j</sub> p<sub>j</sub>. With p<sub>min</sub> = 0.15 at T = 1 the threshold is 0.063, so 4 tokens survive.</li>' +
               '<li>It scales with confidence: a sure model (p<sub>max</sub> = 0.98) keeps almost nothing else; a flat one keeps many. That is why it tolerates high temperatures for creative text.</li>' +
-              '<li>Some later re-evaluations find smaller gains than the original paper reports, so treat min-p as a robust default rather than a free win.</li></ul>'
+              '<li>A 2025 re-analysis (Schaeffer et al.) argues that the original paper’s evidence does not support its claimed gains, so treat min-p as a robust default rather than a free win.</li></ul>'
           },
           {
             say: 'Now raise the temperature to one point five. The flatter distribution makes min p keep more tokens, while top k would still keep exactly five.',
@@ -431,13 +436,13 @@
             say: 'Two more knobs. Penalties push down tokens the model has already used, so our logline stops repeating itself.',
             card: { tag: 'HOW IT WORKS', title: 'Penalize what was already said', body: 'A <b>presence</b> penalty subtracts a flat amount once a token has appeared. A <b>frequency</b> penalty subtracts more for every repetition.' },
             deep: '<div class="eq">z<sub>i</sub> ← z<sub>i</sub> − α<sub>freq</sub>·c<sub>i</sub> − α<sub>pres</sub>·1[c<sub>i</sub> &gt; 0] &nbsp; (α<sub>freq</sub> = 0.3, α<sub>pres</sub> = 0.7)</div>' +
-              '<p>c<sub>i</sub> counts how often token i already appears in the context. CTRL-style repetition penalty instead scales: z ← z/θ if z &gt; 0 else z·θ (θ ≈ 1.1–1.3).</p>'
+              '<p>c<sub>i</sub> counts how often token i already appears in the context. The CTRL-style repetition penalty (θ = 1.2 in the CTRL paper) instead rescales the logit of every token already seen: z ← z/θ if z &gt; 0 else z·θ, the sign-aware form used in common libraries.</p>'
           },
           {
             say: 'Our logline already said ice twice and moon once, so the penalties lower their logits, and surface moves to the top.',
             card: { tag: 'NUMBERS', title: 'Ice loses its lead', stat: { v: '4.1 → 2.8', l: 'logit of ice after penalties; surface (2.9) becomes the mode' } },
             deep: '<p>ice: 4.1 − 0.3·2 − 0.7 = 2.8, moon: 3.3 − 0.3·1 − 0.7 = 2.3, so <i>surface</i> (2.9) becomes the mode.</p>' +
-              '<p>The 0.7 presence penalty is large next to the logit gaps here (0.4 to 1.6), which is why it flips the ranking. In vLLM, presence and frequency penalties count only generated tokens, while the repetition penalty also covers the prompt.</p>' +
+              '<p>Ice loses 1.3 in total (0.6 for two uses plus 0.7 for presence), more than its 1.2 lead over surface, which is why the ranking flips. In vLLM, presence and frequency penalties count only generated tokens, while the repetition penalty also covers the prompt.</p>' +
               '<div class="note">Turn penalties <b>off</b> for JSON and code: braces, quotes and keys repeat by design, and penalizing them corrupts tool calls.</div>'
           },
           {
@@ -544,7 +549,7 @@
               '<p>The mask is computed by a grammar matcher from the current parse state, and applied as a fused bitmask kernel just before sampling. Penalties are off and T is low (0.2) for tool arguments; decoding stops when the automaton reaches an accept state.</p>'
           },
           {
-            say: 'Watch the first token. The model wanted to write Sure, but the grammar only allows an opening brace, so Sure is struck out and the JSON begins cleanly.',
+            say: 'Watch the first token. The model gives Sure eleven percent and a code fence nine percent, but the grammar only allows an opening brace, so those are struck out and the JSON begins cleanly.',
             card: { tag: 'NUMBERS', title: 'Masking renormalizes', stat: { v: '0.62 → 0.89', l: 'p of the opening brace once Sure, the fence and I are masked' } },
             deep: '<p>At the start, only tokens that begin with <code>{</code> are legal: <code>{"</code> (0.62) and <code>{</code> (0.08). Sure (0.11), the code fence (0.09) and I (0.05) are masked. The legal mass is 0.70, so <code>{"</code> is renormalized to 0.62 / 0.70 = 0.89.</p>' +
               '<p>No preamble and no markdown fence are possible: the grammar has no path for them.</p>'
@@ -719,14 +724,15 @@
             card: { tag: 'NUMBERS', title: 'A handful of runtime checks', stat: { v: '< 1%', l: 'of tokens need a runtime stack check (amber; exaggerated here)' },
               more: '<p>Example of a context-dependent token: <code>":</code>. Right after a key string it is a legal quote-then-colon; inside a string <i>value</i> the quote would close the string and the colon would then be illegal. The answer depends on the top of the stack. Context-independent tokens, such as digits inside an integer, never need it.</p>' },
             deep: '<p>The context-dependent tokens are checked against a persistent (tree-structured) stack, so a pushed frame is shared rather than copied when the matcher forks or rolls back.</p>' +
-              '<ul><li>Reported result: up to ~100× faster mask generation than prior engines, and near-zero end-to-end overhead when overlapped with the GPU step.</li>' +
-              '<li>microsoft/llguidance (Earley parser + lexer) reaches similar per-token costs.</li></ul>'
+              '<ul><li>Reported results: up to ~100× lower per-token latency on context-free grammars than prior engines, under 40&nbsp;µs per token for JSON Schema, and near-zero end-to-end overhead when overlapped with the GPU step.</li>' +
+              '<li>For Llama-3.1 with a JSON grammar the paper counts 1,134 of about 128k tokens (under 1%) as context-dependent, cut to 120 by context expansion.</li>' +
+              '<li>microsoft/llguidance (Earley parser on a derivative-based lexer) reports about 50&nbsp;µs of single-core CPU time per mask for a 128k-token vocabulary.</li></ul>'
           },
           {
             say: 'The mask is built on the CPU while the GPU runs the forward pass, so its cost hides completely behind the model.',
             card: { tag: 'NUMBERS', title: 'A mask off the critical path', stat: { v: '16 KB', l: 'bitmask per request per step: ⌈128,256 / 32⌉ int32 words' } },
             deep: '<p><b>Batching</b>: each request has its own matcher; masks are packed as a bitmask tensor <code>[B, ⌈V/32⌉]</code> int32 and applied by one kernel.</p>' +
-              '<p>Timeline per step: the GPU runs forward step t (10–40&nbsp;ms for a 70B decode); meanwhile the CPU advances the matcher with the previously sampled token and builds the mask for step t+1 (tens of µs from cache). It is ready before the logits exist.</p>'
+              '<p>Timeline per step: once token t−1 is sampled, the GPU starts the forward pass for step t (10–40&nbsp;ms for a 70B decode); meanwhile the CPU advances the matcher with token t−1 and builds the mask for step t (tens of µs from cache). It is ready before the logits exist.</p>'
           },
           {
             say: 'The hard part is tokenization: one token can span several grammar symbols, so the matcher walks each candidate token byte by byte.',
@@ -769,7 +775,7 @@
           /* vocab grid */
           var VG = ctx.group({ parent: G });
           panel(ctx, 590, 165, 520, 445, 'pink', VG);
-          head(ctx, 610, 190, 'VOCAB MASK · 448-id sample of 128,256', 'pink', VG);
+          head(ctx, 610, 190, 'VOCAB MASK · 476-id sample of 128,256', 'pink', VG);
           S.grid = ctx.matrix(612, 214, 17, 28, { cell: 14, gap: 3, values: function () { return '#1a2438'; }, parent: VG });
           var rg = ctx.rng(21);
           S.cls = [];
@@ -875,7 +881,7 @@
           {
             say: "Decoding is memory bound: each token requires reading every weight, so the GPU's compute mostly sits idle. Speculative decoding spends that spare compute.",
             card: { tag: 'KEY IDEA', title: 'Spare FLOPs at batch one', body: 'Decode reads all weights for each token but does little arithmetic per byte, so tensor cores idle. Checking several positions per pass is almost free.' },
-            deep: '<p>Roofline view: at batch 1 every weight byte read (bf16: 2 bytes) supports about 2 FLOPs, an arithmetic intensity near 1 FLOP/byte. An H100 needs about 989 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOP/byte to be compute-bound, so decode uses well under 1% of the tensor cores.</p>' +
+            deep: '<p>Roofline view: at batch 1 every weight byte read (bf16: 2 bytes) supports about 2 FLOPs, an arithmetic intensity near 1 FLOP/byte. An H100 SXM needs about 989 TFLOP/s (dense bf16) ÷ 3.35 TB/s ≈ 295 FLOP/byte to be compute-bound, so decode uses well under 1% of the tensor cores.</p>' +
               '<p>Scoring k+1 positions instead of one raises intensity almost k-fold at the same weight traffic: the extra positions ride on reads the GPU pays for anyway.</p>'
           },
           {
@@ -893,7 +899,7 @@
           {
             say: 'Each draft token is accepted with probability equal to the smaller of one and p over q. Here ice and field are accepted, but the third draft token, the word and, is rejected.',
             card: { tag: 'NUMBERS', title: 'Why "and" is rejected', stat: { v: '0.23', l: 'accept probability of "and" (p 0.08, q 0.35); the draw 0.64 rejects it' },
-              more: '<p>Verification generalizes from a chain to a <b>tree</b> of drafts (SpecInfer, Miao et al., 2024): the target scores every branch in one pass under a tree attention mask, and recursive rejection sampling picks the longest accepted path while keeping the output distribution exact.</p>' },
+              more: '<p>Verification generalizes from a chain to a <b>tree</b> of drafts (SpecInfer, Miao et al., 2024): the target scores every branch in one pass under a tree attention mask, and multi-step speculative sampling verifies the branches while keeping the output distribution exact.</p>' },
             deep: '<pre>for i in 1..k:\n  if U &lt; min(1, p_i(x_i)/q_i(x_i)):\n    accept x_i\n  else:\n    emit y ~ norm((p_i − q_i)₊)\n    stop\nif all accepted:\n  emit bonus x_k+1 ~ p_k+1</pre>' +
               '<p>Position 3: p(and) = 0.08, q(and) = 0.35 → accept probability 0.23, u = 0.64 → reject. Positions 1 and 2 have p/q = 1.13 (always accepted) and 0.83 (u = 0.31 accepts).</p>'
           },
@@ -1062,9 +1068,9 @@
           },
           {
             say: "Modern systems skip the separate draft model. Medusa adds extra decoding heads to the target, and EAGLE drafts from the target's own hidden features.",
-            card: { tag: 'STATE OF THE ART', title: 'Draft from the target itself', body: 'Medusa: k extra heads and tree verification, about 2.2 to 3.6×. EAGLE-3 fuses features from several layers: up to ~6.5× at batch 1.' },
-            deep: '<ul><li><b>Medusa</b> (Cai et al., 2024): k extra heads on the last hidden state predict t+2…t+k+1; candidates form a tree verified in one pass with <i>tree attention</i>; ≈2.2–3.6× reported.</li>' +
-              '<li><b>EAGLE</b> (Li et al.): a one-layer draft that autoregresses on the target’s <i>features</i> (plus the sampled token), which are far more predictable than tokens; EAGLE-2 adds dynamic draft trees, EAGLE-3 fuses low/mid/high-layer features with training-time test: up to ~6.5× reported at batch 1.</li></ul>'
+            card: { tag: 'STATE OF THE ART', title: 'Draft from the target itself', body: 'Medusa: k extra heads and tree verification, about 2.2 to 2.8×. EAGLE-3 fuses features from several layers: up to ~6.5× at batch 1.' },
+            deep: '<ul><li><b>Medusa</b> (Cai et al., 2024): k extra heads on the last hidden state predict t+2…t+k+1; candidates form a tree verified in one pass with <i>tree attention</i>; over 2.2× reported for Medusa-1 (frozen backbone) and 2.3–2.8× for Medusa-2 (fine-tuned jointly).</li>' +
+              '<li><b>EAGLE</b> (Li et al.): a one-layer draft that autoregresses on the target’s <i>features</i> (plus the sampled token), which are far more predictable than tokens; EAGLE-2 adds dynamic draft trees, EAGLE-3 fuses low/mid/high-layer features with training-time test: up to ~6.5× reported at batch 1 (HumanEval, Vicuna 13B), and a 1.38× throughput gain at batch 64 in SGLang.</li></ul>'
           },
           {
             say: 'DeepSeek V3 trains multi token prediction modules and reuses them as the drafter, and simple prompt lookup copies spans from the context for free.',
@@ -1074,12 +1080,12 @@
           },
           {
             say: 'The catch is batch size. Verifying k plus one tokens per sequence multiplies the arithmetic, so at large batch the free compute disappears and speculation can even slow decoding down. Engines therefore shrink k, or switch it off.',
-            card: { tag: 'PITFALL', title: 'Speedups shrink with batch', body: 'Verification is free only while B·(k+1) stays below the H100 ridge, about 295. At k = 4 that is B ≈ 60; by B ≈ 190 speculation is slower than plain decoding.',
+            card: { tag: 'PITFALL', title: 'Speedups shrink with batch', body: 'Verification is free only while B·(k+1) stays below the H100 ridge, about 295. In an idealized model, k = 4 stops being free at B ≈ 60 and loses to plain decoding by B ≈ 190.',
               more: '<p><b>With grammars</b>: mask both q and p with the same automaton; the matcher advances speculatively along the draft and rolls back rejected tokens (XGrammar’s matcher exposes <code>rollback(k)</code>), so exactness carries over to the masked target.</p>' },
             deep: '<div class="eq">speedup(B, k) = E(α, k) · T(B) / ( T((k+1)·B) + k·c ), &nbsp; T(n) = max(1, n / 295)</div>' +
               '<p>T(n) is the time for n token rows to stream through the weights, in units of one bandwidth-bound step; 295 is the H100 ridge (989 TFLOP/s ÷ 3.35 TB/s). With α = 0.8 and c = 0.05 the model is flat at 2.8× (k = 4) up to B ≈ 59, then falls: 1.4× at B = 128, break-even near B ≈ 190.</p>' +
               '<p>Longer drafts start higher and fall sooner: k = 8 peaks at 3.1× but breaks even at B ≈ 130; k = 2 peaks at 2.2× and holds until B ≈ 230.</p>' +
-              '<details><summary>Go deeper</summary><p>Real break-even points come earlier: KV-cache reads grow with B·(k+1) and are memory-bound. Engines pick k per batch, for example by maximizing goodput (SmartSpec, Liu et al., 2024), or disable speculation above a concurrency threshold. Tree drafts (Medusa, EAGLE-2) verify more rows and hit the ridge sooner.</p></details>'
+              '<details><summary>Go deeper</summary><p>Real break-even points come earlier: KV-cache reads grow with B·(k+1) and are memory-bound. Engines pick k per batch, for example by maximizing goodput (SmartSpec, later renamed TurboSpec; Liu et al.), or disable speculation above a concurrency threshold. Tree drafts (Medusa, EAGLE-2) verify more rows and hit the ridge sooner.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -1169,7 +1175,7 @@
                 if (k === 0) ctx.line(gx + 178, gy, gx + 190, gy, { color: 'lime', sw: 1.2, arrow: true, parent: g });
               });
             }
-            ctx.text(830, y + 140, ['≈2.2–3.6× · needs head fine-tuning', 'needs a trained draft head per model', 'free if the model was trained with MTP'][i], { size: 12, font: 'mono', color: 'dim', parent: g });
+            ctx.text(830, y + 140, ['≈2.2–2.8× · needs head fine-tuning', 'needs a trained draft head per model', 'free if the model was trained with MTP'][i], { size: 12, font: 'mono', color: 'dim', parent: g });
             g.setAttribute('opacity', 0);
             return g;
           });
@@ -1262,7 +1268,7 @@
           {
             say: "Put it all together for the director's render shot call. The target model, accelerated by an EAGLE style draft, produces the logits.",
             card: { tag: 'KEY IDEA', title: 'The whole funnel, once', body: 'One tool call touches every mechanism in this chamber: draft and verify, logits, mask, processors, sampling, and validation.' },
-            deep: '<p>The agent decides to call <code>render_shot</code>. What follows is the loop of this whole chamber run about 30 times for a ~30-token call: draft k tokens, verify them in one target pass, mask and sample, append, repeat.</p>' +
+            deep: '<p>The agent decides to call <code>render_shot</code>. What follows is the loop of this whole chamber, run about nine times for a ~30-token call (30 tokens at roughly 3.4 tokens per round): draft k tokens, verify them in one target pass, mask and sample, append, repeat.</p>' +
               '<p>The target is a 70B-class model served with an EAGLE-style draft head; the forward pass dominates the cost, everything else on the stage is bookkeeping around it.</p>'
           },
           {

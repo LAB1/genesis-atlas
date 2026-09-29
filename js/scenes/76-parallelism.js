@@ -12,7 +12,8 @@
   function card(ctx, parent, x, y, w, h, color, title) {
     var g = ctx.group({ parent: parent });
     g.frame = ctx.rect(x, y, w, h, { rx: 10, fill: 'rgba(8,14,28,0.92)', stroke: ctx.alpha(color, 0.55), parent: g });
-    if (title) ctx.text(x + 16, y + 22, title, { size: 13, font: 'mono', weight: 700, color: color, parent: g, spacing: 1 });
+    /* the title is a lighter tint of the card colour: readable on dark, and darker (not washed out) in the light theme */
+    if (title) ctx.text(x + 16, y + 22, title, { size: 13, font: 'mono', weight: 700, color: ctx.mix(color, 'white', 0.3), parent: g, spacing: 1 });
     g.x0 = x; g.y0 = y; g.w0 = w;
     g.box = bx(x, y, w, h);
     return g;
@@ -48,6 +49,18 @@
 
   function stopLoops(S) { (S.loops || []).forEach(function (l) { l.stop(); }); S.loops = []; }
 
+  /* red, magenta, blue, violet and pink text turns pale in the inverted light theme: lighten it a little
+     (big numerals and the axis name are left alone) so small labels stay legible in both themes */
+  function soften(ctx, root) {
+    var map = {};
+    ['red', 'magenta', 'blue', 'violet', 'pink'].forEach(function (n) { map[String(ctx.C[n]).toLowerCase()] = ctx.mix(n, 'white', 0.42); });
+    var ts = root.getElementsByTagName('text');
+    for (var i = 0; i < ts.length; i++) {
+      var f = (ts[i].getAttribute('fill') || '').toLowerCase();
+      if (map[f] && parseFloat(ts[i].getAttribute('font-size')) < 30) ts[i].setAttribute('fill', map[f]);
+    }
+  }
+
   /* page swap: old page drifts out, new page settles in */
   function swapPage(ctx, S, build) {
     stopLoops(S);
@@ -56,6 +69,7 @@
     return p0.then(function () {
       S.page = ctx.group();
       build(S.page);
+      soften(ctx, S.page);
       return ctx.reveal(S.page, { from: 'scale', s0: 0.96, dur: 650, ease: 'out' });
     });
   }
@@ -145,7 +159,7 @@
       'In the fox-trailer system every axis shows up:',
       '· LLM agents: TP inside a node, DP over replicas',
       '· MoE planner models: EP across the NVLink domain',
-      '· video DiT shots: SP = 8 (+ CFG-parallel 2)',
+      '· video DiT shots: Ulysses SP = 8, one node each',
       '· training all of them: DP / FSDP + PP across nodes'
     ], { size: 13, font: 'mono', color: 'text', lh: 26, parent: g });
 
@@ -168,7 +182,7 @@
         x += w;
       });
       bars[bars.length - 1].lab = ctx.text(Math.max(x + 10, X0 + 80 * SC + 10), y + 23, rw[2], { size: 13, font: 'mono', weight: 700, color: 'white', parent: rg });
-      ctx.line(X0 + 80 * SC, y + 6, X0 + 80 * SC, y + 40, { color: 'white', sw: 1.5, dash: '3 3', parent: rg });
+      ctx.line(X0 + 80 * SC, y + 13, X0 + 80 * SC, y + 42, { color: 'white', sw: 1.5, dash: '3 3', parent: rg });
       S.memRows.push(rg); S.memBarRows.push(bars);
     });
     ctx.text(X0 + 80 * SC, 431, '↑ 80 GB', { size: 11, font: 'mono', color: 'white', anchor: 'middle', parent: mc });
@@ -182,12 +196,12 @@
     /* five cuts */
     S.fiveCard = card(ctx, g, 800, 490, 750, 250, 'red', 'FIVE WAYS TO CUT');
     var fc = S.fiveCard;
-    ctx.text(900, 530, 'splits', { size: 11, font: 'mono', color: 'dim', parent: fc });
-    ctx.text(1110, 530, 'communication', { size: 11, font: 'mono', color: 'dim', parent: fc });
-    ctx.text(1400, 530, 'placement', { size: 11, font: 'mono', color: 'dim', parent: fc });
+    ctx.text(900, 537, 'splits', { size: 11, font: 'mono', color: 'dim', parent: fc });
+    ctx.text(1110, 537, 'communication', { size: 11, font: 'mono', color: 'dim', parent: fc });
+    ctx.text(1400, 537, 'placement', { size: 11, font: 'mono', color: 'dim', parent: fc });
     var cuts = [['DP', 'the batch', 'all-reduce ∇ (train only)', 'anywhere'], ['TP', 'every weight matrix', 'all-reduce per block half', 'NVLink only'], ['PP', 'the layers', 'send/recv activations', 'across nodes'], ['EP', 'MoE experts', 'all-to-all of tokens', 'NVLink / RDMA'], ['SP', 'the sequence', 'ring K/V or all-to-all', 'NVLink']];
     S.cutRows = cuts.map(function (cu, i) {
-      var y = 546 + i * 60;
+      var y = 554 + i * 58;
       var rg = ctx.group({ parent: fc });
       rg.bg = ctx.rect(814, y, 722, 50, { rx: 8, fill: 'rgba(255,255,255,0.02)', stroke: ctx.alpha(AX[cu[0]], 0.25), sw: 1, parent: rg });
       ctx.label(852, y + 25, cu[0], { color: AX[cu[0]], size: 14, w: 52, parent: rg });
@@ -288,13 +302,13 @@
       ctx.rect(920 + i * 190, 250, 12, 12, { rx: 2, fill: ctx.alpha(L[1], 0.7), parent: S.zLeg });
       ctx.text(938 + i * 190, 257, L[0], { size: 12, font: 'mono', color: 'text', parent: S.zLeg });
     });
-    S.zLines = ctx.para(920, 626, [
+    S.zLines = ctx.para(920, 622, [
       'ZeRO-3 per layer: all-gather W before fwd and bwd,',
       'reduce-scatter ∇W after bwd → 3Ψ vs 2Ψ elements (DDP)',
       'prefetch layer ℓ+1’s all-gather under layer ℓ compute',
       'HSDP: shard within a node, replicate across nodes',
       'inference never needs this: no grads, no optimizer'
-    ], { size: 12, font: 'mono', color: 'text', lh: 44, parent: zc });
+    ], { size: 12.5, font: 'mono', color: 'text', lh: 32, parent: zc });
   }
 
   /* ================================================================ 3 RING ALL-REDUCE */
@@ -348,7 +362,7 @@
       'NVLS reduces inside NVSwitch, SHARP in the IB',
       'switches; hierarchical: RS in node → AR across',
       'rails → AG in node'
-    ], ap);
+    ], { size: 13, color: 'text', lh: 28, pre: true, parent: S.arEx });
     S.arLegend = ctx.para(920, 776, ['amber = reduce (add incoming chunk)', 'lime = gather (overwrite with final chunk)', 'every link busy every step: no idle wires'], { size: 12, font: 'mono', color: 'dim', lh: 24, parent: mc });
   }
 
@@ -430,7 +444,7 @@
         }
       } else S.after.push(aft);
       ctx.text(x0 + 16, y0 + 228 + 30, pn[3], { size: 12, font: 'mono', color: 'text', parent: pc });
-      ctx.text(x0 + 16, y0 + 228 + 56, pn[4], { size: 12, font: 'mono', color: q === 2 ? 'magenta' : 'cyan', parent: pc });
+      ctx.text(x0 + 16, y0 + 228 + 56, pn[4], { size: 12, font: 'mono', color: ctx.mix(q === 2 ? 'magenta' : 'cyan', 'white', 0.35), parent: pc });
     });
 
     S.whoCard = card(ctx, g, 900, 160, 650, 300, 'cyan', 'WHO USES WHAT');
@@ -450,16 +464,16 @@
     });
     S.ncclG = ctx.group({ parent: tc });
     ctx.text(920, 494, 'NCCL · what actually runs', { size: 12, font: 'mono', weight: 700, color: 'cyan', parent: S.ncclG, spacing: 1 });
-    ctx.para(920, 526, [
-      'picks algorithm × protocol per call, per size:',
-      '· ring (bandwidth), tree (latency), NVLS (reduce',
-      '  inside NVSwitch), CollNet / SHARP (in-network)',
-      '· protocols Simple / LL / LL128: latency vs bandwidth',
-      '· kernels occupy SMs → compute and comm contend;',
-      '  overlap on separate streams, offload to NVLS',
-      '· one-shot / symmetric-memory all-reduce for tiny',
-      '  decode messages (latency-bound, ~µs)'
-    ], { size: 13, color: 'text', lh: 38, pre: true, parent: S.ncclG });
+    /* one small paragraph per idea (2 lines each), so wrapped bullets stay visually grouped */
+    [[526, ['picks algorithm × protocol per call, per message size:']],
+     [568, ['· ring (bandwidth), tree (latency), NVLS (reduce', '  inside NVSwitch), CollNet / SHARP (in-network)']],
+     [628, ['· protocols Simple / LL / LL128: latency vs bandwidth']],
+     [672, ['· kernels occupy SMs → compute and comm contend;', '  overlap on separate streams, offload to NVLS']],
+     [732, ['· one-shot / symmetric-memory all-reduce for tiny', '  decode messages (latency-bound, ~µs)']],
+     [792, ['· channels: each call is split over several CTAs, one per', '  ring or tree, so every NVLink / NIC port stays busy']]
+    ].forEach(function (b) {
+      ctx.para(920, b[0], b[1], { size: 13, color: 'text', lh: 21, pre: true, parent: S.ncclG });
+    });
   }
 
   /* ================================================================ 5 TENSOR PARALLEL */
@@ -669,6 +683,8 @@
         if (e2 === e1) e2 = (e1 + 3) % 8;
         load[e1]++; load[e2]++;
         var dot = ctx.circle(tx, ty, 9, { fill: ctx.alpha(RK[Math.floor(e1 / 2)], 0.85), stroke: 'white', sw: 1, parent: S.tokG });
+        dot.r0 = S.routes.length;
+        dot.ex = [e1, e2];
         S.tok.push(dot);
         [e1, e2].forEach(function (eid, k) {
           var en = S.exp[eid];
@@ -681,10 +697,11 @@
     S.load = load;
     S.dispTxt = ctx.text(405, 206, 'dispatch all-to-all →', { size: 12, font: 'mono', color: AX.EP, anchor: 'middle', parent: g });
     S.combTxt = ctx.text(405, 752, '← combine all-to-all', { size: 12, font: 'mono', color: AX.EP, anchor: 'middle', parent: g });
+    S.pickLab = ctx.label(405, 240, 'token → E0 (GPU 0) + E0 (GPU 0)', { color: 'amber', size: 12, parent: g });
     /* load bars */
     S.loadG = ctx.group({ parent: g });
     ctx.text(80, 790, 'tokens per expert', { size: 12, font: 'mono', color: 'text', parent: S.loadG });
-    S.loadBars = [];
+    S.loadBars = []; S.loadLabs = [];
     var cap = 1.25 * 2 * 24 / 8;
     for (var k = 0; k < 8; k++) {
       var h = load[k] * 6;
@@ -692,8 +709,9 @@
       var b = ctx.rect(300 + k * 62, 858 - h, 40, h, { rx: 3, fill: ctx.alpha(over ? 'red' : 'magenta', 0.6), stroke: over ? 'red' : 'magenta', sw: 1, parent: S.loadG });
       b.full = h;
       S.loadBars.push(b);
-      ctx.text(320 + k * 62, 858 - h - 10, String(load[k]), { size: 11, font: 'mono', weight: 700, color: over ? 'red' : 'white', anchor: 'middle', parent: S.loadG });
-      ctx.text(320 + k * 62, 872, 'E' + k, { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: S.loadG });
+      /* the count sits inside its bar, clear of the dashed capacity line */
+      S.loadLabs.push(ctx.text(320 + k * 62, 858 - h / 2, String(load[k]), { size: 11, font: 'mono', weight: 700, color: 'white', anchor: 'middle', parent: S.loadG }));
+      ctx.text(320 + k * 62, 872, 'E' + k, { size: 11, font: 'mono', color: over ? 'red' : 'dim', anchor: 'middle', parent: S.loadG });
     }
     S.capLine = ctx.line(290, 858 - cap * 6, 800, 858 - cap * 6, { color: 'amber', sw: 1.4, dash: '5 4', parent: S.loadG });
     ctx.text(80, 814, 'capacity C·k·T/E', { size: 11, font: 'mono', color: 'amber', parent: S.loadG });
@@ -718,7 +736,7 @@
       '  dispatch FP8  8 · 7,168 · 1 B ≈ 57 KB',
       '  combine BF16  8 · 7,168 · 2 B ≈ 115 KB',
       'DeepEP: NVLink intra-node + RDMA inter-node kernels;',
-      '  low-latency decode mode via IBGDA, few SMs',
+      '  low-latency decode kernels: IBGDA, no SMs held',
       'serving on NVL72: wide EP over one NVLink domain,',
       '  attention in DP, experts spread across 72 GPUs'
     ], mp);
@@ -815,8 +833,8 @@
     S.spA = ctx.para(920, 212, ['SP = 8 → 9,450 tokens (and their activations)', '  per GPU; Ulysses: 40 heads / 8 = 5 per GPU'], sp);
     S.spB = ctx.para(920, 300, ['RING / CONTEXT PARALLEL', '· P2P send K,V block to the next GPU, P−1 steps', '· comm of block t+1 hides under compute of t'], sp);
     S.spB2 = ctx.para(920, 414, ['· online softmax merges partial (m, ℓ, O) blocks:', '  the N × N score matrix is never materialized', '· degree not bounded by heads; causal masks need', '  zig-zag sharding for balance (Llama 3 CP)'], sp);
-    S.spC = ctx.para(920, 568, ['ULYSSES', '· 4 all-to-alls per layer (Q, K, V in; O out)', '· per-GPU volume ∝ N·h / P: constant when N, P', '  grow together; needs P | #heads'], sp);
-    S.spD = ctx.para(920, 722, ['USP (hybrid): Ulysses inside NVLink × ring across;', '  xDiT-style video serving adds CFG-parallel 2', '  (cond / uncond branches on separate GPU groups)'], sp);
+    S.spC = ctx.para(920, 568, ['ULYSSES', '· two rounds per layer: Q, K, V in, then O out', '· per-GPU volume ∝ N·h / P: constant when N, P', '  grow together; needs P | #heads'], sp);
+    S.spD = ctx.para(920, 722, ['USP (hybrid): Ulysses inside NVLink × ring across;', 'our default: SP 8 on one node, both CFG branches', '  batched; CFG-parallel 2 = 16 GPUs, half the latency'], sp);
   }
 
   function paintRingAttn(ctx, S, t) {
@@ -843,6 +861,8 @@
   /* ================================================================ 9 MAPPING */
   function buildMap(ctx, S, g) {
     ctx.text(90, 176, '64 GPUs = 8 nodes × 8 · TP 8 × PP 4 × DP 2', { size: 14, font: 'mono', weight: 700, color: 'red', parent: g, spacing: 1 });
+    /* rail 3 band is drawn first, so it sits behind the cells */
+    S.railBand = ctx.rect(142, 409, 652, 64, { rx: 8, fill: ctx.alpha(AX.DP, 0.07), stroke: ctx.alpha(AX.DP, 0.5), sw: 1, dash: '4 4', parent: g });
     S.nodeCols = []; S.mcell = []; S.nodeG = [];
     for (var n = 0; n < 8; n++) {
       var x = 150 + n * 80;
@@ -871,17 +891,18 @@
       ctx.text(170 + s * 160, 818, 'PP stage ' + s, { size: 12, font: 'mono', color: 'text', parent: S.stageLeg });
     }
     S.mapNote = ctx.text(150, 848, 'column = TP group (NVLink) · green arcs = PP send · cyan = DP on rail 3', { size: 12, font: 'mono', color: 'dim', parent: g });
-    S.ppArrows = []; S.dpArcs = []; S.tpPaths = [];
+    S.ppArrows = []; S.tpPaths = []; S.dpArcs = [];
     for (n = 0; n < 8; n++) {
       var ca = 150 + n * 80 + 34, cb = ca + 80;
       if (n % 4 !== 3) S.ppArrows.push(ctx.path('M' + ca + ',724 Q' + (ca + 40) + ',752 ' + cb + ',726', { stroke: AX.PP, sw: 2.4, arrow: true, parent: g }));
       S.tpPaths.push(ctx.path('M' + (150 + n * 80 + 34) + ',258 V685', { stroke: 'rgba(0,0,0,0)', parent: g }));
     }
+    /* DP all-reduce arcs of rail 3: from the top edge of node q's g3 cell over to node q+4's, arching through the
+       (dimmed) g2 row so they never cross a "g3" label; staggered heights keep the four arcs apart */
     for (n = 0; n < 4; n++) {
-      var y = 230 + 3 * 61 + 28;
+      var ay = 230 + 3 * 61;
       var xa = 150 + n * 80 + 34, xb = 150 + (n + 4) * 80 + 34;
-      var arc = ctx.path('M' + xa + ',' + y + ' Q' + ((xa + xb) / 2) + ',' + (y - 70 - n * 12) + ' ' + xb + ',' + y, { stroke: ctx.alpha(AX.DP, 0.85), sw: 1.8, dash: '5 4', parent: g });
-      S.dpArcs.push(arc);
+      S.dpArcs.push(ctx.path('M' + xa + ',' + ay + ' Q' + ((xa + xb) / 2) + ',' + (ay - 74 - n * 30) + ' ' + xb + ',' + ay, { stroke: ctx.alpha(AX.DP, 0.95), sw: 2, dash: '6 4', parent: g }));
     }
 
     S.mapCard = card(ctx, g, 900, 160, 650, 120, 'red', 'PLACEMENT RULE AND REAL MAPPINGS (2024–2026)');
@@ -915,8 +936,9 @@
       '  planner LLM 70B: TP 8 per replica, DP replicas,',
       '    prefill / decode on separate pools',
       '  MoE agents on NVL72: wide EP 72 + DP attention',
-      '  video DiT shot: Ulysses SP 8 × CFG-parallel 2',
-      '    = 16 GPUs per shot, 6 shots in flight',
+      '  video DiT shot: Ulysses SP 8 on one node,',
+      '    8 GPUs per shot, 6 shots = 48 GPUs',
+      '    (CFG-parallel 2 → 16 GPUs if latency matters)',
       '  VAE decode: spatial tiling, 1 GPU per tile'
     ], mp);
   }
@@ -939,18 +961,38 @@
     return list.reduce(function (p, item) { return p.then(function () { return fn(item); }); }, Promise.resolve());
   }
 
+  /* expert-parallel demo: light up the two routes and the two experts that token k was sent to */
+  function pickToken(ctx, S, k, pulse) {
+    var tk = S.tok[k];
+    S.tok.forEach(function (d, i) {
+      d.setAttribute('stroke', i === k ? ctx.C.amber : '#ffffff');
+      d.setAttribute('stroke-width', i === k ? 3 : 1);
+      d.setAttribute('r', i === k ? 11 : 9);
+    });
+    S.routes.forEach(function (rt, i) {
+      var on = i === tk.r0 || i === tk.r0 + 1;
+      rt.p.setAttribute('stroke', ctx.alpha(rt.col, on ? 0.95 : 0.13));
+      rt.p.setAttribute('stroke-width', on ? 2.6 : 1);
+      if (on) S.meshG.appendChild(rt.p);
+    });
+    S.pickLab.setText('token → E' + tk.ex[0] + ' (GPU ' + (tk.ex[0] >> 1) + ') + E' + tk.ex[1] + ' (GPU ' + (tk.ex[1] >> 1) + ')');
+    if (pulse) tk.ex.forEach(function (e) { ctx.pulse(S.exp[e], { color: 'amber', dur: 650 }); });
+  }
+
   /* ================================================================ SCENE */
   Atlas.register({
     id: 'parallelism',
     refs: [
       'Shoeybi et al., <i>Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism</i>, 2019; Narayanan et al., <i>Efficient Large-Scale Language Model Training on GPU Clusters Using Megatron-LM</i>, SC 2021; Korthikanti et al., <i>Reducing Activation Recomputation in Large Transformer Models</i> (Megatron-SP), MLSys 2023',
-      'Rajbhandari, Rasley, Ruwase &amp; He, <i>ZeRO: Memory Optimizations Toward Training Trillion Parameter Models</i>, SC 2020; Zhao et al., <i>PyTorch FSDP</i>, VLDB 2023',
+      'Rajbhandari, Rasley, Ruwase &amp; He, <i>ZeRO: Memory Optimizations Toward Training Trillion Parameter Models</i>, SC 2020; Zhao et al., <i>PyTorch FSDP: Experiences on Scaling Fully Sharded Data Parallel</i>, VLDB 2023',
       'Patarasuk &amp; Yuan, <i>Bandwidth Optimal All-reduce Algorithms for Clusters of Workstations</i>, JPDC 2009',
-      'Huang et al., <i>GPipe</i>, NeurIPS 2019; Qi, Wan, Huang &amp; Lin, <i>Zero Bubble Pipeline Parallelism</i>, ICLR 2024',
-      'Lepikhin et al., <i>GShard</i>, ICLR 2021; DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
-      'Liu, Zaharia &amp; Abbeel, <i>Ring Attention with Blockwise Transformers for Near-Infinite Context</i>, ICLR 2024; Jacobs et al., <i>DeepSpeed Ulysses</i>, 2023',
-      'Fang &amp; Zhao, <i>USP: A Unified Sequence Parallelism Approach for Long Context Generative AI</i>, 2024 (xDiT)',
-      'Llama Team (Meta), <i>The Llama 3 Herd of Models</i>, 2024'
+      'Huang et al., <i>GPipe: Efficient Training of Giant Neural Networks using Pipeline Parallelism</i>, NeurIPS 2019; Qi, Wan, Huang &amp; Lin, <i>Zero Bubble Pipeline Parallelism</i>, ICLR 2024',
+      'Lepikhin et al., <i>GShard: Scaling Giant Models with Conditional Computation and Automatic Sharding</i>, ICLR 2021',
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Liu, Zaharia &amp; Abbeel, <i>Ring Attention with Blockwise Transformers for Near-Infinite Context</i>, arXiv 2310.01889, 2023',
+      'Jacobs et al., <i>DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</i>, arXiv 2309.14509, 2023',
+      'Fang &amp; Zhao, <i>USP: A Unified Sequence Parallelism Approach for Long Context Generative AI</i>, 2024',
+      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -976,7 +1018,7 @@
             card: { tag: 'NUMBERS', title: 'Half an hour on one GPU', stat: { v: '29 min', l: 'for one fox shot on one H100 (0.68 EFLOP at 40% MFU); 3.6 min if 8 GPUs scale perfectly' } },
             deep: '<p>The fox shot from the GPU chamber: N = 75,600 tokens, 14B parameters, 50 steps × 2 (CFG). One forward pass is 2·P·N + 4·N²·d·L ≈ 6.8 PFLOP, so</p>' +
               '<div class="eq">6.8 PFLOP × 100 forwards = 0.68 EFLOP  ·  ÷ (989 TFLOP/s × 40%) ≈ 1,719 s ≈ 29 min</div>' +
-              '<p>Eight GPUs give 3.6 min only if communication is hidden. Perfect strong scaling is the goal, and every axis in this chamber is judged by how much of it survives its own communication cost.</p>'
+              '<p>Eight GPUs give 3.6 min only if communication is hidden. Perfect strong scaling is the goal, and every axis in this chamber is judged by how much of it survives its own communication cost. (The running example’s ~95 s per shot on 8 GPUs is close to the B200 row of the GPU chamber’s budget.)</p>'
           },
           {
             say: 'So we cut the model. There are five ways to cut it. Replicate the model and split the batch. Split every weight matrix across GPUs. Or split the stack of layers into stages.',
@@ -1074,7 +1116,7 @@
             card: { tag: 'HOW IT WORKS', title: 'One all-reduce per step', body: 'Gradient buckets are all-reduced while the backward pass is still running, so most of the communication hides under compute.' },
             deep: '<p><b>DDP</b>: each rank computes ∇W on its shard; bucketed all-reduces overlap with the backward pass (gradients of late layers are ready first). A ring all-reduce sends ≈ 2Ψ <i>elements</i> per GPU per step (reduce-scatter Ψ + all-gather Ψ), i.e. ≈ 4Ψ bytes for BF16 gradients.</p>' +
               '<div class="eq">W ← W − η · Adam( (1/N) Σ<sub>i</sub> ∇W<sub>i</sub> )</div>' +
-              '<p>Because every rank applies the same update to the same starting weights, replicas stay bit-identical as long as the all-reduce is deterministic.</p>'
+              '<p>Because every rank applies the same update to the same starting weights, replicas stay bit-identical as long as the all-reduce is deterministic. PyTorch DDP packs gradients into ~25 MB buckets in reverse layer order and launches each bucket’s all-reduce the moment it fills, so only the last bucket is exposed.</p>'
           },
           {
             say: 'For serving, data parallel just means more replicas behind the load balancer. There are no gradients to exchange, so throughput scales almost linearly, but the latency of any single request does not improve.',
@@ -1099,7 +1141,8 @@
               '<tr><td>ZeRO-1 (P<sub>os</sub>)</td><td>4Ψ + KΨ/N</td><td>31.4</td></tr>' +
               '<tr><td>ZeRO-2 (+g)</td><td>2Ψ + (2+K)Ψ/N</td><td>16.6</td></tr>' +
               '<tr><td>ZeRO-3 / FSDP (+p)</td><td>(2+2+K)Ψ/N</td><td>1.9</td></tr></table>' +
-              '<p>ZeRO-3 re-materializes each layer’s weights just in time (all-gather), then frees them; grads leave via reduce-scatter. Traffic rises from 2Ψ to ~3Ψ elements per GPU (1.5×) but model-state memory falls N-fold. <b>HSDP</b> shards inside a node and replicates across nodes so the all-gathers stay on NVLink.</p>'
+              '<p>ZeRO-3 re-materializes each layer’s weights just in time (all-gather), then frees them; grads leave via reduce-scatter. Traffic rises from 2Ψ to ~3Ψ elements per GPU (1.5×) but model-state memory falls N-fold. <b>HSDP</b> shards inside a node and replicates across nodes so the all-gathers stay on NVLink.</p>' +
+              '<details><summary>Go deeper</summary><p>ZeRO shards model states only: the activations, which scale with b · s · h · L, stay on every rank, so training pairs it with activation recomputation, Megatron-SP or context parallelism. The 1.9 GB also ignores the transient all-gathered layer (one layer’s BF16 weights, a few hundred MB for a 7.5B model) and communication buffers.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -1153,7 +1196,7 @@
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: ZeRO stages */
             ctx.hud('ZeRO-3: 16Ψ / N = 1.9 GB per GPU at N = 64');
-            fit(ctx, S.zeroCard, 700);
+            fit(ctx, S.zeroCard, 660);
             return seq([1, 2, 3], function (i) {
               ctx.reveal(S.zRows[i], { from: 'left', dur: 300 });
               return grow(ctx, S.zBarRows[i], 450, 250, 100).then(function () { return ctx.wait(150); });
@@ -1168,7 +1211,7 @@
           {
             say: 'How does an all-reduce actually move bytes? The classic answer is the ring. Arrange the GPUs in a circle and split each gradient into as many chunks as there are GPUs. Each cell here is one chunk, and its digit counts how many GPUs have been added into it.',
             card: { tag: 'KEY IDEA', title: 'n GPUs, n chunks', body: 'Cut the message into n equal chunks. Each GPU sends to its right neighbour and receives from its left, so every link carries exactly one chunk at a time.' },
-            deep: '<p>Ring all-reduce (Patarasuk &amp; Yuan) is <b>bandwidth-optimal</b>: to end with Σ everywhere, each GPU must receive at least (n−1)/n·S for the reduction and send (n−1)/n·S of finished data, so 2(n−1)/n·S is a lower bound, and the ring meets it.</p>' +
+            deep: '<p>Ring all-reduce (Patarasuk &amp; Yuan) is <b>bandwidth-optimal</b>: they prove that any all-reduce over n nodes needs a communication time of at least 2(n−1)/n·S / B, and the ring meets that bound.</p>' +
               '<p>Rank r talks only to r±1 on a logical ring laid over the physical topology; NCCL builds several rings (channels) in parallel so that all NVLink or NIC ports stay busy. The four coloured cells inside each GPU are its four chunks.</p>'
           },
           {
@@ -1189,7 +1232,7 @@
               more: '<p>2(n−1)/n · S ÷ B = 2 · 7/8 · 14 GB ÷ 450 GB/s ≈ 54 ms. The same message over 512 GPUs and a 50 GB/s NIC costs 2 · 511/512 · 14 GB ÷ 50 GB/s ≈ 0.56 s: the bandwidth term barely grows with n, but the α term does.</p>' },
             deep: '<div class="eq">T<sub>ring</sub> = 2(n−1)·α + 2·(n−1)/n · S/B</div>' +
               '<details><summary>Go deeper</summary><p>Each of the 2(n−1) steps sends S/n bytes over a link of bandwidth B and pays a latency α, so T = 2(n−1)(α + S/(nB)) = 2(n−1)α + 2(n−1)/n · S/B. The bandwidth term tends to 2S/B; the latency term grows linearly in n.</p></details>' +
-              '<p>Because the latency term grows with n, NCCL uses <b>double binary trees</b> for small messages, in-switch reduction (<b>NVLS</b>, <b>SHARP</b>) to halve the bytes each GPU pushes, and <b>hierarchical</b> all-reduces at cluster scale: reduce-scatter over NVLink, all-reduce the 1/8-size shards across rails, all-gather over NVLink.</p>'
+              '<p>Because the latency term grows with n, NCCL uses <b>double binary trees</b> for small messages, in-switch reduction (<b>NVLS</b>, <b>SHARP</b>), for which NVIDIA quotes up to 2× more collective throughput on H100, and <b>hierarchical</b> all-reduces at cluster scale: reduce-scatter over NVLink, all-reduce the 1/8-size shards across rails, all-gather over NVLink.</p>'
           }
         ],
         run: function (ctx) {
@@ -1261,14 +1304,14 @@
           {
             say: 'All to all is a distributed transpose: chunk i j travels from GPU i to GPU j. That is exactly how mixture of experts dispatches tokens, and how Ulysses swaps the sequence split for a head split.',
             card: { tag: 'KEY IDEA', title: 'All-to-all is a transpose', body: 'Cell (i, j) moves from row i to row j. Every pair of GPUs exchanges data, so it needs a full-bisection fabric.' },
-            deep: '<p>But their <b>traffic patterns</b> differ: rings and trees only use neighbour links, while all-to-all needs every pair. It wants a full-bisection switch (NVSwitch, or a non-blocking fat-tree) and suffers most from congestion and stragglers. That is why MoE all-to-all is usually confined to an NVLink domain or to a few nodes (node-limited routing).</p>' +
-              '<p>Volume is (n−1)/n·S per GPU, the same as all-gather, but every byte has a different destination.</p>'
+            deep: '<p><b>All-to-all</b> is a distributed transpose: GPU i sends its chunk j to GPU j, so with S bytes per rank it moves (n−1)/n·S per GPU, the same volume as all-gather, but every byte has a different destination.</p>' +
+              '<p>The <b>traffic pattern</b> is the difference: rings and trees only use neighbour links, while all-to-all needs every pair. It wants a full-bisection switch (NVSwitch, or a non-blocking fat-tree) and suffers most from congestion and stragglers. That is why MoE all-to-all is usually confined to an NVLink domain or to a few nodes (node-limited routing).</p>'
           },
           {
-            say: 'Chain a reduce scatter and an all gather and you get all reduce. NCCL implements all of these with rings, trees, and in-switch reductions, and picks the algorithm and protocol per call from the message size.',
-            card: { tag: 'STATE OF THE ART', title: 'NCCL tunes every call', body: 'Algorithm (ring, tree, NVLS, CollNet) times protocol (Simple, LL, LL128) is chosen per message size from a latency and bandwidth model.' },
+            say: 'Chain a reduce scatter and an all gather and you get all reduce. NCCL implements all of these with rings, trees, and in-switch reductions, and picks the algorithm and protocol per call from the message size. Click any panel to replay it.',
+            card: { tag: 'TRY IT', title: 'Replay any collective', body: 'Click a panel to watch its before and after states again. Only all-reduce ends with the same sum on every GPU; the NCCL box on the right shows how it is actually run.' },
             deep: '<ul><li><b>NCCL</b> tunes (algorithm ∈ {ring, tree, NVLS, CollNet}) × (protocol ∈ {Simple, LL, LL128}) × channels per call from a cost model of α, β.</li>' +
-              '<li>Collectives run as <b>kernels on SMs</b>: a TP all-reduce steals SMs from the GEMMs it should overlap with; Hopper/Blackwell mitigate with copy engines, NVLS offload and SM-light kernels (DeepEP uses ~20 SMs).</li>' +
+              '<li>Collectives run as <b>kernels on SMs</b>: a TP all-reduce steals SMs from the GEMMs it should overlap with; Hopper/Blackwell mitigate with copy engines, NVLS offload and SM-light kernels (DeepSeek-V3’s MoE all-to-all kernels use about 20 SMs).</li>' +
               '<li>Tiny decode-time messages are latency-bound: one-shot all-reduce over symmetric memory (every GPU reads peers’ buffers via NVLink load/store) beats a ring.</li></ul>'
           }
         ],
@@ -1307,7 +1350,28 @@
             moveHi(ctx, S, 0);
             fit(ctx, S.whoCard, 700);
             ctx.reveal(S.ncclG, { from: 'up', delay: 400 });
-            return ctx.reveal(S.after[2], { from: 'left', dur: 600, delay: 200 }).then(function () { return ctx.pulse(S.panels[3], { color: 'cyan', dur: 700 }); });
+            return ctx.reveal(S.after[2], { from: 'left', dur: 600, delay: 200 }).then(function () { return ctx.pulse(S.panels[3], { color: 'cyan', dur: 700 }); }).then(function () {
+              /* every panel is now clickable: replay its before -> after transition */
+              S.replaying = false;
+              S.panels.forEach(function (pn, q) {
+                pn.style.cursor = 'pointer';
+                pn.addEventListener('click', function () {
+                  if (S.replaying) return;
+                  S.replaying = true;
+                  var p;
+                  if (q === 2) {
+                    S.a2a.forEach(function (cg) { ctx.place(cg, cg.src.x, cg.src.y); });
+                    p = Promise.all(S.a2a.map(function (cg, k) { return ctx.transform(cg, { x: cg.dst.x, y: cg.dst.y }, 900, 'inOut', k * 40); }));
+                  } else {
+                    var aft = S.after[q === 3 ? 2 : q];
+                    aft.setAttribute('opacity', 0);
+                    p = ctx.reveal(aft, { from: 'left', dur: 650 });
+                  }
+                  ctx.hud(['all-gather', 'reduce-scatter', 'all-to-all', 'all-reduce'][q] + ': replay');
+                  return p.then(function () { S.replaying = false; });
+                });
+              });
+            });
           });
         }
       },
@@ -1328,7 +1392,7 @@
               more: '<p>Column split: GeLU(X·[A₁ … A_t]) = [GeLU(XA₁) … GeLU(XA_t)] because GeLU is elementwise. Row split: XA = Σᵢ XᵢAᵢ, and GeLU(Σᵢ XᵢAᵢ) ≠ Σᵢ GeLU(XᵢAᵢ), so an all-reduce would be needed first.</p>' },
             deep: '<div class="eq">Y<sub>i</sub> = GeLU(X A<sub>i</sub>)   with no communication</div>' +
               '<details><summary>Go deeper</summary><p>GeLU acts on each entry, so it commutes with a column partition: GeLU([XA<sub>1</sub>, …, XA<sub>t</sub>]) = [GeLU(XA<sub>1</sub>), …, GeLU(XA<sub>t</sub>)]. If instead A were split by rows, XA = Σ<sub>i</sub> X<sub>i</sub>A<sub>i</sub> and GeLU(Σ) ≠ ΣGeLU, forcing an all-reduce <i>before</i> the nonlinearity, a second synchronization per MLP.</p></details>' +
-              '<p>Megatron wraps the block in conjugate operators: <i>f</i> (identity in the forward pass, all-reduce in the backward) before it and <i>g</i> (all-reduce forward, identity backward) after it.</p>'
+              '<p>Megatron wraps the block in conjugate operators: <i>f</i> (identity in the forward pass, all-reduce in the backward) before it and <i>g</i> (all-reduce forward, identity backward) after it. With a gated MLP (SwiGLU, as in Llama) the gate and up projections are both column-parallel and their elementwise product stays local, so the argument is unchanged.</p>'
           },
           {
             say: 'Then each GPU multiplies by its row slice of the second matrix. The result is a partial sum with the full output shape, holding just one quarter of the terms.',
@@ -1340,14 +1404,14 @@
             say: 'A single all reduce adds the four partial sums, and every GPU ends with the same output. That is one collective for the whole MLP block, and the next layer cannot start until it finishes.',
             card: { tag: 'HOW IT WORKS', title: 'One all-reduce, on the critical path', body: 'The sum over Zᵢ is a single all-reduce on NVLink. Unlike DP gradients it cannot overlap with anything: the next GEMM needs its result.' },
             deep: '<div class="eq">comm / layer (fwd) = 2 × AR(b·s·h) → 2 · 2(t−1)/t · b·s·h · 2 B</div>' +
-              '<p>Unlike DP, this traffic is <b>synchronous</b>: the next GEMM waits for it, and it scales with tokens, not parameters. <b>Megatron-SP</b> replaces each all-reduce with reduce-scatter + all-gather (same bytes) and shards the LayerNorm and dropout activations along the sequence, cutting activation memory by t.</p>'
+              '<p>Unlike DP, this traffic is <b>synchronous</b>: the next GEMM waits for it, and it scales with tokens, not parameters. <b>Megatron-SP</b> replaces each all-reduce with reduce-scatter + all-gather (same bytes) and shards the LayerNorm and dropout activations along the sequence, cutting the memory of those activations by t.</p>'
           },
           {
             say: 'Attention works the same way, with the heads split across GPUs. That makes two all reduces per layer in the forward pass, all on the critical path, so tensor parallelism must stay inside an NVLink domain.',
             card: { tag: 'NUMBERS', title: 'What TP costs a 70B prefill', stat: { v: '83 ms', l: 'of all-reduce time for an 8k-token prefill at TP 8 on NVLink 4, against ~750 ms over 50 GB/s InfiniBand' } },
-            deep: '<p>Attention: Q, K, V projections are column-parallel by heads (each GPU runs h/t heads end-to-end), the output projection is row-parallel. Worked for a 70B model (h = 8,192, 80 layers, TP = 8) prefilling 8k tokens:</p>' +
+            deep: '<p>Attention: Q, K, V projections are column-parallel by heads (each GPU runs a 1/t share of the heads end-to-end), the output projection is row-parallel. Worked for a 70B model (h = 8,192, 80 layers, TP = 8) prefilling 8k tokens:</p>' +
               '<div class="eq">S = 8,192 · 8,192 · 2 B = 134 MB  →  2·7/8·134 MB ÷ 450 GB/s ≈ 0.52 ms per all-reduce</div>' +
-              '<p>Two per layer × 80 layers ≈ 83 ms per prefill against ≈ 240 ms of math: worth overlapping. Over 50 GB/s InfiniBand the same traffic costs ≈ 750 ms, longer than the math, so TP never leaves the NVLink domain. For decode (64 tokens, 1 MB messages) the cost is pure latency, which NVLS and one-shot all-reduce kernels attack.</p>'
+              '<p>Two per layer × 80 layers ≈ 83 ms per prefill against ≈ 240 ms of math at ~60% of peak: worth overlapping. Over 50 GB/s InfiniBand the same traffic costs ≈ 750 ms, longer than the math, so TP never leaves the NVLink domain. For decode (64 tokens, 1 MB messages) the cost is pure latency, which NVLS and one-shot all-reduce kernels attack.</p>'
           }
         ],
         run: function (ctx) {
@@ -1444,7 +1508,8 @@
             deep: '<ul><li><b>Interleaved 1F1B</b> (Megatron): v model chunks per GPU; bubble shrinks by v at the cost of v× more p2p messages.</li>' +
               '<li><b>Zero Bubble</b> (Qi et al., ICLR 2024): split B into B<sub>input</sub> (on the critical path) and W (weight-grad, deferrable) and schedule W into the bubbles.</li>' +
               '<li><b>DualPipe</b> (DeepSeek-V3): feeds micro-batches from both ends and overlaps the MoE all-to-all of one micro-batch with compute of another.</li></ul>' +
-              '<p>Each trades the idle time for something else: message count, schedule complexity, or peak memory.</p>'
+              '<p>Each trades the idle time for something else: message count, schedule complexity, or peak memory.</p>' +
+              '<details><summary>Go deeper</summary><p>Measured against useful work, the plain bubble is (p−1)/m; interleaving with v model chunks per GPU divides it by v. For p = 4, m = 8, v = 2 the idle share of total time falls from 3/11 = 27% to 1.5/9.5 ≈ 16%, paid for with v× more point-to-point messages per micro-batch and a larger warm-up footprint.</p></details>'
           },
           {
             say: 'Pipeline traffic is small: one activation tensor per micro-batch per stage boundary. That is why stages can sit on different nodes. For serving, the price is an extra hop of latency for every token.',
@@ -1517,13 +1582,14 @@
             say: 'Mixture of experts models replace each feed forward layer with many experts, and a router sends every token to only its top few. Parameters grow with the number of experts, but the work per token does not.',
             card: { tag: 'KEY IDEA', title: 'Sparse experts, dense parameters', body: 'A router activates k of E experts per token, so capacity grows without FLOPs growing. The experts are what we spread over GPUs.' },
             deep: '<div class="eq">y = Σ<sub>e ∈ TopK(s(x))</sub> g<sub>e</sub>(x) · FFN<sub>e</sub>(x),   s(x) = softmax(x·W<sub>g</sub>) or sigmoid</div>' +
-              '<p>Each dot on the left is a token; the router picks two of eight experts for it (the coloured mesh). Eight experts, two per GPU, is a toy version of what production models do with 64 to 256 experts per layer.</p>'
+              '<p>Each dot on the left is a token; the router picks two of eight experts for it (the coloured mesh). Eight experts, two per GPU, is a toy version of what production models do: DeepSeek-V3, for example, has 256 routed experts per layer.</p>'
           },
           {
-            say: 'Expert parallelism places different experts on different GPUs. Every MoE layer then needs two all to all exchanges. The first, dispatch, ships each token to the GPUs hosting its chosen experts.',
-            card: { tag: 'HOW IT WORKS', title: 'Dispatch: tokens travel to experts', body: 'Each token is copied to the GPUs hosting its top-k experts: one all-to-all, with traffic proportional to k times the hidden size.' },
+            say: 'Expert parallelism places different experts on different GPUs. Every MoE layer then needs two all to all exchanges. The first, dispatch, ships each token to the GPUs hosting its chosen experts. Click a token to follow its routes.',
+            card: { tag: 'TRY IT', title: 'Click a token, follow its routes', body: 'Every dot is a token. Click one to light up the two experts its router chose, and the GPUs the dispatch has to reach.' },
             deep: '<p>Per MoE layer, each token of hidden size h crosses the fabric 2k times: k copies out (dispatch) and k back (combine). Dispatch permutes tokens by expert id so that each GPU receives a contiguous batch for its local experts; the send volume per GPU is roughly k·(tokens per GPU)·h·bytes.</p>' +
-              '<p>Because destinations depend on the data, the exchange is an <i>irregular</i> all-to-all: message sizes differ from step to step, unlike the fixed-size collectives of DP or TP.</p>'
+              '<p>Because destinations depend on the data, the exchange is an <i>irregular</i> all-to-all: message sizes differ from step to step, unlike the fixed-size collectives of DP or TP. The token you click is followed to its two experts, on the GPUs named in the amber label.</p>' +
+              '<details><summary>Go deeper</summary><p>Worked example with DeepSeek-V3 shapes (h = 7,168, k = 8) and 4,096 tokens per GPU per micro-batch: dispatch in FP8 sends 4,096 × 8 × 7,168 × 1 B ≈ 235 MB per GPU per layer, about 0.5 ms on 450 GB/s NVLink but 4.7 ms over a 50 GB/s NIC. Node-limited routing (at most 4 target nodes, one copy per node, NVLink fan-out inside) caps the network copies at four instead of up to eight, which is why expert placement follows the topology.</p></details>'
           },
           {
             say: 'The experts run their feed forward networks locally. The second exchange, combine, brings the results back to each token’s home GPU, where they are summed with the router weights.',
@@ -1533,17 +1599,17 @@
           },
           {
             say: 'Routing is data dependent, so some experts get hot while others idle, and the busiest expert sets the layer’s latency. Capacity limits and load balancing keep the traffic even.',
-            card: { tag: 'PITFALL', title: 'One hot expert stalls the layer', body: 'The busiest expert decides when the layer finishes. Here E2 exceeds the capacity C = 7.5 tokens; overflow is dropped or rerouted.',
-              more: '<p>GShard and Switch add an auxiliary loss α·E·Σₑ fₑPₑ, where fₑ is the fraction of tokens sent to expert e and Pₑ its mean router probability; it is minimized when both are uniform. DeepSeek-V3 drops it: a per-expert bias bₑ is added to the routing scores only for selection and nudged up or down after each step according to observed load, so balance is enforced without gradient interference.</p>' },
-            deep: '<ul><li><b>Load balance</b>: GShard/Switch add an auxiliary loss α·E·Σ f<sub>e</sub>P<sub>e</sub>; DeepSeek-V3 instead adds a per-expert bias b<sub>e</sub> to routing scores only, nudged up or down by observed load (aux-loss-free).</li>' +
-              '<li><b>Capacity</b> = C·k·T/E tokens per expert; overflow is dropped (training) or rerouted. The chart shows one hot expert (E2) blowing past C = 1.25 (dashed line at 7.5 tokens).</li></ul>'
+            card: { tag: 'PITFALL', title: 'One hot expert stalls the layer', body: 'The busiest expert decides when the layer finishes. Here E2 receives 11 tokens and E3 receives 8, against a capacity of 7.5; the overflow is dropped or rerouted.',
+              more: '<p>GShard and Switch add an auxiliary loss α·E·Σₑ fₑPₑ, where fₑ is the fraction of tokens sent to expert e and Pₑ its mean router probability; it is minimized when both are uniform. DeepSeek-V3 mostly drops it: a per-expert bias bₑ is added to the routing scores only for selection and nudged up or down after each step according to observed load, so balance is enforced without gradient interference. A tiny sequence-wise balance loss (α = 0.0001) remains as a safeguard.</p>' },
+            deep: '<ul><li><b>Load balance</b>: GShard/Switch add an auxiliary loss α·E·Σ f<sub>e</sub>P<sub>e</sub>; DeepSeek-V3 instead adds a per-expert bias b<sub>e</sub> to routing scores only, nudged up or down by observed load (aux-loss-free, plus a tiny sequence-wise loss).</li>' +
+              '<li><b>Capacity</b> = C·k·T/E tokens per expert; overflow is dropped (training) or rerouted. With a capacity factor of 1.25 the dashed line sits at 7.5 tokens: E2 (11 tokens) blows past it and E3 (8) just crosses it, while the mean load is 6.</li></ul>'
           },
           {
             say: 'DeepSeek V3 pushes this to the extreme: two hundred fifty six routed experts plus one shared expert per layer, eight chosen per token, spread across sixty four GPUs, with routing limited to four nodes to cap network traffic.',
             card: { tag: 'NUMBERS', title: 'Sparsity at scale', stat: { v: '8 / 256', u: 'experts per token', l: 'DeepSeek-V3 activates 37B of 671B parameters; each token reaches at most 4 nodes' } },
             deep: '<p>For DeepSeek-V3 (h = 7,168, k = 8, 256 routed + 1 shared expert, 37B of 671B params active), dispatch is sent in FP8 (≈ 57 KB/token) and combine in BF16 (≈ 115 KB/token).</p>' +
               '<ul><li><b>Node-limited routing</b>: a token may only pick experts on ≤ 4 nodes, so each token crosses InfiniBand at most 4 times and then fans out over NVLink.</li>' +
-              '<li><b>Serving</b>: prefill uses throughput-oriented all-to-all; decode uses latency-oriented kernels (DeepEP low-latency mode via IBGDA). On NVL72, “wide EP” spreads experts over all 72 GPUs at NVLink speed while attention runs data-parallel.</li></ul>'
+              '<li><b>Serving</b>: prefill uses throughput-oriented all-to-all; decode uses latency-oriented kernels (DeepEP low-latency mode via IBGDA). On NVL72, “wide EP” can spread experts over all 72 GPUs at NVLink speed while attention runs data-parallel.</li></ul>'
           }
         ],
         run: function (ctx) {
@@ -1551,8 +1617,8 @@
           ctx.hud('EP: 2 all-to-alls per MoE layer');
           return swapPage(ctx, S, function (g) {
             buildEP(ctx, S, g);
-            hide([S.meshG, S.tokG, S.expG, S.dispTxt, S.combTxt, S.loadG, S.moeCard, S.moeA2, S.moeB, S.moeC]);
-            hide(S.loadBars);
+            hide([S.meshG, S.tokG, S.expG, S.dispTxt, S.combTxt, S.loadG, S.moeCard, S.moeA2, S.moeB, S.moeC, S.pickLab]);
+            hide(S.loadBars); hide(S.loadLabs);
           }).then(function () {
             /* beat 0: tokens, router, experts */
             ctx.reveal(S.tokG, { from: 'left' });
@@ -1565,7 +1631,15 @@
             fit(ctx, S.moeCard, 150);
             ctx.reveal(S.dispTxt, { from: 'up' });
             ctx.reveal(S.moeA2, { from: 'left', delay: 200 });
-            return Promise.all(S.routes.map(function (rt) { return ctx.packet(rt.p, { color: rt.col, dur: 1300, r: 4 }); }));
+            return Promise.all(S.routes.map(function (rt) { return ctx.packet(rt.p, { color: rt.col, dur: 1300, r: 4 }); })).then(function () {
+              /* the tokens become clickable: follow one token to its two experts */
+              S.tok.forEach(function (d, k) {
+                d.style.cursor = 'pointer';
+                d.addEventListener('click', function () { pickToken(ctx, S, k, true); });
+              });
+              pickToken(ctx, S, 0, false);
+              return ctx.reveal(S.pickLab, { from: 'up', dur: 400 });
+            });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: expert compute and combine */
             ctx.hud('combine: weighted sum back on the home GPU');
@@ -1575,11 +1649,12 @@
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: load imbalance and capacity */
-            ctx.hud('expert E2 is hot: over capacity 7.5 tokens');
+            ctx.hud('E2 (11) and E3 (8) exceed capacity 7.5');
             fit(ctx, S.moeCard, 260);
             ctx.reveal(S.loadG, { dur: 400 });
             ctx.reveal(S.moeB, { from: 'up', delay: 400 });
-            return ctx.reveal(S.loadBars, { from: 'up', stagger: 60, delay: 200 }).then(function () { return ctx.pulse(S.exp[2], { color: 'red', times: 2, dur: 600 }); });
+            ctx.reveal(S.loadLabs, { stagger: 60, delay: 400 });
+            return ctx.reveal(S.loadBars, { from: 'up', stagger: 60, delay: 200 }).then(function () { return Promise.all([ctx.pulse(S.exp[2], { color: 'red', times: 2, dur: 600 }), ctx.pulse(S.exp[3], { color: 'red', times: 2, dur: 600 })]); });
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: DeepSeek-V3 numbers */
             ctx.hud('DeepSeek-V3: 8 of 256 experts, EP 64');
@@ -1610,19 +1685,20 @@
             card: { tag: 'KEY IDEA', title: 'Online softmax makes blocks mergeable', body: 'A running maximum and running sum let partial attention results combine exactly, so the N × N score matrix never exists in memory.',
               more: '<p>For each new block b with local max m_b, sum ℓ_b and unnormalized output O_b, the running state (m, ℓ, O) is rescaled and merged, then normalized by ℓ at the end. The result is bit-for-bit the softmax over all keys, computed in P blocks: this is the FlashAttention recurrence applied across GPUs.</p>' },
             deep: '<div class="eq">m′ = max(m, m<sub>b</sub>),  ℓ′ = e<sup>m−m′</sup>ℓ + e<sup>m<sub>b</sub>−m′</sup>ℓ<sub>b</sub>,  O′ = (e<sup>m−m′</sup>ℓ·O + e<sup>m<sub>b</sub>−m′</sup>ℓ<sub>b</sub>·O<sub>b</sub>) / ℓ′</div>' +
-              '<p>Communication hides under compute when the block’s attention FLOPs (4·(N/P)²·d) outlast its K,V transfer (2·(N/P)·d·2 B): true for long sequences. With causal masks (LLMs), naive splits are unbalanced; zig-zag sharding fixes it (used in Llama 3 context parallelism).</p>'
+              '<p>Communication hides under compute when the block’s attention FLOPs (4·(N/P)²·d) outlast its K,V transfer (2·(N/P)·d·2 B): true for long sequences. With causal masks (LLMs), naive splits are unbalanced; zig-zag sharding gives each rank one early and one late chunk. Llama 3 uses that layout for context parallelism but all-gathers K,V instead of ringing them, which is simpler when GQA keeps K,V small.</p>' +
+              '<details><summary>Go deeper</summary><p>Fox shot, P = 8: one ring hop moves K and V for 9,450 tokens, 2 · 9,450 · 5,120 · 2 B ≈ 194 MB: 0.43 ms over 450 GB/s NVLink, 3.9 ms over a 50 GB/s NIC. The block’s attention is 4 · 9,450² · 5,120 ≈ 1.8 TFLOP, about 3.1 ms at ~590 TFLOP/s. So on NVLink the ring hides its traffic easily, while over a 400G NIC the transfer is slightly longer than the math. The ratio is π<sub>eff</sub> / (β · N/P): longer blocks or faster links are what make cross-node rings work.</p></details>'
           },
           {
             say: 'Ulysses takes the other route. An all to all trades the sequence split for a head split, each GPU runs ordinary attention over all tokens for its own heads, and a second all to all trades back.',
-            card: { tag: 'TRADE-OFF', title: 'Ulysses: simple, but bounded by heads', body: 'Two all-to-alls turn a sequence split into a head split, so unmodified FlashAttention runs. The degree P must divide the head count.' },
+            card: { tag: 'TRADE-OFF', title: 'Ulysses: simple, but bounded by heads', body: 'One all-to-all trades the sequence split for a head split, so unmodified FlashAttention runs; a second trades back. The degree P must divide the head count.' },
             deep: '<p><b>Ulysses</b> (DeepSpeed): all-to-all Q, K, V from [N/P, H] to [N, H/P], run dense attention per head group, all-to-all O back. Bounded by P ≤ H and requires P | H (Wan 2.1 14B: 40 heads, so P ∈ {2, 4, 5, 8, 10, …}).</p>' +
-              '<p>Per-GPU communication volume is proportional to N·h/P, so it stays constant when N and P grow together, and on NVLink it is cheap; the ring wins where the head count runs out or the fabric is slow.</p>'
+              '<p>Per-GPU communication volume is proportional to N·h/P, so it stays constant when N and P grow together. For the fox shot that is 4 × 84.7 MB ≈ 339 MB per layer per GPU, 0.75 ms on NVLink 4. The ring is the fallback when P would exceed the head count, and its neighbour-only traffic tolerates thinner inter-node links than an all-to-all does.</p>'
           },
           {
-            say: 'Production video serving combines both, with Ulysses inside an NVLink domain and a ring across domains. It also splits the conditional and unconditional guidance branches onto separate GPU groups.',
-            card: { tag: 'STATE OF THE ART', title: 'USP plus CFG parallel', body: 'USP composes Ulysses and ring; xDiT adds CFG parallel. Ulysses 8 × CFG 2 puts each fox shot on 16 GPUs.' },
+            say: 'Production video serving combines both, with Ulysses inside an NVLink domain and a ring across domains. It can also put the conditional and unconditional guidance branches on separate GPU groups, trading twice the GPUs for roughly half the latency.',
+            card: { tag: 'STATE OF THE ART', title: 'USP plus CFG parallel', body: 'USP composes Ulysses and ring; xDiT adds CFG parallel. Our fox shots stay at SP 8 on one node; CFG parallel would take a shot to 16 GPUs for half the latency.' },
             deep: '<p><b>USP</b> composes both (Ulysses degree inside NVLink × ring degree across), and video engines (xDiT-style) add <b>CFG parallel</b>: the conditional and unconditional branches of classifier-free guidance run on separate GPU groups.</p>' +
-              '<p>For the fox shot, SP 8 × CFG 2 = 16 GPUs per shot, with six shots in flight in the cluster. The unconditional branch is independent of the conditional one, so CFG parallel needs only one small exchange per denoising step (the two noise predictions), not per layer.</p>'
+              '<p>For the fox shot, SP 8 on one NVLink node is the default: both CFG branches share the weights and run as a batch of two, so a shot uses 8 GPUs and six shots in flight use 48. With spare GPUs, CFG parallel puts the two branches on two 8-GPU groups: 16 GPUs per shot for about half the latency. It scales almost perfectly because the branches meet once per denoising step, to combine the two noise predictions, not once per layer.</p>'
           }
         ],
         run: function (ctx) {
@@ -1671,7 +1747,7 @@
             });
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: USP and CFG parallel */
-            ctx.hud('Ulysses 8 × CFG 2 = 16 GPUs per shot');
+            ctx.hud('SP 8 = 8 GPUs per shot · CFG parallel = 16');
             fit(ctx, S.spCard, 700);
             ctx.reveal(S.spD, { from: 'up', dur: 600 });
             return Promise.all([ctx.pulse(S.ringG, { color: 'violet', dur: 800 }), ctx.pulse(S.ulyG, { color: 'violet', dur: 800 })]);
@@ -1697,12 +1773,12 @@
             card: { tag: 'HOW IT WORKS', title: 'TP inside the node', body: 'Two all-reduces per layer, on the critical path: only NVLink is fast enough. SP and EP also stay inside the domain when they can.' },
             deep: '<p>In the diagram each column is a node, and the eight GPUs of a column form one TP group: rank g of the TP group is GPU g of the node. The amber packets are the tensor-parallel all-reduce travelling over the intra-node NVLink fabric.</p>' +
               '<div class="eq">rank = ((dp · P<sub>pp</sub> + pp) · P<sub>cp</sub> + cp) · P<sub>tp</sub> + tp   (TP fastest-varying → same node)</div>' +
-              '<p>Making TP the fastest-varying coordinate of the global rank is how Megatron-style launchers guarantee that consecutive ranks land on the same node.</p>'
+              '<p>Making TP the fastest-varying coordinate of the global rank is how launchers guarantee that consecutive ranks land on the same node. The order drawn here, [TP, CP, PP, DP] from innermost to outermost, is the one Llama 3 reports; Megatron-LM’s default tp-cp-ep-dp-pp also keeps TP innermost but nests DP inside PP.</p>'
           },
           {
             say: 'Pipeline stages exchange one activation per micro batch, so they can cross node boundaries. Stage s hands its output to stage s plus one, on another node.',
             card: { tag: 'KEY IDEA', title: 'Pipeline crosses nodes', body: 'One activation tensor per micro-batch per boundary is point to point and overlappable, so stages can sit on different nodes.' },
-            deep: '<p>PP groups are the next-fastest-varying coordinate: consecutive stages sit on consecutive nodes, so each boundary is one node-to-node send, riding one NIC per GPU pair. In the picture, stage 0 (cyan) hands off to stage 1 (orange), then lime, then violet, and the four stages repeat for the second replica.</p>' +
+            deep: '<p>In this [TP, CP, PP, DP] order PP is the next-fastest coordinate: consecutive stages sit on consecutive nodes, so each boundary is one node-to-node send, and GPU g of a stage talks to GPU g of the next over its own NIC. Megatron’s scatter/gather trick sends only 1/t of the activation per rank and re-assembles it over NVLink on arrival. In the picture, stage 0 (cyan) hands off to stage 1 (orange), then lime, then violet, and the four stages repeat for the second replica.</p>' +
               '<p>Stage boundaries are chosen to balance layers (and embedding / loss heads) so that no stage becomes the bottleneck of the whole pipeline.</p>'
           },
           {
@@ -1715,8 +1791,8 @@
             say: 'Every large system follows this rule, from Llama three’s sixteen thousand GPU pretraining run to DeepSeek V3 and our own fox trailer fleet.',
             card: { tag: 'NUMBERS', title: 'The rule at scale', stat: { v: '16,384', u: 'GPUs', l: 'Llama 3 405B pretraining: TP 8 × PP 16 × DP 128, CP 1 at 8k context' },
               more: '<p>Check: 8 × 16 × 128 = 16,384. In the long-context phase Meta switched to CP 16 × DP 8 (8 × 16 × 16 × 8 = 16,384): context parallelism took over from data parallelism because each 128k sequence no longer fit on one GPU’s activations.</p>' },
-            deep: '<div class="note">Serving is the same game with different weights: prefill likes TP/SP (compute), decode likes DP + wide EP (memory bandwidth, batch size), and the video DiT likes SP × CFG inside one NVLink domain. The schedulers in the sibling chambers decide which GPUs form each group.</div>' +
-              '<p>Training: Llama 3 405B used TP 8 × CP 1 × PP 16 × DP 128 on 16,384 H100s; DeepSeek-V3 used PP 16 × EP 64 × ZeRO-1 DP on 2,048 H800s with no tensor parallelism at all. Serving: the planner LLM runs TP 8 per replica, MoE agents use wide EP on NVL72, and each video shot uses Ulysses SP 8 × CFG 2 = 16 GPUs.</p>'
+            deep: '<div class="note">Serving is the same game with different weights: prefill likes TP/SP (compute), decode likes DP + wide EP (memory bandwidth, batch size), and the video DiT likes SP inside one NVLink domain. The schedulers in the sibling chambers decide which GPUs form each group.</div>' +
+              '<p>Training: Llama 3 405B used TP 8 × CP 1 × PP 16 × DP 128 on 16,384 H100s; DeepSeek-V3 used PP 16 × EP 64 × ZeRO-1 DP on 2,048 H800s with no tensor parallelism at all. Serving: the planner LLM runs TP 8 per replica, MoE agents use wide EP on NVL72, and each video shot uses Ulysses SP 8 on one node (8 GPUs, six shots = 48), with CFG parallel as an option that doubles a shot to 16 GPUs.</p>'
           }
         ],
         run: function (ctx) {
@@ -1725,7 +1801,7 @@
           return swapPage(ctx, S, function (g) {
             buildMap(ctx, S, g);
             hide(S.nodeG); hide([S.braceG, S.stageLeg, S.mapNote, S.mapCard, S.mapReal, S.mapFox, S.railLab]);
-            hide(S.ppArrows); hide(S.dpArcs); hide(S.mapRows);
+            hide(S.ppArrows); hide(S.dpArcs); hide(S.mapRows); hide(S.railBand);
           }).then(function () {
             /* beat 0: 64 GPUs and the ranking rule */
             ctx.reveal(S.nodeG, { from: 'up', stagger: 100 });
@@ -1757,6 +1833,11 @@
             ctx.hud('DP: same-rank GPUs, one leaf-switch hop');
             fit(ctx, S.mapCard, 550);
             ctx.reveal(S.mapRows[3], { from: 'left', delay: 300 });
+            ctx.reveal(S.railBand, { dur: 500 });
+            /* rail 3 stands out: every other row of GPUs dims */
+            S.offRail = [];
+            S.mcell.forEach(function (col) { col.forEach(function (c, k) { if (k !== 3) S.offRail.push(c); }); });
+            ctx.fade(S.offRail, 0.3, 600);
             ctx.reveal(S.braceG, { from: 'up' });
             ctx.reveal(S.dpArcs, { from: 'draw', stagger: 150, dur: 500 });
             return Promise.all(S.dpArcs.map(function (a, i) {
@@ -1767,7 +1848,8 @@
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: real systems */
             ctx.hud('Llama 3 405B: TP 8 × PP 16 × DP 128');
-            fit(ctx, S.mapCard, 620);
+            fit(ctx, S.mapCard, 670);
+            ctx.fade(S.offRail, 1, 600);
             ctx.fadeOut(S.mapRows, 400, true);
             ctx.reveal(S.mapReal, { from: 'up', dur: 600, delay: 300 });
             ctx.reveal(S.mapFox, { from: 'up', delay: 800, dur: 600 });

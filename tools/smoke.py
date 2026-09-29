@@ -4,6 +4,13 @@ usage:
   python tools/smoke.py [scene-id ...]        build + animated replay + beat-gate + seek-consistency checks
   python tools/smoke.py --nav                 navigation: zoom in/out, backward jumps, tour, map, references
   python tools/smoke.py --layout [id ...]     layout audit at the end of every beat  [--viewport 1366x768] [--json out.json]
+  python tools/smoke.py --clicks [id ...]     click harness: clicks every interactive SVG element in the end state of every
+                                              step (no console / window errors allowed, scene must survive) and every
+                                              .hotspot (Engine.go / zoomInto must be called with the right target)
+  python tools/smoke.py --a11y                keyboard / accessibility checks (names, focus ring, Escape stack, drawer, aria state)
+  python tools/smoke.py --chrome              shell layout audit at --viewport (top bar clipping / overlap, panels, page scroll)
+  python tools/smoke.py --cards               stress test of the left panel (narration box + newest card) for every beat
+  python tools/smoke.py --posters [id ...]    score every step of a chamber with the poster picker (diagnostic)
   (--viewport also works for the other modes; the title block and rails are laid out for that window size)
 """
 import json
@@ -14,6 +21,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRAME = (34, 97)     # window frame lost by --dump-dom (see run_browser)
 BROWSERS = [
     r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
     r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
@@ -38,9 +46,13 @@ def run_browser(query, timeout=600, viewport='1600x900'):
         sys.exit(2)
     url = 'file:///' + os.path.join(ROOT, 'index.html').replace('\\', '/') + query
     prof = os.path.join(os.environ.get('TEMP', ROOT), 'atlas-smoke-%d' % os.getpid())
+    # --dump-dom opens a real (headless) window whose CLIENT area is smaller than --window-size by the window frame
+    # (measured: 34 x 97 px); --screenshot (shot.py) has no such loss. Add it back so that --viewport WxH means an
+    # inner window of W x H, i.e. the same picture shot.py --size W x H shows.
+    vw, vh = [int(v) for v in viewport.split('x')]
     cmd = [exe, '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--mute-audio',
            '--user-data-dir=' + prof, '--allow-file-access-from-files', '--virtual-time-budget=900000',
-           '--window-size=' + viewport.replace('x', ','), '--dump-dom', url]
+           '--window-size=%d,%d' % (vw + FRAME[0], vh + FRAME[1]), '--dump-dom', url]
     try:
         out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout).stdout.decode('utf-8', 'replace')
     except subprocess.TimeoutExpired:
@@ -61,6 +73,11 @@ def main():
     args = sys.argv[1:]
     nav = pop_opt(args, '--nav')
     layout = pop_opt(args, '--layout')
+    clicks = pop_opt(args, '--clicks')
+    chrome = pop_opt(args, '--chrome')
+    a11y = pop_opt(args, '--a11y')
+    cards = pop_opt(args, '--cards')
+    posters = pop_opt(args, '--posters')
     theme = pop_opt(args, '--theme', True)
     out_json = pop_opt(args, '--json', True)
     viewport = pop_opt(args, '--viewport', True) or '1600x900'
@@ -68,6 +85,16 @@ def main():
     q = '?smoke'
     if nav:
         q += '&nav'
+    elif chrome:
+        q += '&chrome'
+    elif a11y:
+        q += '&a11y'
+    elif cards:
+        q += '&cards'
+    elif posters:
+        q += '&posters' + ('=' + ','.join(ids) if ids else '')
+    elif clicks:
+        q += '&clicks' + ('=' + ','.join(ids) if ids else '')
     elif layout:
         q += '&layout' + ('=' + ','.join(ids) if ids else '')
     elif ids:
@@ -75,6 +102,60 @@ def main():
     if theme:
         q += '&theme=' + theme
     report = run_browser(q, viewport=viewport)
+
+    if a11y:
+        rec = report[0]
+        for e in rec.get('errors', []):
+            print('ERROR  ' + e[:300])
+        print('A11Y OK' if not rec.get('errors') else 'A11Y: %d problem(s)' % len(rec['errors']))
+        sys.exit(1 if rec.get('errors') else 0)
+
+    if chrome or cards or posters:
+        rec = report[0]
+        for e in rec.get('errors', []):
+            print('ERROR  ' + e[:300])
+        if out_json:
+            with open(out_json, 'w') as f:
+                json.dump(rec, f, indent=1)
+        if chrome:
+            print('window %s' % (rec.get('win'),))
+            for tag, inf in sorted(rec.get('info', {}).items()):
+                print('  %-10s %s' % (tag, json.dumps(inf)))
+            seen = set()
+            for it in rec.get('issues', []):
+                key = json.dumps(it, sort_keys=True)
+                if key in seen:
+                    continue
+                seen.add(key)
+                print('  ISSUE  ' + key[:300])
+            print('CHROME: %d issue(s)' % len(rec.get('issues', [])))
+            sys.exit(1 if rec.get('issues') or rec.get('errors') else 0)
+        print(json.dumps(rec.get('summary', rec), indent=1)[:6000])
+        sys.exit(1 if rec.get('errors') else 0)
+
+    if clicks:
+        bad = 0
+        tot_scenes = tot_inter = tot_hot = scenes_with = 0
+        for r in report:
+            if r['status'] == 'placeholder':
+                print('--     %-16s (placeholder)' % r['id'])
+                continue
+            tot_scenes += 1
+            tot_inter += r.get('interactions', 0)
+            tot_hot += r.get('hotspots', 0)
+            if r.get('interactions', 0):
+                scenes_with += 1
+            flag = 'ok    ' if r['status'] == 'ok' else 'FAIL  '
+            print('%s %-16s steps=%-2s clickable=%-4s clicks=%-4s hotspots=%-2s' % (flag, r['id'], r.get('steps'), r.get('clickable', 0), r.get('interactions', 0), r.get('hotspots', 0)))
+            for n in r.get('notes', []):
+                print('         NOTE ' + n[:300])
+            if r['status'] != 'ok':
+                bad += 1
+                for e in r.get('errors', [])[:12]:
+                    print('         ' + e[:400])
+        print('CLICKS: %d scene(s), %d with interactions, %d interactions, %d hotspots; %d scene(s) with failures' % (tot_scenes, scenes_with, tot_inter, tot_hot, bad))
+        print('CLICKS OK' if not bad else 'CLICKS FAILED')
+        sys.exit(1 if bad else 0)
 
     if layout:
         rec = report[0]

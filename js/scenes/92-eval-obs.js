@@ -70,13 +70,14 @@
   Atlas.register({
     id: 'eval-obs',
     refs: [
-      'Unterthiner et al., <i>Towards Accurate Generative Models of Video: A New Metric &amp; Challenges</i> (FVD), arXiv 2018 / ICLR-W 2019; Ge et al., <i>On the Content Bias in Fréchet Video Distance</i>, CVPR 2024',
+      'Unterthiner et al., <i>Towards Accurate Generative Models of Video: A New Metric &amp; Challenges</i> (FVD), arXiv 2018; Ge et al., <i>On the Content Bias in Fréchet Video Distance</i>, CVPR 2024; He et al., <i>VideoScore: Building Automatic Metrics to Simulate Fine-grained Human Feedback for Video Generation</i>, EMNLP 2024',
       'Hessel et al., <i>CLIPScore: A Reference-free Evaluation Metric for Image Captioning</i>, EMNLP 2021',
-      'Huang et al., <i>VBench: Comprehensive Benchmark Suite for Video Generative Models</i>, CVPR 2024; Zheng et al., <i>VBench-2.0</i>, 2025',
+      'Huang et al., <i>VBench: Comprehensive Benchmark Suite for Video Generative Models</i>, CVPR 2024; Zheng et al., <i>VBench-2.0: Advancing Video Generation Benchmark Suite for Intrinsic Faithfulness</i>, 2025',
       'Chiang et al., <i>Chatbot Arena: An Open Platform for Evaluating LLMs by Human Preference</i>, ICML 2024',
       'Zheng et al., <i>Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena</i>, NeurIPS 2023',
       'Yao et al., <i>τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains</i> (pass^k), 2024',
-      'OpenTelemetry, <i>Semantic Conventions for Generative AI</i> (gen_ai.* spans and metrics), 2024–2025; W3C, <i>Trace Context</i> Recommendation, 2021',
+      'OpenTelemetry, <i>Semantic Conventions for Generative AI</i> (gen_ai.* spans and metrics), 2024–2026',
+      'W3C, <i>Trace Context</i> Recommendation, 2021',
       'Beyer et al., <i>The Site Reliability Workbook</i>, ch. 5 “Alerting on SLOs” (multiwindow burn-rate alerts), O\'Reilly 2018',
       'Deng et al., <i>Improving the Sensitivity of Online Controlled Experiments by Utilizing Pre-Experiment Data</i> (CUPED), WSDM 2013'
     ],
@@ -181,7 +182,7 @@
           {
             say: 'The classic automatic metrics. Fréchet Video Distance embeds real and generated clips with a video classifier, and fits a Gaussian to each cloud of features.',
             card: { tag: 'KEY IDEA', title: 'Compare clouds, not clips', body: 'FVD never looks at a single clip. It compares the whole distribution of generated clips with the distribution of real ones.' },
-            deep: '<p><b>FVD</b>: features φ from an I3D network (Kinetics-400) on 16-frame clips, a 400-dimensional vector per clip. Fit N(μ<sub>r</sub>, Σ<sub>r</sub>) to the real clips and N(μ<sub>g</sub>, Σ<sub>g</sub>) to the generated ones.</p>' +
+            deep: '<p><b>FVD</b>: features φ from an I3D network trained on Kinetics-400, taken from its 400-way logits layer, so one 400-dimensional vector per clip (16-frame clips are the common setting). Fit N(μ<sub>r</sub>, Σ<sub>r</sub>) to the real clips and N(μ<sub>g</sub>, Σ<sub>g</sub>) to the generated ones.</p>' +
               '<p>The picture is a 2-D projection: each dot is one clip, each ellipse a two-standard-deviation contour of the fitted Gaussian, and the coloured centres are the means μ. A good generator puts its cloud on top of the real one.</p>'
           },
           {
@@ -309,9 +310,9 @@
         title: 'VBench dimensions',
         beats: [
           {
-            say: 'VBench breaks video quality into sixteen dimensions, each measured by a specialised model. Eight of them are drawn here for our first model, one spoke per dimension.',
-            card: { tag: 'NUMBERS', title: 'Sixteen ways to be good', stat: { v: '16', u: 'dimensions', l: 'each with its own evaluator model and prompt suite (VBench, CVPR 2024)' } },
-            deep: '<p>VBench (Huang et al., CVPR 2024) splits quality into two groups: <b>video quality</b> (consistency, smoothness, dynamics, aesthetics, imaging quality) and <b>video–condition consistency</b> (does it follow the prompt: objects, actions, colour, spatial relations, scene, style).</p>' +
+            say: 'VBench breaks video quality into sixteen dimensions, each measured by a specialised evaluator. Eight of them are drawn here for our first model, one spoke per dimension.',
+            card: { tag: 'NUMBERS', title: 'Sixteen ways to be good', stat: { v: '16', u: 'dimensions', l: 'each with its own evaluator and prompt suite (VBench, CVPR 2024)' } },
+            deep: '<p>VBench (Huang et al., CVPR 2024) splits quality into two groups: <b>video quality</b> (consistency, flicker, smoothness, dynamics, aesthetics, imaging quality) and <b>video–condition consistency</b> (does it follow the prompt: objects, actions, colour, spatial relations, scene, style).</p>' +
               '<p>Each dimension has a dedicated evaluator and a hand-built prompt suite, so scores answer narrow, checkable questions rather than one vague notion of quality.</p>'
           },
           {
@@ -332,13 +333,13 @@
               '<tr><td>Aesthetic quality</td><td>LAION aesthetic predictor on CLIP features</td></tr>' +
               '<tr><td>Imaging quality</td><td>MUSIQ (no-reference IQA)</td></tr>' +
               '<tr><td>Overall consistency</td><td>ViCLIP video–text similarity</td></tr></table>' +
-              '<p>Plus object class, multiple objects, human action, colour, spatial relationship, scene, appearance and temporal style. <b>VBench-2.0</b> (2025) adds <i>intrinsic faithfulness</i>.</p>'
+              '<p>Plus object class, multiple objects, human action, colour, spatial relationship, scene, appearance and temporal style. <b>VBench-2.0</b> (2025) adds <i>intrinsic faithfulness</i>: 18 dimensions in five groups (human fidelity, controllability, creativity, physics, commonsense), scored with VLMs, LLMs and specialist detectors.</p>'
           },
           {
             say: 'Now the second model. Notice the trade-off: it moves much more, and pays slightly in consistency and smoothness.',
             card: { tag: 'TRADE-OFF', title: 'Motion costs consistency', body: 'Dynamic degree rises by 0.31 while subject consistency slips by 0.011. No single average shows this; the vector does.' },
             deep: '<p><b>Anti-correlated dimensions</b>: dynamic degree trades against subject and background consistency and against smoothness, because more motion gives every consistency metric more to disagree about.</p>' +
-              '<p>Read the radar and the table together. v2 wins on dynamics, aesthetics, imaging and overall consistency, and gives back about a hundredth on three consistency dimensions. Whether that is a good trade depends on the product: trailers want motion.</p>'
+              '<p>Read the radar and the table together. v2 wins on dynamics, aesthetics, imaging and overall consistency, and gives back four to eleven thousandths on subject consistency, background consistency, smoothness and flicker. Whether that is a good trade depends on the product: trailers want motion.</p>'
           },
           {
             say: 'A frozen video would ace consistency, which is why you report the whole vector, never one average, and gate releases with a margin per dimension.',
@@ -445,21 +446,21 @@
               '<p>Pairwise judgements are easier and more consistent than absolute ratings: two raters rarely agree that a clip is a 4, but often agree that A beats B.</p>'
           },
           {
-            say: 'Thousands of these pairwise votes are turned into ratings with the Elo or Bradley Terry model, where the rating gap predicts the win probability.',
-            card: { tag: 'NUMBERS', title: 'A gap is a win rate', stat: { v: '64%', l: 'win probability for a 100 point Elo gap; 40 points is 56 percent' } },
+            say: 'Thousands of these pairwise votes are turned into ratings with the Elo or Bradley Terry model, where the rating gap predicts the win probability. Click a vote button to watch one update happen.',
+            card: { tag: 'TRY IT', title: 'Cast a vote, move the ratings', body: 'Click A, tie or B in the vote panel. Each vote moves both online Elo ratings by K times the surprise; beating an equal opponent is worth 16 points.' },
             deep: '<p><b>Bradley–Terry</b>: each model i has a strength β<sub>i</sub>; in Elo units R = 400·β / ln 10, so</p>' +
               '<div class="eq">P(i ≻ j) = 1 / (1 + 10<sup>(R<sub>j</sub> − R<sub>i</sub>)/400</sup>)</div>' +
-              '<p><b>Online Elo</b> updates after each vote with S ∈ {0, ½, 1}:</p>' +
+              '<p>A 100 point gap means a 64% win rate, 40 points 56%. <b>Online Elo</b> updates after each vote with S ∈ {0, ½, 1} (the widget uses K = 32):</p>' +
               '<div class="eq">R<sub>i</sub> ← R<sub>i</sub> + K · (S − P(i ≻ j))</div>'
           },
           {
             say: 'Watch four models start level and separate as votes accumulate. Each curve is a maximum likelihood refit of the ratings, repeated every hundred votes.',
             card: { tag: 'HOW IT WORKS', title: 'Refit, do not just update', body: 'Online Elo depends on vote order. Arenas fit Bradley-Terry by maximum likelihood over all votes, so the ranking cannot depend on when a vote arrived.' },
-            deep: '<p>Chatbot Arena and video arenas fit BT by <b>maximum likelihood</b> over all votes. The classic minorisation–maximisation update p<sub>a</sub> ← W<sub>a</sub> / Σ<sub>b</sub> (n<sub>ab</sub> / (p<sub>a</sub> + p<sub>b</sub>)) converges to the MLE; ratings are then centred, since only differences are identified.</p>' +
-              '<p>The plot refits every 100 votes from simulated wins, with true strengths of 1130, 1065, 1000 and 955. Early curves are noisy and tightly coupled; they fan out as evidence accumulates.</p>'
+            deep: '<p>Chatbot Arena moved from online Elo to fitting BT by <b>maximum likelihood</b> over all votes, and public video arenas (the Artificial Analysis Video Arena, for example) also rank models from blind pairwise votes. The classic minorisation–maximisation update p<sub>a</sub> ← W<sub>a</sub> / Σ<sub>b</sub> (n<sub>ab</sub> / (p<sub>a</sub> + p<sub>b</sub>)) converges to the MLE; ratings are then centred, since only differences are identified.</p>' +
+              '<p>The plot refits every 100 votes from simulated wins, with true strengths of 1130, 1065, 1000 and 978. Early curves are noisy and tightly coupled; they fan out as evidence accumulates.</p>'
           },
           {
-            say: 'The confidence intervals matter: two models forty points apart are clearly different, but two that overlap are statistically tied.',
+            say: 'The confidence intervals matter: two models forty points apart are clearly different, but two that overlap, like the two baselines here, are statistically tied.',
             card: { tag: 'NUMBERS', title: 'How sure is the ranking', stat: { v: '± 15', u: 'Elo', l: '95 percent interval after 4,000 votes across four models (about 2,000 per model)' },
               more: '<p>For comparisons near 50/50 each vote carries Fisher information 1/4 about β, so SE(β) ≈ 2/√n and SE(R) = (400/ln 10) · 2/√n ≈ 347/√n. With n ≈ 2,000 per model, SE ≈ 7.8 and the 95% interval is about ±15 Elo. Halving the interval needs four times the votes.</p>' },
             deep: '<p>Report <b>bootstrap confidence intervals</b> on the leaderboard, not point ratings. Two models whose intervals overlap are statistically tied, and a tie is a legitimate result: it says the votes cannot yet separate them.</p>' +
@@ -480,18 +481,37 @@
           /* voting UI */
           var V = ctx.group({ parent: g });
           panel(ctx, V, 40, 190, 700, 330, 'amber', 'PAIRWISE VOTE · same prompt, random order, blind');
-          var cardA = ctx.rect(70, 236, 300, 200, { rx: 8, fill: ctx.alpha('lime', 0.08), stroke: ctx.alpha('lime', 0.5), parent: V });
-          ctx.rect(410, 236, 300, 200, { rx: 8, fill: ctx.alpha('cyan', 0.08), stroke: ctx.alpha('cyan', 0.5), parent: V });
-          ctx.icon('film', 220, 326, 60, 'lime', { parent: V });
-          ctx.icon('film', 560, 326, 60, 'cyan', { parent: V });
-          ctx.text(220, 410, 'clip A', { size: 14, font: 'mono', color: 'lime', anchor: 'middle', parent: V });
-          ctx.text(560, 410, 'clip B', { size: 14, font: 'mono', color: 'cyan', anchor: 'middle', parent: V });
-          var vA = ctx.label(220, 476, 'A is better', { color: 'lime', size: 12, w: 130, parent: V });
-          ctx.label(390, 476, 'tie', { color: 'dim', size: 12, w: 70, parent: V });
-          ctx.label(560, 476, 'B is better', { color: 'cyan', size: 12, w: 130, parent: V });
+          var cardA = ctx.rect(70, 236, 300, 184, { rx: 8, fill: ctx.alpha('lime', 0.08), stroke: ctx.alpha('lime', 0.5), parent: V });
+          ctx.rect(410, 236, 300, 184, { rx: 8, fill: ctx.alpha('cyan', 0.08), stroke: ctx.alpha('cyan', 0.5), parent: V });
+          ctx.icon('film', 220, 316, 60, 'lime', { parent: V });
+          ctx.icon('film', 560, 316, 60, 'cyan', { parent: V });
+          ctx.text(220, 396, 'clip A', { size: 14, font: 'mono', color: 'lime', anchor: 'middle', parent: V });
+          ctx.text(560, 396, 'clip B', { size: 14, font: 'mono', color: 'cyan', anchor: 'middle', parent: V });
+          var vA = ctx.label(220, 450, 'A is better', { color: 'lime', size: 12, w: 130, parent: V });
+          var vT = ctx.label(390, 450, 'tie', { color: 'dim', size: 12, w: 70, parent: V });
+          var vB = ctx.label(560, 450, 'B is better', { color: 'cyan', size: 12, w: 130, parent: V });
           var votes = ctx.text(700, 212, 'votes 0', { size: 13, font: 'mono', color: 'white', anchor: 'end', parent: V });
+          /* beat 1 (TRY IT): an online Elo readout under the vote buttons */
+          var rd = ctx.group({ parent: V, opacity: 0 });
+          var eR = [1000, 1000], nv = 0, KF = 32, rdIdle = 'click a button: online Elo, K = 32';
+          var rdT = ctx.text(360, 490, rdIdle, { size: 12, font: 'mono', color: 'amber', anchor: 'middle', parent: rd });
+          var rdR = ctx.label(660, 490, 'reset', { color: 'dim', size: 11, w: 60, parent: rd });
+          function pNext() { return 1 / (1 + Math.pow(10, (eR[1] - eR[0]) / 400)); }
+          function castVote(sA) {
+            var d = KF * (sA - pNext());
+            eR[0] += d; eR[1] -= d; nv++;
+            rdT.textContent = 'vote ' + nv + ':  R_A ' + Math.round(eR[0]) + ' · R_B ' + Math.round(eR[1]) + ' · P(A next) ' + Math.round(pNext() * 100) + '%';
+          }
+          function armVotes() {
+            [[vA, 1], [vT, 0.5], [vB, 0]].forEach(function (b) {
+              b[0].style.cursor = 'pointer';
+              b[0].addEventListener('click', function () { castVote(b[1]); });
+            });
+            rdR.style.cursor = 'pointer';
+            rdR.addEventListener('click', function () { eR = [1000, 1000]; nv = 0; rdT.textContent = rdIdle; });
+          }
           /* simulate votes from true strengths; refit Bradley-Terry by MLE (MM updates) every 100 votes */
-          var NAMES = ['ours v2', 'ours v1', 'baseline A', 'baseline B'], TRUE = [1130, 1065, 1000, 955], COLS = ['lime', 'cyan', 'violet', 'orange'];
+          var NAMES = ['ours v2', 'ours v1', 'baseline A', 'baseline B'], TRUE = [1130, 1065, 1000, 978], COLS = ['lime', 'cyan', 'violet', 'orange'];
           var rn = ctx.rng(2024), Rt = [1000, 1000, 1000, 1000], hist = [[], [], [], []], NV = 4000;
           var Wn = [0, 1, 2, 3].map(function (a) { return [0, 1, 2, 3].map(function (b) { return a === b ? 0 : 0.5; }); });
           function fitBT() {
@@ -545,6 +565,11 @@
             ctx.text(1540, y, Math.round(Rt[m]) + ' ± 15', { size: 13, font: 'mono', color: 'white', anchor: 'end', parent: rg });
             return rg;
           });
+          /* neighbours whose intervals overlap (gap under two half-widths) are statistically tied */
+          var ties = [];
+          for (var q = 0; q < order.length - 1; q++) {
+            if (Math.abs(Rt[order[q]] - Rt[order[q + 1]]) < 30) ties.push(ctx.label(962, 660 + q * 40 + 20, '≈ tie', { color: 'amber', size: 11, w: 56, parent: LB, opacity: 0 }));
+          }
           hide(lbRows);
           ctx.hud('pairwise votes → ratings');
           /* beat 0: a blind pairwise vote */
@@ -553,9 +578,12 @@
           }).then(function () {
             return ctx.beat(1);
           }).then(function () {
-            /* beat 1: votes become ratings through Bradley-Terry */
-            ctx.hud('100 Elo ≈ 64% win rate');
-            return ctx.reveal(EQ, { from: 'up' });
+            /* beat 1: votes become ratings through Bradley-Terry; the vote buttons come alive */
+            ctx.hud('100 Elo ≈ 64% · click a vote button');
+            armVotes();
+            return Promise.all([ctx.reveal(EQ, { from: 'up' }), ctx.reveal(rd, { from: 'up' })]).then(function () {
+              return ctx.pulse(vT, { color: 'amber', dur: 700 });
+            });
           }).then(function () {
             return ctx.beat(2);
           }).then(function () {
@@ -570,7 +598,9 @@
             return ctx.beat(3);
           }).then(function () {
             /* beat 3: confidence intervals and ties */
-            return ctx.reveal(LB, { from: 'up' }).then(function () { return ctx.reveal(lbRows, { from: 'left', stagger: 120 }); });
+            return ctx.reveal(LB, { from: 'up' }).then(function () { return ctx.reveal(lbRows, { from: 'left', stagger: 120 }); }).then(function () {
+              return ties.length ? ctx.reveal(ties, { from: 'left', dur: 400 }) : null;
+            });
           }).then(function () {
             return ctx.beat(4);
           }).then(function () {
@@ -587,19 +617,20 @@
             say: 'Humans do not scale to every render, so the critic agent is a vision language model acting as judge. It receives sampled frames, the prompt, the style sketches and a rubric with anchored descriptions for each score.',
             card: { tag: 'KEY IDEA', title: 'Anchored rubrics', body: 'Every score level has a concrete description, such as helmet morphs versus identity stable, so the judge measures a defect rather than a mood.' },
             deep: '<p><b>Judge input</b>: 8–16 frames sampled across the shot (plus a motion summary, since many VLMs see few frames), the shot prompt, the reference sketches, and a <b>rubric</b> with an anchor for each level: 1 = <i>visor geometry changes between frames</i>, 5 = <i>identity stable in every frame</i>.</p>' +
-              '<p>Anchors matter because LLM judges compress scores toward the middle without them, and because a concrete anchor turns “is it good?” into “did this specific defect occur?”, which VLMs answer far more reliably.</p>'
+              '<p>Anchors matter because LLM judges compress scores toward the middle without them, and because a concrete anchor turns “is it good?” into “did this specific defect occur?”, which VLMs answer far more reliably. Trained video judges such as VideoScore (2024) predict per-dimension human ratings directly, which is cheaper than prompting a frontier VLM.</p>'
           },
           {
-            say: 'It returns structured scores with a rationale and a defect localised in time, so the director agent can act on it, here by redoing shot three.',
+            say: 'It returns structured scores, a defect localised in time and a verdict, so the director agent can act on it, here by redoing shot three.',
             card: { tag: 'HOW IT WORKS', title: 'A verdict the director can use', body: 'Constrained decoding guarantees valid JSON. The defect carries a time range, so the fix can target the flicker, not the whole shot.' },
-            deep: '<p><b>Output</b>: JSON via constrained decoding: per-dimension integer scores, a rationale and a localised defect (a timestamp range) that the director can act on. A verdict of <code>redo</code> triggers a re-render with a retry limit of two.</p>' +
+            deep: '<p><b>Output</b>: JSON via constrained decoding: per-dimension integer scores, a short rationale (omitted from the panel), a localised defect (a timestamp range) and a verdict that the director can act on. A verdict of <code>redo</code> triggers a re-render with a retry limit of two.</p>' +
               '<p>Use a judge from a <b>different model family</b> than the prompt writer or generator: same-family judges inflate scores through self-preference.</p>'
           },
           {
             say: 'A judge is only trustworthy once calibrated. On a held out set rated by humans, we measure rank correlation between the judge and the people.',
             card: { tag: 'NUMBERS', title: 'Calibrated against humans', stat: { v: '0.84', l: 'Spearman rank correlation of judge and human scores on 60 held-out clips; the release gate is 0.7' } },
             deep: '<div class="eq">ρ<sub>s</sub> = Pearson( rank(judge), rank(human) ); &nbsp; κ<sub>w</sub> for ordinal agreement</div>' +
-              '<p>Calibration uses hundreds of clips with at least three human raters each; the scatter shows 60 for legibility. Rank correlation ignores scale offsets, which is the point: the judge may be harsher or kinder than people, but must order clips the same way. Weighted κ additionally checks agreement on the ordinal scale.</p>'
+              '<p>Calibration uses hundreds of clips with at least three human raters each; the scatter shows 60 for legibility. Rank correlation ignores scale offsets, which is the point: the judge may be harsher or kinder than people, but must order clips the same way. Weighted κ additionally checks agreement on the ordinal scale.</p>' +
+              '<details><summary>Go deeper</summary><p>Uncertainty matters: with n = 60 the Fisher z interval for ρ = 0.84 is tanh(atanh 0.84 ± 1.96/√57) ≈ [0.75, 0.90] (an approximation, since it treats Spearman like a Pearson correlation), so the 0.7 gate sits below the lower bound. The same estimate from only 20 clips gives about [0.63, 0.93], which cannot clear a 0.7 gate with confidence.</p></details>'
           },
           {
             say: 'Then we check that swapping the clip order does not flip the verdict, that the judge is not from the writer\'s own model family, that it uses the full scale, and that it has not drifted since the last model change.',
@@ -633,7 +664,7 @@
           var js = ctx.code({ x: 570, y: 190, w: 380, title: 'judge → critic.shot3.json', lang: 'json', size: 12, typing: true, parent: jg, lines: [
             '{"adherence": 4,',
             ' "identity": 2,',
-            ' "physics": 3,',
+            ' "physics": 4,',
             ' "artefacts": 2,',
             ' "style": 4,',
             ' "defect": {"t": [3.1, 3.6],',
@@ -660,7 +691,7 @@
           var rt = ctx.text(1080, 262, '', { size: 15, font: 'mono', weight: 700, color: 'white', parent: SC });
           /* beat 3 material: known biases and mitigations */
           var BI = ctx.group({ parent: g, opacity: 0 });
-          panel(ctx, BI, 40, 620, 1520, 210, 'magenta', 'KNOWN BIASES → MITIGATIONS');
+          panel(ctx, BI, 40, 620, 1520, 210, 'magenta', 'KNOWN BIASES → MITIGATIONS (illustrative results)');
           var BL = [['position bias', 'judge both orders, keep order-consistent verdicts', '91% consistent'], ['self-preference', 'judge from a different model family than the writer', 'Δ +0.4 → +0.05'],
             ['scale compression', 'isotonic map judge → human scale; thresholds set on humans', 'uses 1–5 fully'], ['drift', 'versioned judge + calibration suite in CI', 'ρ ≥ 0.7 gate']];
           var br = BL.map(function (b, k) {
@@ -709,11 +740,11 @@
         title: 'Agent evals',
         beats: [
           {
-            say: 'Judging the film is not enough; we also judge how the agents made it. Trajectory grading walks through every step: was the right tool called, were the arguments valid, were there wasted calls?',
+            say: 'Judging the film is not enough. We also judge how the agents made it. Trajectory grading walks through every step: was the right tool called, were the arguments valid, were there wasted calls?',
             card: { tag: 'NUMBERS', title: 'Grading the process', stat: { v: '0.86', l: 'trajectory score: 9 clean steps, 1 redundant call at half credit, 1 invalid argument' },
               more: '<p>Score = (clean + ½·redundant) / steps = (9 + 0.5) / 11 = 0.86. The invalid <code>duration_s</code> is graded zero for that step even though the agent recovered on the next one: recovery is credited in the outcome, not in the process score.</p>' },
             deep: '<p><b>Trajectory</b> (process): each step is graded for tool choice, argument validity, redundancy and recovery. It localises failures, since a bad outcome is either a bad plan or a bad execution, and it rewards efficient plans.</p>' +
-              '<p>Here the second <code>search_refs</code> is redundant (amber), and <code>render_shot 3 dur=12</code> violates the policy maximum of 10 seconds (red) before the agent retries with 6.</p>'
+              '<p>Here the second <code>search_refs</code> is redundant (amber), and <code>render_shot 3 dur=12</code> violates the policy maximum of 10 seconds (red) before the agent retries with 5 and the critic\'s fix window.</p>'
           },
           {
             say: 'Task success is separate. It checks hard constraints on the final result: thirty seconds, six shots, the creator\'s own voice, and sketch style, mostly with plain code.',
@@ -725,7 +756,8 @@
             say: 'And reliability matters more than luck. An agent that succeeds eighty percent of the time passes at least one of three tries almost always, but succeeds on all three only half the time.',
             card: { tag: 'NUMBERS', title: 'Can it, versus does it', stat: { v: '0.992 vs 0.512', l: 'pass at 3 versus pass caret 3 for a per-trial success rate of 0.8' } },
             deep: '<div class="eq">pass@k = 1 − (1 − p)<sup>k</sup> &nbsp;&nbsp; pass<sup>k</sup> = p<sup>k</sup></div>' +
-              '<p>With p = 0.8: pass@3 = 0.992 (the research-demo metric: <i>can it ever do it?</i>) but pass<sup>3</sup> = 0.512 (the production metric from τ-bench: <i>does it do it every time?</i>). Users experience pass<sup>k</sup>: a creator who gets a broken trailer one time in five does not care that a retry would have worked.</p>'
+              '<p>With p = 0.8: pass@3 = 0.992 (the research-demo metric: <i>can it ever do it?</i>) but pass<sup>3</sup> = 0.512 (the production metric from τ-bench: <i>does it do it every time?</i>). Users experience pass<sup>k</sup>: a creator who gets a broken trailer one time in five does not care that a retry would have worked.</p>' +
+              '<details><summary>Go deeper</summary><p>With n trials per task and c successes, the unbiased estimators are pass@k = 1 − C(n−c, k) / C(n, k) and pass<sup>k</sup> = C(c, k) / C(n, k), averaged over tasks. They match the formulas above in expectation, and they need n ≥ k trials per task, so suites run every task five or more times.</p></details>'
           },
           {
             say: 'Cost and latency are metrics too. Success against dollars per task forms a Pareto frontier, and a configuration that is a few points better at two and a half times the cost is rarely the right choice.',
@@ -740,7 +772,7 @@
           rail(ctx, 5);
           var g = bench(ctx);
           var TJ = [['plan', 'ok'], ['search_refs', 'ok'], ['search_refs', 'warn', 'redundant'], ['storyboard', 'ok'], ['render_shot ×6', 'ok'], ['critic', 'ok'],
-            ['render_shot 3 dur=12', 'err', 'arg > max'], ['render_shot 3 dur=6', 'ok'], ['tts(voice=memo)', 'ok'], ['edit + encode', 'ok'], ['publish → confirm', 'ok']];
+            ['render_shot 3 dur=12', 'err', 'arg > max'], ['render_shot 3 dur=5', 'ok'], ['tts(voice=memo)', 'ok'], ['edit + encode', 'ok'], ['publish → confirm', 'ok']];
           var TC = { ok: 'lime', warn: 'amber', err: 'red' };
           var th = ctx.text(60, 206, 'TRAJECTORY · graded step by step', { size: 13, font: 'display', weight: 700, color: 'teal', spacing: 1.2, parent: g });
           var chips = TJ.map(function (t, i) {
@@ -768,7 +800,7 @@
           });
           var suc = ctx.group({ parent: OC, opacity: 0 });
           ctx.text(66, 740, 'SUCCESS', { size: 22, font: 'display', weight: 700, color: 'lime', parent: suc });
-          ctx.text(66, 780, 'all constraints hold · 151 s · $4.61', { size: 13, font: 'mono', color: 'text', parent: suc });
+          ctx.text(66, 780, 'all constraints hold · 151 s · $4.07', { size: 13, font: 'mono', color: 'text', parent: suc });
           /* beat 2 material: pass@k vs pass^k */
           var PK = ctx.group({ parent: g, opacity: 0 });
           panel(ctx, PK, 570, 390, 470, 440, 'amber', 'pass@k vs pass^k  (p = 0.8)');
@@ -833,7 +865,7 @@
             say: 'Here is the actual trace of our trailer job: one tree of spans under a single trace identifier, with the whole job as the root span.',
             card: { tag: 'HOW IT WORKS', title: 'One tree, one trace id', body: 'The root span is the job. Every agent turn, model call and GPU job is a child or a linked span, drawn on one shared time axis.' },
             deep: '<p>Spans follow the OpenTelemetry <b>GenAI semantic conventions</b> where they exist: <code>invoke_agent {name}</code>, <code>chat {model}</code> and <code>execute_tool {tool}</code>, with <code>gen_ai.request.model</code>, <code>gen_ai.usage.input_tokens</code> and <code>gen_ai.usage.output_tokens</code>.</p>' +
-              '<p>Everything else is a custom namespace: cache-read tokens, TTFT, GPU type and count, GPU-seconds, queue wait, retry attempt and reason, cost. The root span, <code>job.trailer</code>, carries the totals.</p>'
+              '<p>Cache-read tokens have a standard attribute, <code>gen_ai.usage.cache_read.input_tokens</code>. Everything else is a custom <code>app.*</code> namespace: TTFT, GPU type and count, GPU-seconds, queue wait, retry attempt and reason, cost. The root span, <code>job.trailer</code>, carries the totals. The GenAI conventions are still marked Development, so pin a version. Instrumentation such as OpenLLMetry emits these spans, and OTLP backends such as Langfuse (which aims to follow the GenAI conventions), Jaeger and Grafana Tempo ingest them.</p>'
           },
           {
             say: 'The director\'s planning call starts first. The reference encoders and speech recognition run beside it, and the storyboard follows.',
@@ -844,15 +876,15 @@
           {
             say: 'Then six shots wait for a gang of eight GPUs each and sample in parallel, while narration is synthesised alongside, off the critical path.',
             card: { tag: 'NUMBERS', title: 'Six shots, forty eight GPUs', stat: { v: '4,560', u: 'GPU-s', l: 'in the shot spans: 6 shots × 8 GPUs × 95 s of diffusion sampling' },
-              more: '<p>GPU-seconds are billed for the <i>reserved gang window</i>, not for busy kernels. Gang scheduling holds all eight GPUs from placement until the last rank finishes, so one slow rank costs the whole gang, and cost attribution multiplies the wall-clock span by the gang size. Shot 3\'s own sampling ran 86 s (690 GPU-s); the 95 s window used for the total also covers queue wait and decode.</p>' },
-            deep: '<p>The <code>dit.sample ×6</code> span is the critical path: 8 H100 per shot, 48 in total, 40 denoising steps with classifier-free guidance 5.0 and 75,600 latent tokens per shot. Queue wait was 1.8 s on this job against a fleet p95 of 18 s: it landed on a warm gang.</p>' +
+              more: '<p>GPU-seconds are billed for the <i>reserved gang window</i>, not for busy kernels. Gang scheduling holds all eight GPUs from placement until the last rank finishes, so one slow rank costs the whole gang, and cost attribution multiplies the wall-clock span by the gang size. Shot 3\'s own sampling ran 86 s (688 GPU-s); the 95 s window used for the total also covers queue wait and decode.</p>' },
+            deep: '<p>The <code>dit.sample ×6</code> span is the critical path: 8 H100 per shot, 48 in total, 50 denoising steps with classifier-free guidance 5.0 and 111,600 latent tokens per shot (5 s at 24 fps). Queue wait was 1.8 s on this job against a fleet p95 of 18 s: it landed on a warm gang.</p>' +
               '<p><b>Critical path</b> = the chain of spans that determines end-to-end latency. Narration ran with 97 s of slack, so optimising it would save nothing.</p>'
           },
           {
             say: 'The critic flags shot three, and a retry span appears, linked to the critic span that caused it.',
             card: { tag: 'NUMBERS', title: 'A visible retry', stat: { v: '+30 s', l: 'the retry span: shot 3 redone after the critic scored identity 2 of 5' } },
-            deep: '<p><b>Retry visibility</b>: the retry is a sibling span with <code>retry.attempt = 2</code> and <code>retry.reason = critic.identity &lt; 3</code>, plus a <i>span link</i> to the critic span that caused it. So <i>why did this job take 151 s?</i> is answerable in one click.</p>' +
-              '<p>It adds 240 GPU-seconds (8 GPUs × 30 s) and 30 s of wall clock. Retries are the classic hidden latency: they never appear in per-service dashboards because each service looks healthy.</p>'
+            deep: '<p><b>Retry visibility</b>: the retry is a sibling span with <code>app.retry.attempt = 2</code> and <code>app.retry.reason = critic.identity &lt; 3</code>, plus a <i>span link</i> to the critic span that caused it. So <i>why did this job take 151 s?</i> is answerable in one click.</p>' +
+              '<p>It adds 240 GPU-seconds (8 GPUs × 30 s) and 30 s of wall clock. Retries are the classic hidden latency: they often stay invisible in per-service dashboards because each service looks healthy.</p>'
           },
           {
             say: 'Edit, encode and signing close the job at about one hundred fifty one seconds. Click any span to inspect its attributes, including token counts and cache hits.',
@@ -867,21 +899,21 @@
           rail(ctx, 6);
           var g = bench(ctx);
           var SP = [
-            [0, 'job.trailer', 0, 151, 'pink', ['trace_id: 4bf92f35…0e4736', 'service: orchestrator', 'duration: 151.0 s', 'spans: 212', 'status: OK', 'app.cost_usd: 4.61']],
+            [0, 'job.trailer', 0, 151, 'pink', ['trace_id: 4bf92f35…0e4736', 'service: orchestrator', 'duration: 151.0 s', 'spans: 212', 'status: OK', 'app.cost_usd: 4.07']],
             [1, 'invoke_agent director', 0, 12, 'magenta', ['gen_ai.operation.name: invoke_agent', 'gen_ai.agent.name: director', 'duration: 12.0 s', 'children: 3']],
-            [2, 'chat planner-llm', 0.3, 4.8, 'amber', ['gen_ai.operation.name: chat', 'gen_ai.request.model: planner-xl', 'gen_ai.usage.input_tokens: 12,412', 'app.cache_read_tokens: 9,830 (79%)', 'gen_ai.usage.output_tokens: 1,106', 'app.ttft_ms: 380', 'app.cost_usd: 0.027']],
-            [2, 'execute_tool search_refs', 4.9, 5.8, 'teal', ['gen_ai.operation.name: execute_tool', 'gen_ai.tool.name: search_refs', 'db.system: vector (HNSW)', 'results: 12', 'duration: 0.9 s']],
-            [2, 'chat storyboard-llm', 5.9, 11.8, 'amber', ['gen_ai.request.model: planner-xl', 'gen_ai.usage.input_tokens: 21,960', 'app.cache_read_tokens: 12,400 (56%)', 'gen_ai.usage.output_tokens: 1,480', 'app.ttft_ms: 610']],
+            [2, 'chat planner-llm', 0.3, 4.8, 'amber', ['gen_ai.operation.name: chat', 'gen_ai.request.model: planner-xl', 'gen_ai.usage.input_tokens: 12,412', 'gen_ai.usage.cache_read.input_tokens: 9,830', 'gen_ai.usage.output_tokens: 1,106', 'app.ttft_ms: 380', 'app.cost_usd: 0.027']],
+            [2, 'execute_tool search_refs', 4.9, 5.8, 'teal', ['gen_ai.operation.name: execute_tool', 'gen_ai.tool.name: search_refs', 'app.vector_index: HNSW', 'results: 12', 'duration: 0.9 s']],
+            [2, 'chat storyboard-llm', 5.9, 11.8, 'amber', ['gen_ai.request.model: planner-xl', 'gen_ai.usage.input_tokens: 21,960', 'gen_ai.usage.cache_read.input_tokens: 12,400', 'gen_ai.usage.output_tokens: 1,480', 'app.ttft_ms: 610']],
             [1, 'invoke_agent refs', 0.5, 6, 'magenta', ['gen_ai.agent.name: refs', 'starts on upload, parallel to planning', 'duration: 5.5 s']],
             [2, 'gpu encode sketches ×3', 0.8, 3.2, 'violet', ['app.gpu: 1×L40S', 'app.model: siglip-so400m', 'images: 3', 'duration: 2.4 s']],
             [2, 'gpu asr memo', 0.8, 2.1, 'orange', ['app.gpu: 1×L40S', 'app.model: whisper-large (accurate pass)', 'audio_s: 42', 'duration: 1.3 s']],
-            [1, 'dit.sample ×6 · 8×H100', 12, 107, 'lime', ['app.gpu: 8×H100 per shot, 48 total', 'app.queue_wait_s: 1.8 (fleet p95 18)', 'app.steps: 40 · cfg 5.0', 'app.latent_tokens: 75,600 / shot', 'app.gpu_seconds: 4,560 (6×8×95 s)', 'app.mfu: 0.43']],
+            [1, 'dit.sample ×6 · 8×H100', 12, 107, 'lime', ['app.gpu: 8×H100 per shot, 48 total', 'app.queue_wait_s: 1.8 (fleet p95 18)', 'app.steps: 50 · 1 pass · step-cached', 'app.latent_tokens: 111,600 / shot', 'app.gpu_seconds: 4,560 (6×8×95 s)', 'app.mfu: 0.43']],
             [2, 'queue.wait video-pool', 12, 13.8, 'blue', ['app.pool: video-h100', 'app.queue_wait_s: 1.8', 'app.gang_size: 8 GPUs (1 NVLink node)', 'fleet queue wait p95: 18 s', 'app.priority: interactive']],
-            [2, 'dit.sample shot 3', 13.8, 100, 'lime', ['app.shot: 3 of 6 · 6 s', 'app.steps: 40 · preview every 4', 'app.previews: 10 · p(unsafe) max 0.07', 'app.gpu_seconds: 690 (8×86 s)', 'status: OK (then critic)']],
+            [2, 'dit.sample shot 3', 13.8, 100, 'lime', ['app.shot: 3 of 6 · 5 s', 'app.steps: 50 · preview every 5', 'app.previews: 10 · p(unsafe) max 0.07', 'app.gpu_seconds: 688 (8×86 s)', 'status: OK (then critic)']],
             [1, 'chat critic-vlm (shot 3)', 100, 107, 'amber', ['gen_ai.request.model: critic-vlm', 'gen_ai.usage.input_tokens: 18,900 (8 frames)', 'gen_ai.usage.output_tokens: 240', 'app.verdict: redo (identity 2/5)']],
-            [1, 'render_shot 3 · retry', 107, 137, 'red', ['app.retry.attempt: 2', 'app.retry.reason: critic.identity < 3', 'link → critic-vlm span', 'app.gpu_seconds: 240 (8×30 s)', 'status: OK']],
+            [1, 'render_shot 3 · retry', 107, 137, 'red', ['app.retry.attempt: 2', 'app.retry.reason: critic.identity < 3', 'app.retry.window_s: 2.6–4.1', 'link → critic-vlm span', 'app.gpu_seconds: 240 (8×30 s)', 'status: OK']],
             [1, 'tts.narration', 20, 40, 'orange', ['app.model: flow-matching TTS', 'app.voice: creator (consent ✓)', 'audio_s: 28', 'slack: 97 s (off critical path)']],
-            [1, 'edit · encode · c2pa.sign', 137, 151, 'cyan', ['app.encoder: NVENC AV1 + H.264', 'app.ladder: 6 renditions', 'c2pa.signed: true', 'duration: 14 s']]
+            [1, 'edit · encode · c2pa.sign', 137, 151, 'cyan', ['app.encoder: NVENC AV1 + H.264', 'app.ladder: 5 renditions', 'c2pa.signed: true', 'duration: 14 s']]
           ];
           var CRIT = [1, 4, 8, 9, 10, 11, 12, 14];
           var NR = SP.length;
@@ -980,7 +1012,7 @@
         title: 'Metrics & SLOs',
         beats: [
           {
-            say: 'Traces explain one job; metrics watch the fleet. Latency is a distribution, not a number: time to first token has a median near two hundred milliseconds but a long tail past one and a half seconds, and users remember the tail.',
+            say: 'Traces explain one job. Metrics watch the fleet. Latency is a distribution, not a number: time to first token has a median near two hundred milliseconds but a long tail past one and a half seconds, and users remember the tail.',
             card: { tag: 'NUMBERS', title: 'The tail is the experience', stat: { v: '1.7 s', l: 'p99 time to first token, against a 210 ms median: the tail is eight times the middle' },
               more: '<p>For a log-normal with median m and log-scale σ, the q-quantile is m · e<sup>zσ</sup> with z = 2.326 for q = 0.99. With m = 210 ms and σ = 0.9 that is 210 · e<sup>2.09</sup> ≈ 1,700 ms. The mean is m · e<sup>σ²/2</sup> ≈ 315 ms, 50% above the median, which is why means mislead on skewed latency.</p>' },
             deep: '<p><b>Percentiles, not means</b>. TTFT here is log-normal with median 210 ms and σ = 0.9, so p99 = 210 · e<sup>2.326·0.9</sup> ≈ 1.7 s, p95 ≈ 0.9 s and the mean is about 315 ms. A dashboard that shows the mean hides the users who wait.</p>' +
@@ -991,7 +1023,7 @@
             card: { tag: 'PITFALL', title: 'Utilization is not efficiency', body: 'The GPU util counter only says a kernel was running. Model FLOPs utilization, achieved over peak, shows how much of the silicon does useful work.' },
             deep: '<div class="eq">MFU = achieved model FLOP/s ÷ peak (≈ 989 TFLOP/s dense BF16, H100 SXM)</div>' +
               '<p>The <code>nvidia-smi</code> figure is the fraction of time <i>any</i> kernel runs. Track SM occupancy, HBM bandwidth and NVLink utilisation as well (DCGM exporters).</p>' +
-              '<p>DiT sampling is compute-bound, with MFU of 35–55%. LLM decode is bandwidth-bound, so low MFU is expected there; watch tokens per second per GPU instead.</p>'
+              '<p>DiT sampling is compute-bound, so a well-tuned run can plausibly reach an MFU of 35–55% (Llama 3 pre-training reported 38–43% BF16 MFU on H100s). For the video pool, MFU is counted on the FLOPs the production sampler actually runs (guidance-distilled and step-cached, about 3×10¹⁷ FLOP per shot), not on the 100-pass teacher baseline. The pool averages 41%, a little below the 43% of the trailer’s own shots. LLM decode is bandwidth-bound, so low MFU is expected there; watch tokens per second per GPU instead.</p>'
           },
           {
             say: 'Queue wait on the video pool and structured logs keyed by the trace identifier complete the picture.',
@@ -1006,14 +1038,15 @@
               '<p>The chart shows budget remaining. The dashed line is exactly-on-SLO burn (budget gone at day 28); the teal line burns slower, until an incident on day 17 takes 30 points. When the budget is exhausted, feature work freezes for that service and reliability work takes priority.</p>'
           },
           {
-            say: 'Alerts watch how fast the budget burns. A fast burn pages someone within minutes, and a slow burn opens a ticket. Here an incident burns the budget at twenty times the sustainable rate and pages.',
+            say: 'Alerts watch how fast the budget burns. A fast burn pages someone within minutes, a moderate burn pages within hours, and a slow burn only opens a ticket. Here an incident burns the budget at twenty times the sustainable rate and pages.',
             card: { tag: 'NUMBERS', title: 'Page on burn rate', stat: { v: '14.4×', l: 'burn rate that pages: 2 percent of a monthly budget gone in one hour' },
               more: '<p>Burn rate b = (bad ÷ total) ÷ (1 − SLO). At b = 14.4 for one hour a 28-day budget loses 14.4 / 672 ≈ 2.1%. A 10-hour incident at b = 20 loses 20 × 10 / 672 ≈ 30%, which is the dip on day 17. Requiring both a long and a short window (1 h and 5 min) stops pages for incidents that have already ended.</p>' },
             deep: '<div class="eq">burn rate b = (bad / total) ÷ (1 − SLO)</div>' +
               '<ul><li><b>Page</b> if b &gt; 14.4 over both 1 h and 5 min (≈ 2% of the budget in an hour).</li>' +
-              '<li><b>Ticket</b> if b &gt; 6 over 6 h and 30 min.</li>' +
+              '<li><b>Page</b> if b &gt; 6 over both 6 h and 30 min (≈ 5% of the budget).</li>' +
+              '<li><b>Ticket</b> if b ≥ 1 over both 3 days and 6 h (≈ 10%).</li>' +
               '<li>Budget exhausted: feature freeze for this service.</li></ul>' +
-              '<p>These are the multiwindow, multi-burn-rate alerts of the SRE Workbook: fast burns page, slow burns ticket, and the paired short window resets the alert quickly once the incident is over.</p>'
+              '<p>These are the multiwindow, multi-burn-rate alerts of the SRE Workbook: the paired short window resets the alert quickly once the incident is over. Its table assumes a 30-day window; on 28 days the shares are 2.1, 5.4 and 10.7 percent.</p>'
           }
         ],
         run: function (ctx) {
@@ -1082,8 +1115,8 @@
           ctx.text(66, 668, 'budget exhausted → feature freeze; reliability work first', { size: 14, font: 'mono', color: 'lime', parent: P });
           var P2 = ctx.group({ parent: g, opacity: 0 });
           ctx.text(66, 720, 'burn rate  b = (bad / total) ÷ (1 − SLO)', { size: 16, font: 'mono', color: 'teal', parent: P2 });
-          ctx.text(66, 756, 'page:   b > 14.4 over 1 h AND 5 min   (≈ 2% of budget per hour)', { size: 14, font: 'mono', color: 'red', parent: P2 });
-          ctx.text(66, 788, 'ticket: b > 6 over 6 h AND 30 min', { size: 14, font: 'mono', color: 'amber', parent: P2 });
+          ctx.text(66, 756, 'page:   b > 14.4 (1 h AND 5 min, ≈ 2% of budget) or b > 6 (6 h AND 30 min)', { size: 14, font: 'mono', color: 'red', parent: P2 });
+          ctx.text(66, 788, 'ticket: b ≥ 1 over 3 d AND 6 h  (≈ 10% of budget)', { size: 14, font: 'mono', color: 'amber', parent: P2 });
           ctx.hud('TTFT p50 ' + Math.round(p50) + ' ms · p99 ' + (p99 / 1000).toFixed(1) + ' s');
           /* beat 0: latency is a distribution */
           return ctx.reveal(A, { from: 'left' }).then(function () {
@@ -1115,7 +1148,7 @@
             return ctx.beat(4);
           }).then(function () {
             /* beat 4: burn-rate alerts */
-            ctx.hud('page at 14.4× burn · ticket at 6×');
+            ctx.hud('page at 14.4× or 6× burn · ticket at 1×');
             return Promise.all([ctx.reveal(P2, { from: 'up' }), ctx.reveal(incL, { from: 'up', delay: 300 })]).then(function () {
               return ctx.pulse(incL, { color: 'red', dur: 600 });
             });
@@ -1128,20 +1161,20 @@
         beats: [
           {
             say: 'Finally, money and change. Cost is accounted per span and rolled up per job: diffusion sampling dominates, then language model tokens.',
-            card: { tag: 'NUMBERS', title: 'Sampling is the bill', stat: { v: '69%', l: 'of the bill is DiT sampling: $3.17 of $4.61 per 30 s trailer' } },
+            card: { tag: 'NUMBERS', title: 'Sampling is the bill', stat: { v: '78%', l: 'of the bill is DiT sampling: $3.17 of $4.07 per 30 s trailer' } },
             deep: '<table><tr><th>Item</th><th>Basis</th><th>$</th></tr>' +
               '<tr><td>DiT shots</td><td>6 × 8 GPU × 95 s</td><td>3.17</td></tr>' +
               '<tr><td>Re-render</td><td>8 GPU × 30 s</td><td>0.17</td></tr>' +
-              '<tr><td>LLM tokens</td><td>0.45M in (70% cached), 40k out</td><td>1.10</td></tr>' +
-              '<tr><td>Audio, safety, CDN</td><td>TTS, encoders, encode</td><td>0.17</td></tr>' +
-              '<tr><td><b>Total</b></td><td>per 30 s trailer</td><td><b>4.61</b></td></tr></table>' +
-              '<p>GPU cost assumes about $2.5 per H100-hour (illustrative). Levers: few-step distillation (40 → 8 steps cuts DiT cost by about 5×), prefix caching (LLM input cost down 40–70%), early abort, and draft-then-upscale.</p>'
+              '<tr><td>LLM tokens</td><td>190k in (60% cached), 22k out</td><td>0.59</td></tr>' +
+              '<tr><td>Refs, voice, edit</td><td>encoders, TTS, encode</td><td>0.14</td></tr>' +
+              '<tr><td><b>Total</b></td><td>per 30 s trailer</td><td><b>4.07</b></td></tr></table>' +
+              '<p>GPU cost assumes about $2.5 per H100-hour (illustrative). Levers: few-step distillation (50 → 8 steps cuts DiT cost by about 6×), prefix caching (LLM input cost down 40–70%), early abort, and draft-then-upscale.</p>'
           },
           {
-            say: 'Divide by accepted minutes, not generated ones, because abandoned and rejected renders still burn GPUs. That takes nine dollars a minute to more than ten.',
-            card: { tag: 'NUMBERS', title: 'Cost per delivered minute', stat: { v: '$10.48', l: 'per delivered minute, after 12 percent of jobs are abandoned or rejected' },
-              more: '<p>$4.61 per 30 s job doubles to $9.22 per generated minute, and dividing by the accepted fraction 0.88 gives $10.48. If acceptance falls from 88% to 80% with every unit price unchanged, delivered-minute cost rises to $11.53, a 10% regression that no per-service dashboard would show.</p>' },
-            deep: '<p><b>Unit economics</b>: cost per <i>delivered</i> minute = total spend / accepted minutes. $4.61 per 30 s job is $9.22 per generated minute; with 12% of jobs abandoned or rejected, the denominator shrinks to 0.88 and the cost is $10.48 per delivered minute.</p>' +
+            say: 'Divide by accepted minutes, not generated ones, because abandoned and rejected renders still burn GPUs. That takes eight dollars a minute to more than nine.',
+            card: { tag: 'NUMBERS', title: 'Cost per delivered minute', stat: { v: '$9.25', l: 'per delivered minute, after 12 percent of jobs are abandoned or rejected' },
+              more: '<p>$4.07 per 30 s job doubles to $8.14 per generated minute, and dividing by the accepted fraction 0.88 gives $9.25. If acceptance falls from 88% to 80% with every unit price unchanged, delivered-minute cost rises to $10.18, a 10% regression that no per-service dashboard would show.</p>' },
+            deep: '<p><b>Unit economics</b>: cost per <i>delivered</i> minute = total spend / accepted minutes. $4.07 per 30 s job is $8.14 per generated minute; with 12% of jobs abandoned or rejected, the denominator shrinks to 0.88 and the cost is $9.25 per delivered minute.</p>' +
               '<p>The gap between generated and delivered minutes is the price of quality control and of user indecision. It is worth tracking as its own metric: a falling acceptance rate is a cost regression even if every unit price is flat.</p>'
           },
           {
@@ -1154,14 +1187,16 @@
             say: 'First the offline suite and non-inferiority checks on every metric. Improvements need not be significant, but regressions must be ruled out.',
             card: { tag: 'HOW IT WORKS', title: 'Rule out regressions', body: 'A metric passes when the lower confidence bound of its change clears a non-inferiority margin. Latency and cost use the upper bound.' },
             deep: '<p><b>Regression gate</b> (per metric m, candidate versus control): pass if the lower bound of the CI on Δ<sub>m</sub> clears a non-inferiority margin −δ<sub>m</sub>. Improvements need not be significant; <i>regressions</i> must be ruled out. For lower-is-better metrics such as latency and $/min, the upper bound must stay below +δ<sub>m</sub>.</p>' +
-              '<div class="eq">ship ⇔ ∀m: CI<sub>95</sub>(Δ<sub>m</sub>).lower &gt; −δ<sub>m</sub> &nbsp;∧&nbsp; safety ASR ≤ bound</div>'
+              '<div class="eq">ship ⇔ ∀m: CI<sub>95</sub>(Δ<sub>m</sub>).lower &gt; −δ<sub>m</sub> &nbsp;∧&nbsp; upper CI bound of ASR ≤ safety limit</div>' +
+              '<details><summary>Go deeper</summary><p>Requiring every metric to pass is an intersection-union test, so no multiplicity correction is needed to control the false-ship rate. The cost is power: seven independent checks that each have 90 percent power clear together only 0.9<sup>7</sup> ≈ 48 percent of the time for a truly non-inferior model, which is why suites use large prompt sets and paired comparisons.</p></details>'
           },
           {
             say: 'Then a one percent canary catches crashes and cost blowups, and a fifty fifty A B test measures the primary metric with variance reduction and guardrails. Only then does the release reach every creator.',
             card: { tag: 'NUMBERS', title: 'Variance reduction pays', stat: { v: '−38%', l: 'variance from CUPED using pre-period behaviour (illustrative), so tests end sooner' } },
             deep: '<ul><li><b>Canary</b> (1% of traffic, hours): catches crashes, latency and cost blow-ups that the offline suite cannot see.</li>' +
               '<li><b>A/B</b> (50/50, days): a pre-registered primary metric (export or completion rate), with <b>CUPED</b> variance reduction using pre-period behaviour, plus guardrails (p99 latency, $/min, safety escalations). Check for sample-ratio mismatch before reading results.</li>' +
-              '<li>Multiple metrics mean multiple comparisons: pre-register the primary; treat the rest as guardrails.</li></ul>'
+              '<li>Multiple metrics mean multiple comparisons: pre-register the primary; treat the rest as guardrails.</li></ul>' +
+              '<details><summary>Go deeper</summary><p>CUPED adjusts each user\'s metric with a pre-experiment covariate X: Y′ = Y − θ(X − X̄), with θ = Cov(X, Y) / Var(X). The variance shrinks by a factor 1 − ρ², where ρ is the correlation between X and Y. A 38 percent reduction therefore corresponds to ρ ≈ 0.62, and it means about 38 percent fewer users, or days, for the same sensitivity.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -1171,7 +1206,7 @@
           /* cost */
           var L = ctx.group({ parent: g });
           panel(ctx, L, 40, 190, 560, 640, 'lime', 'COST PER DELIVERED MINUTE');
-          var CO = [['DiT sampling', 3.17, 'lime'], ['LLM tokens', 1.10, 'amber'], ['critic retry', 0.17, 'red'], ['audio · safety · CDN', 0.17, 'orange']];
+          var CO = [['DiT sampling', 3.17, 'lime'], ['LLM tokens', 0.59, 'amber'], ['critic retry', 0.17, 'red'], ['refs · voice · edit', 0.14, 'orange']];
           var tot = CO.reduce(function (a, c) { return a + c[1]; }, 0);
           var sx = 70, sw = 500, acc = 0;
           var leg = ctx.group({ parent: L, opacity: 0 });
@@ -1186,7 +1221,7 @@
           /* beat 1 material: from job cost to delivered-minute cost */
           var L1 = ctx.group({ parent: L, opacity: 0 });
           ctx.line(sx, 454, sx + sw, 454, { color: 'faint', parent: L1 });
-          var RW = [['per 30 s job', '$' + tot.toFixed(2)], ['per generated minute', '$' + (tot * 2).toFixed(2)], ['12% abandoned / rejected', '÷ 0.88'], ['per DELIVERED minute', '$' + (tot * 2 / 0.88).toFixed(2)]];
+          var RW = [['per 30 s job', '$' + tot.toFixed(2)], ['per generated minute', '$' + (tot * 2).toFixed(2)], ['12% abandoned / rejected', 'divide by 0.88'], ['per DELIVERED minute', '$' + (tot * 2 / 0.88).toFixed(2)]];
           var rw = RW.map(function (r, k) {
             var rg = ctx.group({ parent: L1, opacity: 0 });
             var y = 486 + k * 36;
@@ -1195,7 +1230,7 @@
             return rg;
           });
           ctx.text(sx, 660, 'LEVERS', { size: 13, font: 'display', weight: 700, color: 'lime', spacing: 1, parent: L1 });
-          [['distil 40 → 8 steps', 'DiT cost ≈ ÷5'], ['prefix caching', 'LLM input −40–70%'], ['early abort + drafts', 'fewer wasted renders']].forEach(function (lv, k) {
+          [['distil 50 → 8 steps', 'DiT cost ≈ 6× lower'], ['prefix caching', 'LLM input −40–70%'], ['early abort + drafts', 'fewer wasted renders']].forEach(function (lv, k) {
             ctx.text(sx, 692 + k * 30, lv[0], { size: 13, font: 'mono', color: 'white', parent: L1 });
             ctx.text(sx + 210, 692 + k * 30, lv[1], { size: 13, font: 'mono', color: 'text', parent: L1 });
           });
@@ -1225,7 +1260,7 @@
           var ab = ctx.group({ parent: R, opacity: 0 });
           ctx.rect(656, 624, 880, 180, { rx: 8, fill: ctx.alpha('cyan', 0.05), stroke: ctx.alpha('cyan', 0.4), sw: 1, parent: ab });
           ctx.text(676, 652, 'A/B (7 days, 50/50, CUPED)', { size: 13, font: 'display', weight: 700, color: 'cyan', spacing: 1, parent: ab });
-          ctx.text(676, 688, 'primary: export rate  +2.3%  (95% CI +0.8 … +3.8, p = 0.004)', { size: 13, font: 'mono', color: 'lime', parent: ab });
+          ctx.text(676, 688, 'primary: export rate  +2.3%  (95% CI +0.8 … +3.8, p = 0.003)', { size: 13, font: 'mono', color: 'lime', parent: ab });
           ctx.text(676, 718, 'CUPED: variance −38% using pre-period export rate', { size: 13, font: 'mono', color: 'text', parent: ab });
           ctx.text(676, 748, 'guardrails: p99 latency ✓  $/min ✓  safety escalations ✓  SRM ✓', { size: 13, font: 'mono', color: 'text', parent: ab });
           ctx.text(676, 780, 'verdict: SHIP v2.1', { size: 15, font: 'mono', weight: 700, color: 'lime', parent: ab });

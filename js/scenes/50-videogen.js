@@ -96,9 +96,10 @@
       'Esser et al., <i>Scaling Rectified Flow Transformers for High-Resolution Image Synthesis (SD3)</i>, ICML 2024',
       'Polyak et al., <i>Movie Gen: A Cast of Media Foundation Models</i>, Meta, 2024',
       'Kong et al., <i>HunyuanVideo: A Systematic Framework for Large Video Generative Models</i>, arXiv 2412.03603, 2024',
-      'Wan Team (Alibaba), <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
       'HaCohen et al., <i>LTX-Video: Realtime Video Latent Diffusion</i>, 2025',
-      'Google DeepMind, <i>Veo 3</i> model card / tech report, 2025; OpenAI, <i>Sora 2</i> system card, 2025; Low et al., <i>Ovi: Twin Backbone Cross-Modal Fusion for Audio-Video Generation</i>, 2025'
+      'Google DeepMind, <i>Veo 3</i> technical report, 2025',
+      'OpenAI, <i>Sora 2</i> system card, 2025; Low et al., <i>Ovi: Twin Backbone Cross-Modal Fusion for Audio-Video Generation</i>, 2025'
     ],
     steps: [
       /* ------------------------------------------------------------------ 1 */
@@ -119,9 +120,9 @@
               '<tr><td>duration × fps</td><td>5 s × 24 fps</td></tr>' +
               '<tr><td>frames</td><td>121 = 4·30 + 1</td></tr>' +
               '<tr><td>resolution</td><td>1280 × 720</td></tr>' +
-              '<tr><td>sampler</td><td>flow-matching Euler, 50 steps, CFG w = 5</td></tr>' +
+              '<tr><td>sampler</td><td>flow-matching ODE, 50 steps (UniPC by default, drawn as Euler), CFG w = 5</td></tr>' +
               '<tr><td>conditioning</td><td>text + first-frame reference image</td></tr></table>' +
-              '<p>Clip length is a model-side limit, not a wish: open models train on 81–129 frames (Wan 81, HunyuanVideo 129) and closed APIs offer clips of roughly 5–10 s (Veo 3: 8 s). Longer shots are chained by conditioning on the last latent frames of the previous clip.</p>'
+              '<p>Clip length is a model-side limit, not a wish: open models train on 81–129 frames (Wan 81, HunyuanVideo 129) and closed APIs offer clips of roughly 5–15 s (Veo 3: 8 s). Longer shots are chained by conditioning on the last latent frames of the previous clip.</p>'
           },
           {
             say: 'To the agent, the video model is a black box: a prompt and a sketch go in, and a clip comes out. It costs GPU minutes rather than milliseconds, so the call is asynchronous.',
@@ -294,9 +295,9 @@
               '<p>Omitted for clarity: classifier-free guidance (a second, unconditional forward per step), per-channel latent normalisation, and sequence-parallel sharding across the 8 GPUs. In image-to-video the reference is padded with zero frames before encoding and a mask channel is added (step 7); the first latent frame is identical either way, because the VAE is causal.</p>'
           },
           {
-            say: 'The compute is wildly lopsided. The text encoder costs on the order of ten trillion operations and the VAE on the order of a quadrillion, but the denoiser needs over a quintillion, roughly ninety nine point nine percent of the total.',
-            card: { tag: 'NUMBERS', title: 'Where the FLOPs go', stat: { v: '99.9%', u: 'in the DiT', l: 'about 1.3 × 10¹⁸ FLOPs per clip, versus about 10¹⁵ for the VAE and 10¹³ for the text encoder' }, more: '<p>Text encoder: 2 · 4.6 B non-embedding parameters · 512 tokens ≈ 5 × 10¹². VAE: a 3×3×3 convolution at 96 channels costs 2 · 27 · 96² ≈ 0.5 MFLOP per voxel, and stage 0 has 111.5 M voxels, so one layer is 5.5 × 10¹³ and the whole encoder plus decoder lands near 10¹⁵. DiT: 100 forward passes × 1.29 × 10¹⁶.</p>' },
-            deep: '<p>FLOPs per clip, log scale: text encoder ~10<sup>13</sup>, VAE encode + decode ~10<sup>15</sup> (dozens of 3×3×3 convs at up to 96 channels × 111 M voxels), DiT ≈ 1.3×10<sup>18</sup> (100 forwards × 1.29×10<sup>16</sup>).</p>' +
+            say: 'The compute is wildly lopsided. The text encoder costs only a few trillion operations and the VAE on the order of a quadrillion, but the denoiser needs over a quintillion, roughly ninety nine point nine percent of the total.',
+            card: { tag: 'NUMBERS', title: 'Where the FLOPs go', stat: { v: '99.9%', u: 'in the DiT', l: 'about 1.3 × 10¹⁸ FLOPs per clip, versus about 10¹⁵ for the VAE and 5 × 10¹² for the text encoder' }, more: '<p>Text encoder: 2 · 4.6 B non-embedding parameters · 512 tokens ≈ 5 × 10¹². VAE: a 3×3×3 convolution at 96 channels costs 2 · 27 · 96² ≈ 0.5 MFLOP per voxel, and stage 0 has 111.5 M voxels, so one layer is 5.5 × 10¹³ and the whole encoder plus decoder lands near 10¹⁵. DiT: 100 forward passes × 1.29 × 10¹⁶.</p>' },
+            deep: '<p>FLOPs per clip, log scale: text encoder ≈ 5×10<sup>12</sup>, VAE encode + decode ≈ 1.5×10<sup>15</sup> (dozens of 3×3×3 convs at up to 96 channels × 111 M voxels), DiT ≈ 1.3×10<sup>18</sup> (100 forwards × 1.29×10<sup>16</sup>).</p>' +
               '<p>The denoiser is ≈ 99.9% of compute, so every serving optimisation (sequence parallelism, FP8, step caching, distillation) targets it first. The VAE decoder is nevertheless often the <i>memory</i> peak: 21 GB for a single full-resolution activation, which is why the VAE chamber spends so long on chunking and tiling.</p>'
           }
         ],
@@ -398,7 +399,7 @@
             /* beat 5: FLOPs, log scale */
             S.fl = ctx.group({ parent: wb });
             ctx.text(820, 600, 'FLOPs PER CLIP · log scale', { size: 12, font: 'mono', color: 'dim', parent: S.fl });
-            var rows = [['text encoder', 13, 'cyan', '~10¹³'], ['VAE enc + dec', 15, 'teal', '~10¹⁵'], ['DiT × 100 passes', 18.1, 'lime', '1.3×10¹⁸']];
+            var rows = [['text encoder', 12.7, 'cyan', '~5×10¹²'], ['VAE enc + dec', 15, 'teal', '~10¹⁵'], ['DiT × 100 passes', 18.1, 'lime', '1.3×10¹⁸']];
             S.flBars = rows.map(function (r, i) {
               var y = 630 + i * 52;
               ctx.text(990, y + 14, r[0], { size: 13, font: 'mono', color: 'text', anchor: 'end', parent: S.fl });
@@ -436,7 +437,7 @@
           },
           {
             say: 'A large frozen text encoder, from the multilingual T five family, then reads all the tokens together and returns one four thousand dimensional vector per token, padded to five hundred twelve slots.',
-            card: { tag: 'NUMBERS', title: 'A matrix per prompt', stat: { v: '512 × 4096', l: 'text conditioning from umT5-XXL: 10 real tokens plus 502 padding slots' } },
+            card: { tag: 'NUMBERS', title: 'A matrix per prompt', stat: { v: '512 × 4096', l: 'umT5-XXL output, padded to 512 slots: 10 real tokens in our short toy prompt, 502 padding' } },
             deep: '<p><b>Encoder.</b> Wan uses umT5-XXL (multilingual T5; 24 bidirectional encoder layers, d = 4096), max 512 tokens, padded; a 2-layer MLP projects 4096 → d<sub>model</sub> = 5120. HunyuanVideo instead uses a decoder-only MLLM with a bidirectional <i>token refiner</i>, plus a pooled CLIP vector fed into the timestep modulation.</p>' +
               '<p>The encoder is <b>frozen</b> and bidirectional, so each vector knows the whole sentence. Its output depends only on the prompt: the same 512 × 4096 matrix is reused by all 50 steps, so it is computed once and cached (the unconditional branch has its own matrix, from the empty or negative prompt).</p>' +
               '<details><summary>Go deeper</summary><p><b>Why a T5 and not CLIP?</b> A contrastive text tower is trained to summarise a caption in one vector, so it loses word order, counts and relations. A T5 encoder is trained to reconstruct spans, keeps one contextual vector per token and reads several languages, which is what long, scene-like captions and in-video text (Wan renders Chinese and English glyphs) need. <b>Padding:</b> the public Wan code zero-pads to 512 slots and attends to them without a mask; other stacks mask the pad slots. Either way the cross-attention cost is fixed by 512, not by prompt length.</p></details>'
@@ -452,7 +453,7 @@
             card: { tag: 'TRY IT', title: 'Click a patch, read its words', body: 'Click the helmet or the capsule in the mini frame. Each query patch spreads its attention over different words: helmet on fox, astro, naut; capsule on smoking, capsule.' },
             deep: '<ul><li><b>Attention pattern.</b> The softmax row of the helmet patch concentrates on <i>fox</i>, <i>astro</i>, <i>naut</i> (illustrative weights here, summing to 1). The capsule patch weights <i>smoking</i> and <i>capsule</i>; a sky patch would weight scene words such as <i>ice</i> or <i>moon</i>.</li>' +
               '<li>Real heads are messier: many put much of their mass on padding or punctuation slots that act as attention sinks, and different heads and layers specialise on objects, attributes, actions or style.</li>' +
-              '<li><b>Condition dropout</b> (~10% empty prompts during training) teaches the same network the unconditional field needed for classifier-free guidance.</li></ul>'
+              '<li><b>Condition dropout</b> (empty prompts in roughly 10–20% of training samples; Ho &amp; Salimans found 0.1 and 0.2 about equally good) teaches the same network the unconditional field needed for classifier-free guidance.</li></ul>'
           },
           {
             say: 'Some models, such as Stable Diffusion three and HunyuanVideo, instead concatenate text and video tokens into one joint attention, so the text is updated by the video as well.',
@@ -685,7 +686,7 @@
             deep: '<div class="eq">L = E<sub>t,x₀,ε</sub> ‖ v<sub>θ</sub>(z<sub>t</sub>, t, c) − (ε − x<sub>0</sub>) ‖²</div>' +
               '<p>Sampling integrates dz/dt = v<sub>θ</sub> from t = 1 to 0 with an Euler step per network call:</p>' +
               '<div class="eq">z<sub>i+1</sub> = z<sub>i</sub> + (t<sub>i+1</sub> − t<sub>i</sub>) · v<sub>θ</sub>(z<sub>i</sub>, t<sub>i</sub>, c)</div>' +
-              '<p>Training typically samples t from a logit-normal and never runs the ODE. Solvers other than Euler (Heun, DPM-Solver++, UniPC) trade extra evaluations or stored history for accuracy; production video uses 30–50 steps.</p>'
+              '<p>Training typically samples t from a logit-normal and never runs the ODE. Solvers other than Euler (Heun, DPM-Solver++, UniPC) trade extra evaluations or stored history for accuracy; production video uses 30–50 steps. Wan 2.1’s default sampler is UniPC (50 steps, guidance 5, shift 5); Euler is drawn because it is the simplest member of the family.</p>'
           },
           {
             say: 'In the final twenty steps the picture emerges: the moon, the ice horizon, the fox. Layout and colour are decided first, and fine detail like the helmet rim and the eyes only appears at the very end.',
@@ -758,7 +759,7 @@
             ctx.text(700, 632, 'shift s = 5', { size: 12, font: 'mono', color: 'lime', parent: wb });
             S.dot = ctx.circle(470, 600, 6, { fill: 'lime', parent: wb, glow: true });
             S.loopStream = ctx.stream(S.loopP, { color: 'lime', count: 3, period: 900 });
-            ctx.hud('50 Euler steps · t: 1 → 0 · shift 5');
+            ctx.hud('50 steps (Euler drawn) · t: 1 → 0 · shift 5');
             return Promise.all([
               ctx.reveal(eq, { from: 'right' }),
               ctx.reveal(S.pl2, { delay: 200 }),
@@ -817,14 +818,14 @@
           {
             say: 'Text alone is a weak signal, so samplers use classifier free guidance. Each step runs the transformer twice, once with the prompt and once with an empty prompt.',
             card: { tag: 'HOW IT WORKS', title: 'Conditional and unconditional', body: 'Same weights, batched by two: one pass sees the prompt <code>c</code>, the other an empty prompt <code>∅</code> (or a negative prompt).' },
-            deep: '<p><b>Training</b> drops the condition ~10% of the time (empty prompt), so a single network learns both the conditional and the unconditional velocity field.</p>' +
+            deep: '<p><b>Training</b> drops the condition for a small fraction of samples, typically 10–20% (empty prompt), so a single network learns both the conditional and the unconditional velocity field.</p>' +
               '<p><b>Sampling</b> evaluates both at every step. The two branches share weights and the same latent, so they are batched (2×N tokens) or split across GPUs (CFG parallelism). In practice a <i>negative prompt</i> (“blurry, static, distorted…”) replaces ∅ and steers away from unwanted content.</p>'
           },
           {
             say: 'The difference between the two predictions points toward the prompt, and the sampler extrapolates along it by a guidance scale of about five.',
             card: { tag: 'TRADE-OFF', title: 'Adherence bought with diversity', body: 'Around <code>w = 5</code> the prompt is followed closely. Push higher and colour oversaturates, variety drops, motion can freeze.' },
             deep: '<div class="eq">v = v<sub>θ</sub>(z, t, ∅) + w · ( v<sub>θ</sub>(z, t, c) − v<sub>θ</sub>(z, t, ∅) ),   w ≈ 5</div>' +
-              '<ul><li>High w oversaturates and kills diversity; fixes: guidance interval (only mid-t), APG (drop the parallel component), CFG-Zero*, CFG-rescale.</li>' +
+              '<ul><li>High w oversaturates and kills diversity; fixes: guidance interval (only mid-t), APG (down-weight the parallel component), CFG-Zero*, CFG-rescale.</li>' +
               '<li>Guidance- and step-distilled students (DMD2, consistency, adversarial) run 4–8 steps without CFG: ~12–25× fewer passes.</li></ul>' +
               '<details><summary>Go deeper</summary><p><b>Why the same formula works on every target.</b> With z<sub>t</sub> = (1 − t)x<sub>0</sub> + tε and v = ε − x<sub>0</sub>, the clean-sample estimate is x̂<sub>0</sub> = z<sub>t</sub> − t·v, which is linear in v. Guiding the velocity therefore guides the x<sub>0</sub> and ε estimates identically: x̂<sub>0,w</sub> = x̂<sub>0,∅</sub> + w(x̂<sub>0,c</sub> − x̂<sub>0,∅</sub>). In score terms the update is ∇log p(z) + w·∇log p(c | z), a Bayes-rule product p(z)·p(c | z)<sup>w</sup>. Two branches with two different conditioning tensors also explain the cost: the text matrices differ, so batching them is a 2× wider batch, not a shared computation.</p></details>'
           },
@@ -843,7 +844,7 @@
             say: 'Fifty steps with two passes each make one hundred forwards: over a quintillion operations for one clip, roughly one hour on a single H one hundred GPU before any optimisation.',
             card: { tag: 'NUMBERS', title: 'The bill for one clip', stat: { v: '≈ 54', u: 'H100-min', l: '1.29 × 10¹⁸ FLOPs at 40% MFU on one H100; about 7 min on 8 GPUs at ideal scaling' }, more: '<p>H100 dense BF16 peak is 989 TFLOP/s. At 40% MFU that is 396 TFLOP/s, so 1.29 × 10¹⁸ / 3.96 × 10¹⁴ ≈ 3,260 s ≈ 54 GPU-minutes. On 8 GPUs with Ulysses or ring sequence parallelism the ideal time is ~7 min; real systems lose 10–30% to all-to-all communication.</p>' },
             deep: '<p>× 50 steps × 2 (CFG) = <b>1.29×10¹⁸ FLOPs</b>. H100 dense BF16 peak 989 TFLOP/s; at 40% MFU → ≈ 3,260 s ≈ 54 GPU-minutes; 8 GPUs with Ulysses/ring sequence parallelism → ~7 min at ideal scaling (real systems lose 10–30% to all-to-all communication).</p>' +
-              '<p>The overview’s ~95 s per shot on 8 GPUs (≈ 13 GPU-min) assumes about 4× less work than this baseline: guidance distillation (no second pass), fewer steps and step caching. The distillation section of the diffusion chamber gives the arithmetic.</p>'
+              '<p>The overview’s ~95 s per shot on 8 H100s (≈ 13 GPU-min) assumes about 4× less work than this 111,600-token baseline: guidance distillation (no second pass, 50 forwards instead of 100) and step caching that skips roughly half of those (≈ 25 full forwards, 3×10¹⁷ FLOP, which is 43% MFU on 8 GPUs for 95 s). HunyuanVideo already ships guidance-distilled (embedded guidance scale 6, one pass per step; its report cites a 1.9× speedup). The distillation section of the diffusion chamber gives the arithmetic.</p>'
           }
         ],
         run: function (ctx) {
@@ -936,8 +937,8 @@
           {
             say: 'Stacked together they form a thirty six channel input, and only the patch embedding layer changes shape. The image to video model is otherwise the text to video architecture, initialised from it and fine tuned.',
             card: { tag: 'NUMBERS', title: 'A wider first layer', stat: { v: '36', u: 'channels', l: '16 noise + 4 mask + 16 reference into Conv3d(36 → 5120, kernel 1 × 2 × 2)' } },
-            deep: '<p>On the input side only the patch-embedding Conv3d (36 → 5120, kernel 1×2×2) changes shape; the I2V model is otherwise the T2V architecture, initialised from it and fine-tuned. Extra input channels are typically zero-initialised, so at step 0 the I2V model behaves exactly like the T2V model.</p>' +
-              '<p>In this channel-concatenation design the whole latent, first frame included, is noised and denoised as usual, and the clean reference reaches the network only through the extra channels. Other designs treat the given frame as clean tokens instead: Wan 2.2 TI2V-5B and LTX-Video overwrite the first latent frame with the reference latent and give those tokens timestep 0, while CogVideoX-I2V adds light noise to the conditioning image so the model does not simply copy it.</p>'
+            deep: '<p>On the input side only the patch-embedding Conv3d (36 → 5120, kernel 1×2×2) changes shape; the I2V model is otherwise the T2V architecture, initialised from it and fine-tuned. When a T2V checkpoint is extended this way, the extra input channels are often zero-initialised, so that at step 0 the I2V model behaves like the T2V model.</p>' +
+              '<p>In this channel-concatenation design the whole latent, first frame included, is noised and denoised as usual, and the clean reference reaches the network only through the extra channels. Other designs treat the given frame as clean tokens instead: Wan 2.2 TI2V-5B overwrites the first latent frame with the reference latent and gives those tokens timestep 0, and LTX-Video likewise uses a per-token timestep, near zero for conditioning tokens. CogVideoX-I2V concatenates the image latent too but adds noise to the image condition during training, which makes it robust to real-world input images.</p>'
           },
           {
             say: 'Image embeddings from a vision encoder add a second cross attention path that carries the meaning of the sketch, its identity and style, rather than its pixels.',
@@ -1050,15 +1051,15 @@
               '<p>A residual block keeps several such tensors alive at once, so decoding a whole 720p clip in one pass would need far more than an 80 GB device. Hence chunking in time plus <b>spatial tiling</b> with overlapped, linearly blended tiles for 1080p and above.</p>'
           },
           {
-            say: 'Frontier systems such as Veo three and Sora two also generate sound in the same pass. An audio latent stream is denoised jointly with the video.',
-            card: { tag: 'STATE OF THE ART', title: 'Sound generated with the pixels', body: 'Veo 3 and Sora 2 output synchronized dialogue and effects. Open designs: Ovi and LTX-2 run two streams with cross-modal attention.' },
-            deep: '<p><b>Joint audio-video generation.</b> Veo 3 (joint audio + video latent diffusion; architecture details unpublished) and Sora 2 output synchronized dialogue and effects. Open designs: <i>Ovi</i> (twin DiT backbones with bidirectional cross-modal attention) and <i>LTX-2</i> (asymmetric dual-stream).</p>' +
+            say: 'Frontier systems such as Veo three and Kling now generate synchronized sound together with the pixels. Veo three\'s report describes an audio latent stream that is denoised jointly with the video latent.',
+            card: { tag: 'STATE OF THE ART', title: 'Sound generated with the pixels', body: 'Veo 3, Kling 2.6+ and Seedance 1.5+ output synchronized dialogue and effects. Open designs: Ovi and LTX-2 run two streams with cross-modal attention.' },
+            deep: '<p><b>Joint audio-video generation.</b> Veo 3 (its report describes latent diffusion applied jointly to audio and video latents; other architecture details are unpublished), Kling 2.6+ and Seedance 1.5+ (a dual-branch DiT with a cross-modal joint module) output synchronized dialogue and effects; Sora 2 did too until OpenAI retired it in 2026. Open designs: <i>Ovi</i> (twin DiT backbones with bidirectional cross-modal attention) and <i>LTX-2</i> (asymmetric dual-stream: 14 B video, 5 B audio).</p>' +
               '<p>Audio is its own latent sequence (a 1-D VAE over waveform or mel, tens of latent frames per second), decoded by a separate audio decoder.</p>'
           },
           {
             say: 'Cross attention between the two streams, on a shared clock, keeps the crash of the capsule aligned with the exact frame where it hits the ice.',
-            card: { tag: 'HOW IT WORKS', title: 'A shared clock aligns sound', body: 'Temporal RoPE positions are scaled to seconds, so tokens at the same instant attend to each other. Impact at 2.1 s is frame 50.' },
-            deep: '<ul><li>Sync comes from putting both streams on a <b>common clock</b>: temporal RoPE positions are scaled to seconds so a video token and an audio token at the same instant get matching phases, and the capsule impact at 2.1 s (frame 50) and its audio transient attend to each other strongly.</li>' +
+            card: { tag: 'HOW IT WORKS', title: 'A shared clock aligns sound', body: 'Temporal RoPE positions are rescaled to one shared clock, so tokens at the same instant attend to each other. Impact at 2.1 s is frame 50.' },
+            deep: '<ul><li>Sync comes from putting both streams on a <b>common clock</b>: temporal RoPE positions are rescaled so a video token and an audio token at the same instant get matching phases (Ovi scales the audio frequencies by 31/157 ≈ 0.2, matching about 157 audio tokens to 31 video latent frames over 5 s), and the capsule impact at 2.1 s (frame 50) and its audio transient attend to each other strongly.</li>' +
               '<li>Alternative: post-hoc video-to-audio (MMAudio, HunyuanVideo-Foley) is cheaper, but it cannot let sound influence motion.</li>' +
               '<li>Cost: the audio stream adds only tens of tokens per second next to 111,600 video tokens, so the second stream is nearly free.</li></ul>'
           }
@@ -1125,7 +1126,7 @@
             var Rg = ctx.group({ parent: wb });
             S.Rg = Rg;
             var x0 = 820, x1 = 1520;
-            ctx.text(x0, 598, 'JOINT AUDIO-VIDEO DENOISING · Veo 3 · Sora 2 · Ovi · LTX-2', { size: 12, font: 'mono', color: 'dim', parent: Rg });
+            ctx.text(x0, 598, 'JOINT AUDIO-VIDEO DENOISING · Veo 3 · Kling 2.6+ · Ovi · LTX-2', { size: 12, font: 'mono', color: 'dim', parent: Rg });
             ctx.rect(x0, 616, x1 - x0, 26, { rx: 5, fill: ctx.alpha('lime', 0.18), stroke: 'lime', sw: 1.2, parent: Rg });
             ctx.text(x0 + 10, 629, 'video tokens · 111,600', { size: 12, font: 'mono', color: 'lime', parent: Rg });
             ctx.rect(x0, 700, x1 - x0, 26, { rx: 5, fill: ctx.alpha('orange', 0.18), stroke: 'orange', sw: 1.2, parent: Rg });
@@ -1157,7 +1158,7 @@
             ctx.path(d2, { stroke: 'orange', sw: 1.2, parent: cg });
             ctx.line(tImp, 610, tImp, 816, { color: 'white', sw: 1.2, dash: '2 4', parent: cg });
             ctx.label(tImp, 836, 'capsule impact · 2.1 s · frame 50', { color: 'white', size: 11, parent: cg });
-            ctx.text(x1, 836, 'shared temporal RoPE (seconds)', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: cg });
+            ctx.text(x1, 836, 'shared temporal RoPE clock', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: cg });
             S.xflow = ctx.loop(function (t) { S.xl.forEach(function (l, i) { l.setAttribute('stroke-dashoffset', (-t * 20 * (i % 2 ? 1 : -1)).toFixed(1)); }); });
             return ctx.reveal(cg, { delay: 100 }).then(function () {
               return Promise.all([ctx.packet(S.lF, { color: 'lime', dur: 600 }), ctx.packet(S.lA2, { color: 'orange', dur: 600 })]);
@@ -1170,14 +1171,14 @@
         title: 'The landscape',
         beats: [
           {
-            say: 'Here is the landscape across twenty twenty five and twenty six. Closed frontier models, Veo, Sora, Kling and Seedance, lead on quality, duration and native audio.',
-            card: { tag: 'STATE OF THE ART', title: 'Closed models lead on duration and audio', body: 'Veo 3.1, Sora 2, Kling 2.x and Seedance 1.x ship as APIs. Native synchronized audio arrived across them during 2025.' },
+            say: 'Here is the landscape across twenty twenty five and twenty six. Closed frontier models, Veo, Kling and Seedance, lead on quality, duration and native audio, while OpenAI retired Sora in twenty twenty six.',
+            card: { tag: 'STATE OF THE ART', title: 'Closed models lead on duration and audio', body: 'Veo 3.1, Kling 3.0 and Seedance 2.0 lead as closed systems with native audio. OpenAI retired Sora 2 in 2026: app in April, API in September.' },
             deep: '<table><tr><th>Model</th><th>Org</th><th>Notes</th></tr>' +
-              '<tr><td>Veo 3 / 3.1</td><td>Google DeepMind</td><td>native joint audio, 8 s clips, up to 1080p</td></tr>' +
-              '<tr><td>Sora 2</td><td>OpenAI</td><td>synchronized dialogue + SFX, stronger physics</td></tr>' +
-              '<tr><td>Kling 2.x</td><td>Kuaishou</td><td>high motion quality, 1080p; native audio from 2.6</td></tr>' +
-              '<tr><td>Seedance 1.x</td><td>ByteDance</td><td>1.0: native multi-shot, RLHF, distilled fast inference; 1.5 pro: joint audio-video</td></tr></table>' +
-              '<p>Their architectures are mostly unpublished. What is public (system cards, API limits, occasional papers) matches the open recipe: latent diffusion transformers trained on very large curated video corpora.</p>'
+              '<tr><td>Veo 3 / 3.1</td><td>Google DeepMind</td><td>native joint audio, 8 s clips, 1080p and 4K</td></tr>' +
+              '<tr><td>Sora 2</td><td>OpenAI</td><td>synchronized dialogue + SFX, stronger physics (Sept 2025); app closed April 2026, API removed 24 Sept 2026</td></tr>' +
+              '<tr><td>Kling 2.x / 3.0</td><td>Kuaishou</td><td>high motion quality, 1080p; native audio from 2.6 (Dec 2025); 3.0 (Feb 2026): multi-shot, up to 15 s</td></tr>' +
+              '<tr><td>Seedance 1.x / 2.0</td><td>ByteDance</td><td>1.0: native multi-shot, RLHF, distilled fast inference; 1.5 pro (Dec 2025) and 2.0 (Feb 2026): joint audio-video</td></tr></table>' +
+              '<p>Their architectures are only partly public. What is public (system cards, technical reports, API limits) matches the open recipe: latent diffusion transformers trained on very large curated video corpora. The closed field moves fast; this table is a snapshot as of late September 2026.</p>'
           },
           {
             say: 'Open weight families, Wan, HunyuanVideo and LTX, publish their weights, so teams can fine tune, distill and self host them.',
@@ -1207,10 +1208,10 @@
           var wb = newBench(ctx, S, '2025–26 landscape · closed frontier vs open weights');
           ctx.focus(null);
           var cards = [
-            ['Veo 3 / 3.1', 'Google DeepMind', 0, 'native joint audio', '8 s · up to 1080p'],
-            ['Sora 2', 'OpenAI', 0, 'synced dialogue + SFX', 'physics, cameos'],
-            ['Kling 2.x', 'Kuaishou', 0, 'strong motion · 1080p', '2.6+: native audio'],
-            ['Seedance 1.x', 'ByteDance', 0, 'multi-shot · RLHF', '1.5 pro: joint audio'],
+            ['Veo 3 / 3.1', 'Google DeepMind', 0, 'native joint audio', '8 s · 1080p and 4K'],
+            ['Sora 2', 'OpenAI', 2, 'synced dialogue + SFX', 'app 4/2026 · API 9/2026'],
+            ['Kling 2.x / 3.0', 'Kuaishou', 0, 'strong motion · 1080p', '2.6+: native audio'],
+            ['Seedance 1.x / 2.0', 'ByteDance', 0, 'multi-shot · RLHF', '1.5+: joint audio'],
             ['Wan 2.1 / 2.2', 'Alibaba', 1, '1.3B/14B · Apache-2.0', '2.2: MoE A14B, TI2V-5B'],
             ['HunyuanVideo', 'Tencent', 1, '13B · MLLM text enc.', 'v1.5 ≈ 8.3B'],
             ['LTX-Video / 2', 'Lightricks', 1, '1:192 VAE · fast', 'LTX-2: joint audio']
@@ -1218,11 +1219,11 @@
           S.cards = cards.map(function (c, i) {
             var g = ctx.group({ parent: wb });
             var x = 60 + i * 212, y = 592;
-            var col = c[2] ? 'lime' : 'blue';
+            var col = c[2] === 1 ? 'lime' : (c[2] === 2 ? 'dim' : 'blue');
             ctx.rect(x, y, 200, 150, { rx: 10, fill: 'rgba(8,16,30,0.9)', stroke: ctx.alpha(col, 0.8), sw: 1.3, parent: g });
             ctx.text(x + 14, y + 26, c[0], { size: 15, font: 'display', weight: 700, color: 'white', parent: g });
             ctx.text(x + 14, y + 50, c[1], { size: 11, font: 'mono', color: 'dim', parent: g });
-            ctx.label(x + 14, y + 78, c[2] ? 'OPEN WEIGHTS' : 'CLOSED API', { color: col, size: 11, anchor: 'start', parent: g });
+            ctx.label(x + 14, y + 78, c[2] === 1 ? 'OPEN WEIGHTS' : (c[2] === 2 ? 'RETIRED 2026' : 'CLOSED API'), { color: col, size: 11, anchor: 'start', parent: g });
             ctx.text(x + 14, y + 108, c[3], { size: 11, font: 'mono', color: 'text', parent: g });
             ctx.text(x + 14, y + 130, c[4], { size: 11, font: 'mono', color: 'text', parent: g });
             return g;

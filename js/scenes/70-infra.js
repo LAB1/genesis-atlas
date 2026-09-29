@@ -45,14 +45,18 @@
   Atlas.register({
     id: 'infra',
     refs: [
-      'Kwon et al., <i>Efficient Memory Management for LLM Serving with PagedAttention</i>, SOSP 2023',
+      'Kwon et al., <i>Efficient Memory Management for Large Language Model Serving with PagedAttention</i>, SOSP 2023',
       'Zheng et al., <i>SGLang: Efficient Execution of Structured Language Model Programs</i> (RadixAttention), NeurIPS 2024',
-      'NVIDIA, <i>GB200 NVL72 / Blackwell Architecture Technical Brief</i>, 2024; <i>DGX H100 / HGX H100 System Architecture</i>, 2023',
-      'Jiang et al., <i>MegaScale: Scaling Large Language Model Training to More Than 10,000 GPUs</i>, NSDI 2024; Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i> (training reliability), 2024',
+      'NVIDIA, <i>GB200 NVL72</i> datasheet, 2024',
+      'NVIDIA, <i>NVIDIA Blackwell Architecture Technical Brief</i>, 2024',
+      'NVIDIA, <i>NVIDIA H100 Tensor Core GPU Architecture</i> whitepaper, 2022',
+      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
+      'Jiang et al., <i>MegaScale: Scaling Large Language Model Training to More Than 10,000 GPUs</i>, NSDI 2024',
       'Verma et al., <i>Large-scale cluster management at Google with Borg</i>, EuroSys 2015',
-      'Kubernetes SIG Scheduling, <i>Kueue</i> and <i>Dynamic Resource Allocation (DRA)</i> documentation, 2025',
-      'Wan Team (Alibaba), <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
-      'Jacobs et al., <i>DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</i>, 2023'
+      'Kubernetes SIG Scheduling, <i>Kueue</i> documentation (ClusterQueue, cohorts, Topology-Aware Scheduling), 2025',
+      'Kubernetes, <i>Dynamic Resource Allocation (DRA)</i> documentation, 2025',
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
+      'Jacobs et al., <i>DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</i>, arXiv 2309.14509, 2023'
     ],
     steps: [
       /* ------------------------------------------------------------------ 1 */
@@ -81,12 +85,12 @@
           {
             say: 'The second is six heavy video jobs, one per shot. Each needs a gang of eight GPUs for over a minute, and nobody cares about the first millisecond, only about total throughput.',
             card: { tag: 'NUMBERS', title: 'Six gangs of eight', stat: { v: '≈ 760', u: 'GPU·s per shot', l: 'eight GPUs held all-or-nothing for ~95 s of denoising' } },
-            deep: '<p><b>Video side</b>: one job per 5-second shot. Each denoises a latent of ~75k tokens for 40 steps (Wan-2.1-14B class, 720p, 81 frames) on an exclusive eight-GPU gang. Sequence-parallel attention needs all eight ranks up at once, so a job is admitted <i>all or nothing</i>.</p>' +
+            deep: '<p><b>Video side</b>: one job per 5-second shot. Each denoises a latent of ~75k tokens for 50 steps (Wan-2.1-14B class, 720p, 81 frames) on an exclusive eight-GPU gang. Sequence-parallel attention needs all eight ranks up at once, so a job is admitted <i>all or nothing</i>.</p>' +
               '<p>The SLO is completion in minutes, not milliseconds, and the job is bound by tensor-core FLOPs (attention over ~10<sup>5</sup> tokens), not by HBM. Six such jobs run concurrently:</p>' +
               '<div class="eq">GPU·s<sub>video</sub> ≈ 6 × 8 × 95 s ≈ 4.6×10<sup>3</sup> GPU·s ≈ 76 GPU-min</div>'
           },
           {
-            say: 'Put both on one ledger and the video work costs roughly seventy times more GPU time than all the language calls together. That asymmetry shapes every layer below.',
+            say: 'Put both on one ledger and the video work costs roughly seventy six times more GPU time than all the language calls together. That asymmetry shapes every layer below.',
             card: {
               tag: 'NUMBERS', title: 'Video outweighs language', stat: { v: '≈ 76×', l: 'GPU time of six video shots (≈ 76 GPU-min) versus all ~40 LLM calls (≈ 1 GPU-min)' },
               more: '<p>Where the ~1 GPU-minute comes from: about 4×10⁴ uncached prompt tokens at 10⁴ tok/s per TP4 replica is 4 s × 4 GPUs = 16 GPU·s, and 2×10⁴ output tokens at ~4×10³ tok/s per replica is 5 s × 4 GPUs = 20 GPU·s. Add small-batch inefficiency and the encoders and classifiers, and one GPU-minute is a fair figure.</p>'
@@ -94,10 +98,10 @@
             deep: '<p>The two workload classes have opposite physics:</p>' +
               '<table><tr><th></th><th>LLM calls</th><th>Video jobs</th></tr>' +
               '<tr><td>Count / trailer</td><td>~40 (6 agents)</td><td>6 shots</td></tr>' +
-              '<tr><td>Unit of work</td><td>prefill + decode tokens</td><td>40 steps × ~75k latent tokens</td></tr>' +
+              '<tr><td>Unit of work</td><td>prefill + decode tokens</td><td>50 steps × ~75k latent tokens</td></tr>' +
               '<tr><td>SLO</td><td>TTFT ≲ 1 s, TPOT ≲ 50 ms</td><td>completion in minutes</td></tr>' +
               '<tr><td>Bound by</td><td>HBM bandwidth (decode)</td><td>tensor-core FLOPs</td></tr>' +
-              '<tr><td>Placement</td><td>shared replica, 1 of 128 batch slots</td><td>exclusive 8-GPU gang</td></tr></table>' +
+              '<tr><td>Placement</td><td>shared replica, 1 of ~100 batch slots</td><td>exclusive 8-GPU gang</td></tr></table>' +
               '<div class="eq">GPU·s<sub>video</sub> ≈ 6 × 8 × 95 s ≈ 4.6×10<sup>3</sup> ≫ GPU·s<sub>LLM</sub> ≈ 10<sup>1</sup>–10<sup>2</sup></div>'
           },
           {
@@ -229,16 +233,17 @@
             say: 'LLM calls are small and latency critical, so they pass through an inference router that picks a replica in well under a millisecond, ideally one that already caches the agent\'s system prompt.',
             card: {
               tag: 'NUMBERS', title: 'A budget measured in microseconds', stat: { v: '< 1 ms', l: 'routing decision budget: it sits in the data path of every single request' },
-              more: '<p>Why not ask every replica for its fresh load on each request? Even an in-datacenter round trip of 0.1–0.5 ms per replica would eat the whole budget. Routers therefore read cached metrics refreshed every 10–100 ms, or subscribe to an event stream, and tolerate the staleness.</p>'
+              more: '<p>Why not ask every replica for its fresh load on each request? Even an in-datacenter round trip of 0.1–0.5 ms per replica would eat a large part of the budget. Routers therefore read cached metrics refreshed every 10–100 ms, or subscribe to an event stream, and tolerate the staleness.</p>'
             },
             deep: '<p>The <b>router</b> is an L7 proxy with a request-aware policy: Envoy plus the Kubernetes <i>Gateway API Inference Extension</i> (an endpoint picker), llm-d, the SGLang router, or NVIDIA Dynamo. It scores replicas from engine metrics (queue depth, running batch, KV-cache utilisation) and, for prefix affinity, from which KV blocks each replica holds.</p>' +
-              '<p>Metrics arrive slightly stale (10–100 ms of scrape or event-bus lag), so the policy must tolerate old information. A well-tuned Envoy hop adds well under a millisecond, so the endpoint picker gets only a fraction of that: it must be O(1) in the number of replicas. See <i>Load Balancing</i>.</p>'
+              '<p>Metrics arrive slightly stale (10–100 ms of scrape or event-bus lag), so the policy must tolerate old information. It must also be O(1) in the number of replicas: 1 ms is already 0.3–0.5% of a 0.2–0.3 s prefix-hit TTFT, so routers use two random probes or a hash lookup, never a scan of the fleet. See <i>Load Balancing</i>.</p>'
           },
           {
             say: 'Video jobs are large and patient, so they enter a scheduler queue. Priority, fair share and quotas decide when each shot gets its block of GPUs.',
             card: { tag: 'HOW IT WORKS', title: 'A queue admits whole gangs', body: 'Each shot is a batch job, not an HTTP call. It waits until quota for all eight GPUs, on one NVLink domain, is free.' },
             deep: '<p>A video shot is submitted as a batch object, not an HTTP call. Kueue wraps the labelled Job in a <code>Workload</code> and admits it only when quota for the whole pod set is free:</p>' +
-              '<pre>kind: Workload        # made by Kueue\nqueueName: video-batch\npriorityClassName: interactive-video\npodSets:\n- count: 1\n  resources: {nvidia.com/gpu: 8}\n  topologyRequest:    # node = NVLink\n    required: kubernetes.io/hostname</pre>'
+              '<pre>kind: Workload   # made by Kueue\nspec:\n  queueName: video-batch\n  priorityClassName: interactive-video\n  podSets:\n  - count: 1     # one pod, 8 GPUs\n    topologyRequest:\n      required: kubernetes.io/hostname</pre>' +
+              '<p><span class="muted">Abridged: the pod template carries <code>nvidia.com/gpu: 8</code>. Requiring the hostname level keeps the whole gang on one node, i.e. one NVLink domain.</span></p>'
           },
           {
             say: 'Push routing for one, a job queue for the other. The router never holds work, while the scheduler holds it for minutes and releases it only when a whole gang fits.',
@@ -253,7 +258,7 @@
           ctx.fade(S.drops, 0, 400);
           S.glob = ctx.group();
           S.router = ctx.node({ x: 420, y: 288, w: 300, h: 58, title: 'Inference Router', sub: 'L7 · KV/prefix-aware · SLO', icon: 'net', color: 'blue', parent: S.glob });
-          S.sched = ctx.node({ x: 858, y: 288, w: 330, h: 58, title: 'Global Scheduler', sub: 'priority · fair share · gangs', icon: 'queue', color: 'red', parent: S.glob });
+          S.sched = ctx.node({ x: 858, y: 288, w: 300, h: 58, title: 'Global Scheduler', sub: 'priority · fair share · gangs', icon: 'queue', color: 'red', parent: S.glob });
           ctx.hotspot(S.router, 'load-balancing');
           ctx.hotspot(S.sched, 'scheduler');
           /* beat 0: the two doors */
@@ -261,7 +266,7 @@
             return ctx.beat(1);
           }).then(function () {
             /* beat 1: LLM calls take the router */
-            S.lk1 = ctx.link(S.llmGrid, S.router, { color: 'amber', from: 'b', to: 't', parent: S.glob, label: 'push · per request', labelDx: 96, labelDy: 8 });
+            S.lk1 = ctx.link(S.llmGrid, S.router, { color: 'amber', from: 'b', to: 't', parent: S.glob, label: 'push · per request', labelDx: -125, labelDy: 8 });
             return Promise.all([ctx.reveal(S.lk1, { from: 'draw', dur: 700 }), ctx.reveal(S.lk1.labelEl, { delay: 500 })]).then(function () {
               return Promise.all([
                 ctx.packet(S.lk1, { color: 'amber', dur: 700, label: 'chat()' }),
@@ -318,14 +323,15 @@
               '<tr><td>L40S</td><td>48 GB GDDR6, 0.86 TB/s</td><td>encoders, VAE decode, safety classifiers</td></tr>' +
               '<tr><td>H100 / H200</td><td>80 GB HBM3 (3.35 TB/s) / 141 GB HBM3e (4.8 TB/s)</td><td>LLM prefill and decode</td></tr>' +
               '<tr><td>B200</td><td>180–192 GB HBM3e, 8 TB/s</td><td>DiT FLOPs, FP4 inference</td></tr>' +
-              '<tr><td>GB200 NVL72</td><td>~13.5 TB HBM3e per rack</td><td>sequence parallelism beyond 8 GPUs, big MoE</td></tr></table>'
+              '<tr><td>GB200 NVL72</td><td>~13.4 TB HBM3e per rack</td><td>sequence parallelism beyond 8 GPUs, big MoE</td></tr></table>'
           },
           {
             say: 'The choice weighs free capacity, network latency to the user, data residency, price, and whether the model weights are already warm there.',
             card: { tag: 'HOW IT WORKS', title: 'Hard constraints, then soft scores', body: 'Residency, quota and model availability filter regions first. Only then do capacity, latency, price and warm weights rank the survivors.' },
-            deep: '<p>Region choice is constrained optimisation:</p>' +
-              '<div class="eq">r* = argmax<sub>r ∈ feasible</sub> w<sub>1</sub>·free<sub>GPU</sub>(r) − w<sub>2</sub>·RTT(r) − w<sub>3</sub>·$/GPU·h(r) + w<sub>4</sub>·𝟙[weights warm]</div>' +
-              '<p>Hard constraints first (residency, model availability, quota), soft scores second. The weights w<sub>i</sub> are per workload class, which is the next beat.</p>'
+            deep: '<p>Region choice is constrained optimisation over normalised terms, each scaled to 0–1:</p>' +
+              '<div class="eq">r* = argmax<sub>r ∈ feasible</sub> [ w<sub>1</sub>·free(r) − w<sub>2</sub>·RTT(r) − w<sub>3</sub>·price(r) + w<sub>4</sub>·warm(r) ]</div>' +
+              '<p>Hard constraints (residency, model availability, quota) define the feasible set; soft scores rank what is left. The weights w<sub>i</sub> are per workload class, which is the next beat.</p>' +
+              '<details><summary>Go deeper</summary><p>Why filter first and score second? A hard constraint such as data residency can never be traded against price, so it must not appear as a weight. Scores need scaling too: RTT over 150 ms, price relative to the dearest region, free capacity as a fraction of the pool. Multi-cluster schedulers such as Karmada use the same filter-then-score shape that kube-scheduler applies per node.</p></details>'
           },
           {
             say: 'LLM calls stay close to the user. Video jobs can travel to wherever GPUs sit idle, because a few extra milliseconds mean nothing to a ninety second render.',
@@ -336,6 +342,16 @@
             deep: '<p>For interactive LLM traffic w<sub>2</sub> dominates (cross-continent RTT ≈ 80–150 ms is a large slice of a 1 s TTFT budget). For video jobs RTT is noise next to ~95 s of compute, so capacity and price dominate: <b>follow the idle GPUs</b>. Regions in their local night have spare capacity, so batch video follows the sun.</p>' +
               '<p>The weights in the panel are illustrative. Warm weights matter for both: a cold region needs minutes to load hundreds of gigabytes (step six).</p>' +
               '<div class="note">Heterogeneous pools are normal: L40S-class cards for VAE decode, encoders and safety classifiers; H100/H200 for LLM decode; B200 / GB200 for DiT FLOPs.</div>'
+          },
+          {
+            say: 'Try it yourself. Click LLM or video under the score panel. The same four clusters and the same four terms, with different weights, send interactive language calls near the user and batch video to the region with idle, cheap GPUs.',
+            card: { tag: 'TRY IT', title: 'Flip the workload class', body: 'Click <b>LLM</b> or <b>video</b>. The scores are recomputed from the same four terms, and the winning region moves from us-east to eu-west.' },
+            deep: '<p>The scores behind the bars (illustrative numbers; RTT is scaled by 150 ms):</p>' +
+              '<table><tr><th>region</th><th>free</th><th>RTT</th><th>price</th><th>LLM</th><th>video</th></tr>' +
+              '<tr><td>us-east</td><td>0.14</td><td>20 ms</td><td>1.0</td><td><b>+0.05</b></td><td>−0.23</td></tr>' +
+              '<tr><td>us-central</td><td>0.36</td><td>45 ms</td><td>0.9</td><td>0.00</td><td>+0.08</td></tr>' +
+              '<tr><td>eu-west</td><td>0.66</td><td>110 ms</td><td>0.7</td><td>−0.34</td><td><b>+0.29</b></td></tr></table>' +
+              '<p>The LLM weights are resident in us-east and us-central, the video model in us-central and eu-west. Video in eu-west: 0.5·0.66 − 0.02·0.73 − 0.3·0.7 + 0.18 = 0.29. The winner flips because the weights changed, not the regions.</p>'
           }
         ],
         run: function (ctx) {
@@ -422,6 +438,59 @@
                 ctx.wait(400).then(function () { return ctx.packet(S.rl[3], { color: 'lime', dur: 900, r: 6 }); })
               ]);
             });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4 (TRY IT): the same four terms scored with either class's weights */
+            var REG = ['us-east', 'us-central', 'eu-west'], RTT = [20, 45, 110], PRICE = [1.0, 0.9, 0.7];
+            var WARM = { llm: [1, 1, 0], vid: [0, 1, 1] };
+            var X0 = 1408, K = 300;
+            var g = ctx.group({ parent: S.scoreG });
+            ctx.text(1200, 728, 'TRY IT · pick a workload class', { size: 11, color: 'dim', font: 'mono', parent: g });
+            ctx.line(X0, 780, X0, 866, { color: ctx.alpha('white', 0.3), sw: 1, parent: g });
+            var rows = REG.map(function (nm, i) {
+              var y = 797 + i * 28;
+              ctx.text(1200, y, nm, { size: 11, color: 'text', font: 'mono', parent: g });
+              var bar = ctx.rect(X0, y - 8, 0, 16, { rx: 3, fill: ctx.alpha('faint', 0.45), stroke: 'faint', sw: 1, parent: g });
+              var val = ctx.text(1552, y, '', { size: 12, color: 'text', font: 'mono', weight: 600, anchor: 'end', parent: g });
+              return { bar: bar, val: val };
+            });
+            function score(cls, r) {
+              var wi = cls === 'llm' ? 1 : 2, f = S.facRows;
+              return f[0][wi] * (1 - UTIL[r]) - f[1][wi] * RTT[r] / 150 - f[2][wi] * PRICE[r] + f[3][wi] * WARM[cls][r];
+            }
+            S.pickCls = function (cls, animate) {
+              var sc = [0, 1, 2].map(function (r) { return score(cls, r); });
+              var best = sc.indexOf(Math.max.apply(null, sc)), col = cls === 'llm' ? 'amber' : 'lime', ps = [];
+              rows.forEach(function (rw, r) {
+                var w = Math.abs(sc[r]) * K, x = sc[r] >= 0 ? X0 : X0 - w, win = r === best;
+                rw.bar.setAttribute('fill', win ? ctx.alpha(col, 0.7) : ctx.alpha('faint', 0.45));
+                rw.bar.setAttribute('stroke', ctx.color(win ? col : 'faint'));
+                rw.val.setAttribute('fill', ctx.color(win ? col : 'text'));
+                rw.val.textContent = (sc[r] > 0.004 ? '+' : (sc[r] < -0.004 ? '−' : '')) + Math.abs(sc[r]).toFixed(2);
+                if (animate) ps.push(ctx.animate(rw.bar, { x: [parseFloat(rw.bar.getAttribute('x')), x], width: [parseFloat(rw.bar.getAttribute('width')), w] }, 500, 'out'));
+                else { rw.bar.setAttribute('x', x); rw.bar.setAttribute('width', w); }
+              });
+              S.hlLLM.setAttribute('opacity', cls === 'llm' ? 1 : 0.2);
+              S.hlVid.setAttribute('opacity', cls === 'llm' ? 0.2 : 1);
+              S.clsChips.forEach(function (c) { c.el.setAttribute('opacity', c.k === cls ? 1 : 0.45); });
+              S.cls = cls; S.best = best;
+              S.clsBusy = true;
+              return Promise.all(ps).then(function () { S.clsBusy = false; });
+            };
+            S.clsChips = [['llm', 'LLM', 'amber', 1262], ['vid', 'video', 'lime', 1352]].map(function (c) {
+              var l = ctx.label(c[3], 756, c[1], { color: c[2], size: 12, w: 76, parent: g });
+              l.style.cursor = 'pointer';
+              l.addEventListener('click', function () {
+                if (ctx.dead || S.clsBusy || S.cls === c[0]) return;
+                S.pickCls(c[0], true);
+                ctx.pulse(S.cl[S.best], { color: c[2], dur: 600 });
+              });
+              return { el: l, k: c[0] };
+            });
+            S.pickCls('llm', false);
+            ctx.reveal(g, { dur: 400 });
+            return ctx.wait(1000).then(function () { return S.pickCls('vid', true); }).then(function () {
+              return ctx.pulse(S.cl[S.best], { color: 'lime', dur: 700 });
+            });
           });
         }
       },
@@ -441,8 +510,8 @@
           },
           {
             say: 'They keep a continuous batch of many requests on the GPU, admitting new ones at every decode step. Attention keys and values live in a paged KV cache, and tokens stream back as they are produced.',
-            card: { tag: 'NUMBERS', title: 'The KV cache is the budget', stat: { v: '≈ 320 KB', u: 'per token', l: 'of KV cache for a 70B GQA model in BF16, so one 30k-token prompt pins about 10 GB' } },
-            deep: '<p><b>Continuous (iteration-level) batching</b> admits a new request whenever a slot and KV blocks are free, so a replica runs ~100 concurrent streams and never waits for the slowest member of a batch. <b>PagedAttention</b> stores KV in fixed 16-token blocks addressed through a per-request block table, like virtual memory: fragmentation stays below 4%, and blocks can be shared or copied on write.</p>' +
+            card: { tag: 'NUMBERS', title: 'The KV cache is the budget', stat: { v: '≈ 320', u: 'KB per token', l: 'of KV cache for a 70B GQA model in BF16, so one 30k-token prompt pins about 10 GB' } },
+            deep: '<p><b>Continuous (iteration-level) batching</b> admits a new request whenever a slot and KV blocks are free, so a replica runs ~100 concurrent streams and never waits for the slowest member of a batch. <b>PagedAttention</b> stores KV in fixed 16-token blocks addressed through a per-request block table, like virtual memory: in the paper\'s measurements under 4% of KV memory is wasted (against 60–80% in earlier systems), and blocks can be shared or copied on write.</p>' +
               '<div class="eq">KV/token = 2 · n<sub>layers</sub> · n<sub>kv</sub> · d<sub>head</sub> · bytes = 2·80·8·128·2 B ≈ 320 KB   (70B-class, GQA, BF16)</div>' +
               '<p>A radix-tree <b>prefix cache</b> keeps the KV blocks of shared system prompts alive, which is how ~80% of the trailer\'s prompt tokens cost nothing.</p>'
           },
@@ -453,23 +522,27 @@
               '<p>There is no cross-user batching: a single 75k-token sequence already saturates the tensor cores, so batching adds latency, not throughput. The unit of scheduling is therefore a <i>gang</i>, and the unit of failure is the whole job.</p>'
           },
           {
-            say: 'The worker loops over forty denoising steps on a latent of about seventy five thousand tokens, then decodes it to pixels with the VAE.',
+            say: 'The worker loops over fifty denoising steps on a latent of about seventy five thousand tokens, then decodes it to pixels with the VAE.',
             card: { tag: 'NUMBERS', title: 'A latent of 75,600 tokens', stat: { v: '75.6k', u: 'tokens', l: 'latent 16×21×90×160, patchified 1×2×2, for an 81-frame 720p shot' }, more: '<p>Wan\'s VAE compresses 4× in time and 8× in each spatial dimension: 81 frames become 1 + 80/4 = 21 latent frames, 720 becomes 90 and 1280 becomes 160, with 16 channels. The 1×2×2 patchify halves each spatial side, leaving 45 × 80 tokens per frame.</p>' },
             deep: '<p>VAE latent for an 81-frame 720p clip, then patchified for the transformer:</p>' +
               '<div class="eq">z ∈ ℝ<sup>16×21×90×160</sup> &nbsp;→ patch 1×2×2 →&nbsp; N = 21 · 45 · 80 = 75,600 tokens (d = 5120)</div>' +
-              '<pre>z = randn(16, 21, 90, 160)\nfor t in schedule[40]:      # 40 steps\n    e_c = dit(z, t, text)\n    e_u = dit(z, t, null)   # CFG branch\n    z = step(z, e_u + s*(e_c - e_u), t)\nframes = vae.decode(z)      # 81x720x1280x3</pre>'
+              '<pre>z = randn(16, 21, 90, 160)\nfor t in schedule(50):\n    c = dit(z, t, text)\n    u = dit(z, t, null)     # CFG\n    g = u + s * (c - u)\n    z = solver_step(z, g, t)\nframes = vae.decode(z)\n# 81 x 720 x 1280 x 3 pixels</pre>' +
+              '<p>Wan is a flow-matching (rectified-flow) model, so <code>solver_step</code> integrates a learned velocity field with a UniPC or DPM-Solver++ update; a guidance scale s of about 5 is typical.</p>'
           },
           {
             say: 'Each denoising step costs several petaflops of attention and matrix multiplies, doubled by classifier free guidance. That is why one shot needs a full gang and about a minute and a half of wall clock time.',
-            card: { tag: 'NUMBERS', title: 'The compute bill of one shot', stat: { v: '5.4×10¹⁷', u: 'FLOP', l: '40 steps × 2 CFG branches × 6.8 PFLOP, about 75 s on 8×B200 at 40% MFU' } },
+            card: { tag: 'NUMBERS', title: 'The compute bill of one shot', stat: { v: '6.8×10¹⁷', u: 'FLOP', l: '50 steps × 2 CFG branches × 6.8 PFLOP, about 95 s on 8×B200 at roughly 40% MFU' } },
             deep: '<p>FLOPs per transformer forward (one denoising step, one CFG branch), with P = 14×10<sup>9</sup> parameters, L = 40 layers, d = 5120, N = 75.6k:</p>' +
               '<div class="eq">F ≈ 2·N·P + 4·L·N²·d ≈ 2.1 + 4.7 ≈ 6.8 PFLOP &nbsp;(×2 with CFG)</div>' +
-              '<p>Attention already outweighs the matrix multiplies (the N² term). 40 steps × 2 branches × 6.8 PF ≈ 5.4×10<sup>17</sup> FLOP. At ~40% MFU on 8×B200 (~2.25 PF dense BF16 each) that is ≈ 75 s; on 8×H100 (~1 PF each) ≈ 170 s. Hence gangs, sequence parallelism, step distillation and caching (see <i>Video Model Serving</i>).</p>'
+              '<p>Attention already outweighs the matrix multiplies (the N² term). 50 steps × 2 branches × 6.8 PF ≈ 6.8×10<sup>17</sup> FLOP. Eight B200s deliver ~18 PFLOP/s dense BF16 (2.25 each), so ~95 s is a model-FLOPs utilisation of about 40%: the all-to-alls, norms, RoPE and softmax take the rest. The same shot on 8×H100 (~1 PF each) would need ≈ 215 s at that MFU. Hence gangs, sequence parallelism, step distillation and caching (see <i>Video Model Serving</i>). This is the 75,600-token, 16 fps basis; the atlas’s longer 111,600-token, 24 fps clip on H100s reaches the same ~95 s only with a lighter sampler (about 4× less work, see <i>Video Generation Models</i>).</p>' +
+              '<details><summary>Go deeper</summary><p>MFU = (model FLOPs per second) / (peak FLOPs per second). Here: 6.8×10<sup>17</sup> / 95 s = 7.2 PFLOP/s achieved, against 8 × 2.25 = 18 PFLOP/s peak, so MFU = 0.40. Fused attention kernels span roughly 35% (FlashAttention-2 on H100) to 75% (FlashAttention-3, best case) of peak, and large matrix multiplies usually do better than half; what pulls the whole step down to 40% is communication that is not hidden, small-kernel overhead and the CFG batch bookkeeping. The 40% is an assumption that reproduces the running example, not a measurement.</p></details>'
           }
         ],
         run: function (ctx) {
           var S = ctx.state;
           ctx.remove(S.ghost[3], 400);
+          ctx.fade([S.ledger, S.cmp, S.scoreG], 0.3, 500);   /* the earlier side panels recede while the servers take over */
+          S.scoreG.style.pointerEvents = 'none';
           S.serv = ctx.group();
           S.engG = [];
           /* LLM engines (titles first; batch slots and KV meter come in the next beat) */
@@ -549,7 +622,7 @@
               var pg = ctx.group({ parent: g });
               ctx.rect(x0 + 10, 534, 150, 8, { rx: 3, fill: ctx.alpha('white', 0.07), parent: pg });
               S.prog.push(ctx.rect(x0 + 10, 534, 60, 8, { rx: 3, fill: ctx.alpha('lime', 0.85), parent: pg }));
-              S.stepTxt.push(ctx.text(x0 + 168, 538, 'step 17/40', { size: 11, color: 'text', font: 'mono', parent: pg }));
+              S.stepTxt.push(ctx.text(x0 + 168, 538, 'step 21/50', { size: 11, color: 'text', font: 'mono', parent: pg }));
               S.lat.push(ctx.matrix(x0 + 10, 552, 3, 14, { cell: 7, gap: 2, cmap: 'lime', values: function () { return 0.3; }, parent: pg }));
               ctx.text(x0 + 144, 558, '75.6k tokens', { size: 11, color: 'dim', font: 'mono', parent: pg });
               ctx.text(x0 + 144, 574, '21×45×80', { size: 11, color: 'dim', font: 'mono', parent: pg });
@@ -558,12 +631,12 @@
             var lastStep = [-1, -1];
             S.ditLoop = ctx.loop(function (t) {
               [0, 1].forEach(function (i) {
-                var st = Math.floor((t * 2.2 + i * 17) % 40) + 1;
+                var st = Math.floor((t * 2.75 + i * 21) % 50) + 1;
                 if (st === lastStep[i]) return;
                 lastStep[i] = st;
-                var k = st / 40;
+                var k = st / 50;
                 S.prog[i].setAttribute('width', (150 * k).toFixed(1));
-                S.stepTxt[i].textContent = 'step ' + st + '/40';
+                S.stepTxt[i].textContent = 'step ' + st + '/50';
                 S.lat[i].set(function (r, c) {
                   var clean = 0.5 + 0.45 * Math.sin(c * 0.55 + r * 0.9 + i);
                   return (1 - k) * S.noise[r * 14 + c] + k * clean;
@@ -575,7 +648,7 @@
             /* beat 4: the FLOP bill */
             S.flopChip = ctx.label(912, 626, 'F ≈ 6.8 PFLOP per step  ×  2 CFG', { color: 'lime', size: 11 });
             ctx.reveal(S.flopChip, { from: 'down' });
-            ctx.hud('≈ 5.4e17 FLOP per shot · ~75 s on 8×B200');
+            ctx.hud('≈ 6.8e17 FLOP per shot · ~95 s on 8×B200');
             return Promise.all([ctx.pulse(S.dit[0], { color: 'lime', dur: 700 }), ctx.pulse(S.dit[1], { color: 'lime', dur: 700 })]).then(function () {
               return ctx.wait(500);
             });
@@ -587,7 +660,7 @@
         title: 'GPUs & fabrics',
         beats: [
           {
-            say: 'Zoom into the metal. An HGX H100 server has eight GPUs with eighty gigabytes of HBM each, fully connected through NVSwitch at nine hundred gigabytes per second per GPU.',
+            say: 'Zoom into the metal. An HGX H100 server has eight GPUs with eighty gigabytes of HBM each, fully connected through NVSwitch at nine hundred gigabytes per second per GPU, counting both directions.',
             card: { tag: 'NUMBERS', title: 'Eight GPUs, one crossbar', stat: { v: '900 GB/s', l: 'NVLink 4 bandwidth per H100, every GPU reaching every other through NVSwitch' } },
             deep: '<p>An <b>HGX H100</b> baseboard carries eight SXM5 GPUs (132 SMs and 80 GB of HBM3 at 3.35 TB/s each) and four NVSwitch chips forming an all-to-all crossbar. Any GPU reaches any other at full NVLink 4 rate: 18 links × 50 GB/s = 900 GB/s bidirectional per GPU.</p>' +
               '<table><tr><th>Link</th><th>Bandwidth (per GPU)</th><th>Scope</th></tr>' +
@@ -597,17 +670,17 @@
           {
             say: 'A GB200 NVL72 rack stretches that NVLink domain to seventy two GPUs, with thirty six Grace CPUs and nine switch trays, all liquid cooled.',
             card: { tag: 'NUMBERS', title: 'A rack that acts like one GPU', stat: { v: '130 TB/s', l: 'aggregate NVLink bandwidth inside one NVL72 rack: 72 GPUs × 1.8 TB/s' } },
-            deep: '<p><b>GB200 NVL72</b>: 18 compute trays (each two Grace CPUs and four Blackwell GPUs) plus 9 NVSwitch trays, joined by a copper cable spine into one NVLink 5 domain. 72 GPUs, 36 Grace CPUs, ~13.5 TB of HBM3e, ~120 kW, liquid cooled.</p>' +
+            deep: '<p><b>GB200 NVL72</b>: 18 compute trays (each two Grace CPUs and four Blackwell GPUs) plus 9 NVSwitch trays, joined by a copper cable spine into one NVLink 5 domain. 72 GPUs, 36 Grace CPUs, ~13.4 TB of HBM3e, ~120 kW of cooling capacity, liquid cooled.</p>' +
               '<table><tr><th>Link</th><th>Bandwidth (per GPU)</th><th>Scope</th></tr>' +
               '<tr><td>NVLink 5</td><td>1.8 TB/s (bidir.)</td><td>72 GPUs (NVL72)</td></tr></table>' +
               '<p>It matters because sequence-parallel groups of 16–64 GPUs and expert-parallel all-to-alls can now stay on NVLink instead of dropping to the network.</p>'
           },
           {
-            say: 'Our video shots run on HGX B200 servers: eight Blackwell GPUs with sequence parallelism, exchanging activations over fifth generation NVLink at one point eight terabytes per second.',
+            say: 'Our video shots run on HGX B200 servers: eight Blackwell GPUs with sequence parallelism, exchanging activations over fifth generation NVLink at one point eight terabytes per second per GPU, counting both directions.',
             card: { tag: 'KEY IDEA', title: 'A shot is one NVLink domain', body: 'Sequence parallel ranks trade activations at every layer, so the gang must sit inside a single NVLink domain, ideally one server.' },
             deep: '<p>A video gang doing Ulysses all-to-all moves ≈ 0.34 GB per GPU per layer (N/p · d · 2 B · 4 tensors · 7/8, with N = 75.6k, d = 5120, p = 8). On NVLink 5 at 900 GB/s per direction:</p>' +
-              '<div class="eq">0.34 GB / 900 GB/s ≈ 0.38 ms per layer ≈ 1.2 s per shot (40 layers × 80 forwards)</div>' +
-              '<p>That is about 1% of the ~95 s compute. The video gang is the workload that most needs the fast fabric; LLM decode with TP4 also lives on it, but with far smaller messages.</p>'
+              '<div class="eq">0.34 GB / 900 GB/s ≈ 0.38 ms per layer ≈ 1.5 s per shot (40 layers × 100 forwards)</div>' +
+              '<p>That is under 2% of the ~95 s compute. The video gang is the workload that most needs the fast fabric; LLM decode with TP4 also lives on it, but with far smaller messages.</p>'
           },
           {
             say: 'Between servers, traffic crosses InfiniBand or RoCE Ethernet at four hundred to eight hundred gigabits per second per GPU, and GPUDirect RDMA moves tensors from the network card straight into HBM.',
@@ -620,9 +693,10 @@
           {
             say: 'That is still roughly nine times slower than NVLink in each direction, which is why placement matters. Watch the traffic: inside a server the packets race, across the fabric they crawl.',
             card: { tag: 'NUMBERS', title: 'Why placement matters', stat: { v: '≈ 9×', l: 'NVLink over InfiniBand, per direction: 450 vs 50 GB/s on H100, 900 vs 100 GB/s on B200 with XDR' } },
-            deep: '<p>Ring all-reduce time for S bytes over p GPUs at link bandwidth B:</p>' +
-              '<div class="eq">T ≈ 2·(p−1)/p · S / B</div>' +
-              '<p>If the same Ulysses exchange had to cross 50 GB/s InfiniBand, it would cost ≈ 6.8 ms per layer, about 22 s of pure communication per shot: a quarter of the compute time. Hence: keep a shot inside one NVLink domain, and let only the rare, small collectives (weights, checkpoints, cross-node data parallelism) cross the fabric.</p>'
+            deep: '<p>Bandwidth-bound collective time for a message of S bytes per GPU on p GPUs at per-GPU link bandwidth B:</p>' +
+              '<div class="eq">T<sub>all-reduce</sub> ≈ 2·(p−1)/p · S / B<br>T<sub>all-to-all</sub> ≈ (p−1)/p · S / B</div>' +
+              '<p>Ulysses is an all-to-all, and the 339 MB per layer computed earlier already contains the (p−1)/p factor. Forced across 50 GB/s InfiniBand it would cost 339 MB / 50 GB/s ≈ 6.8 ms per layer, about 27 s of pure communication per shot (6.8 ms × 40 layers × 100 forwards): more than a quarter of the compute time. Hence: keep a shot inside one NVLink domain, and let only the rare, small collectives (weights, checkpoints, cross-node data parallelism) cross the fabric.</p>' +
+              '<details><summary>Go deeper</summary><p>These are lower bounds. NCCL reports <i>bus bandwidth</i> = algorithm bandwidth × 2(p−1)/p for all-reduce and × (p−1)/p for all-to-all, so a healthy NVSwitch domain typically shows most, but not all, of the raw link rate, and a cross-node all-to-all is further limited by the slowest rail and by oversubscription in the spine. Latency terms (α per hop) matter for small messages, which is why decode-time TP all-reduces behave very differently from these 339 MB transfers.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -635,7 +709,7 @@
           /* HGX H100 */
           S.h100 = ctx.node({ x: 410, y: 713, w: 370, h: 182, color: 'amber', parent: S.hw });
           ctx.text(239, 640, 'HGX H100 · LLM pool', { size: 13, weight: 600, color: 'white', font: 'display', parent: S.h100 });
-          ctx.text(581, 640, '8 × 80 GB HBM3', { size: 11, color: 'dim', font: 'mono', anchor: 'end', parent: S.h100 });
+          ctx.text(552, 640, '8 × 80 GB HBM3', { size: 11, color: 'dim', font: 'mono', anchor: 'end', parent: S.h100 });
           S.h100chips = [];
           for (var i = 0; i < 8; i++) {
             var cx = 243 + (i % 4) * 85, cy = i < 4 ? 656 : 740;
@@ -643,7 +717,7 @@
             ctx.line(cx + 37, i < 4 ? 698 : 740, cx + 37, i < 4 ? 708 : 730, { color: ctx.alpha('amber', 0.6), sw: 1.2, parent: S.h100 });
           }
           ctx.rect(243, 708, 329, 22, { rx: 4, fill: ctx.alpha('red', 0.12), stroke: ctx.alpha('red', 0.7), sw: 1, parent: S.h100 });
-          S.nvsTxt = ctx.text(407, 719.5, 'NVSwitch · NVLink4 900 GB/s per GPU', { size: 11, color: 'red', anchor: 'middle', font: 'mono', parent: S.h100 });
+          S.nvsTxt = ctx.text(407, 719.5, 'NVSwitch · NVLink4 900 GB/s per GPU', { size: 11, color: 'text', anchor: 'middle', font: 'mono', parent: S.h100 });
           ctx.hotspot(S.h100, 'gpu', { hint: 'INSIDE THE GPU ⤢' });
           ctx.focus([S.bandsG, S.hw], 0);
           /* beat 0: the HGX H100 server, camera in on the metal */
@@ -657,14 +731,14 @@
               var isSw = tr >= 10 && tr < 19;
               ctx.rect(629, 654 + tr * 5.2, 120, 4, { rx: 1, fill: isSw ? ctx.alpha('cyan', 0.55) : ctx.alpha('red', 0.5), parent: S.rack });
             }
-            ctx.para(760, 662, ['72 Blackwell GPUs', '36 Grace CPUs', '~13.5 TB HBM3e', 'NVLink5 1.8 TB/s', '130 TB/s domain', '~120 kW, liquid'], { size: 11, color: 'text', font: 'mono', lh: 18, parent: S.rack });
+            ctx.para(760, 662, ['72 Blackwell GPUs', '36 Grace CPUs', '~13.4 TB HBM3e', 'NVLink5 1.8 TB/s', '130 TB/s domain', '~120 kW, liquid'], { size: 11, color: 'text', font: 'mono', lh: 18, parent: S.rack });
             ctx.text(760, 791, 'cyan = NVSwitch', { size: 11, color: 'cyan', font: 'mono', parent: S.rack });
             return ctx.reveal(S.rack, { from: 'up' }).then(function () { return ctx.pulse(S.rack, { color: 'red', dur: 700 }); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: the HGX B200 video gang */
             S.b200 = ctx.node({ x: 1035, y: 713, w: 260, h: 182, color: 'lime', parent: S.hw });
             ctx.text(919, 640, 'HGX B200 · shot 3', { size: 13, weight: 600, color: 'white', font: 'display', parent: S.b200 });
-            ctx.text(1151, 640, 'SP = 8', { size: 11, color: 'lime', font: 'mono', anchor: 'end', parent: S.b200 });
+            ctx.text(1122, 640, 'SP = 8', { size: 11, color: 'lime', font: 'mono', anchor: 'end', parent: S.b200 });
             S.b200chips = [];
             for (var j = 0; j < 8; j++) {
               var bx = 919 + (j % 4) * 60, by = j < 4 ? 656 : 740;
@@ -672,7 +746,7 @@
               ctx.line(bx + 26, j < 4 ? 698 : 740, bx + 26, j < 4 ? 708 : 730, { color: ctx.alpha('lime', 0.6), sw: 1.2, parent: S.b200 });
             }
             ctx.rect(919, 708, 232, 22, { rx: 4, fill: ctx.alpha('red', 0.12), stroke: ctx.alpha('red', 0.7), sw: 1, parent: S.b200 });
-            ctx.text(1035, 719.5, 'NVLink5 · 1.8 TB/s per GPU', { size: 11, color: 'red', anchor: 'middle', font: 'mono', parent: S.b200 });
+            ctx.text(1035, 719.5, 'NVLink5 · 1.8 TB/s per GPU', { size: 11, color: 'text', anchor: 'middle', font: 'mono', parent: S.b200 });
             ctx.hotspot(S.b200, 'parallelism', { hint: 'PARALLELISM ⤢' });
             return ctx.reveal(S.b200, { from: 'up' }).then(function () { return ctx.pulse(S.b200, { color: 'lime', dur: 700 }); });
           }).then(function () { return ctx.beat(3); }).then(function () {
@@ -710,7 +784,7 @@
             say: 'Before a GPU can serve, it needs weights, and weights are huge. A frontier mixture of experts model in FP8 is around seven hundred gigabytes. Our video model plus its text encoder is about forty.',
             card: { tag: 'NUMBERS', title: 'Weights are the payload', stat: { v: '≈ 700 GB', l: 'a DeepSeek-V3-class 671B mixture of experts in FP8; our video model with its encoders is about 40 GB' } },
             deep: '<p>Sizes: DeepSeek-V3-class 671B MoE in FP8 ≈ 700 GB; 70B dense FP8 ≈ 70 GB; Wan-14B DiT BF16 ≈ 28 GB + umT5-XXL encoder ≈ 11 GB + VAE ≈ 0.5 GB.</p>' +
-              '<p>At 1 GB/s (a single object-store stream) 700 GB takes ≈ 12 minutes per node. Multiply by a rollout across hundreds of nodes and start-up, not compute, becomes the bottleneck, which is why the control plane treats weight movement as a first-class problem.</p>'
+              '<p>At 1 GB/s (one well-tuned node download) 700 GB takes ≈ 12 minutes per node. Multiply by a rollout across hundreds of nodes and start-up, not compute, becomes the bottleneck, which is why the control plane treats weight movement as a first-class problem.</p>'
           },
           {
             say: 'The model registry stores signed, versioned checkpoints. A weight distribution service moves them to the nodes that need them, by digest, never by name.',
@@ -724,20 +798,21 @@
             card: { tag: 'NUMBERS', title: 'The origin is the bottleneck', stat: { v: '224 s', l: 'time to ready for 16 nodes pulling 700 GB from one origin at 50 GB/s aggregate' } },
             deep: '<p>Time to make N fresh nodes serve-ready with an S-byte checkpoint from a single origin:</p>' +
               '<div class="eq">T<sub>origin</sub> ≈ N·S / B<sub>origin</sub> = 16 · 700 GB / 50 GB/s = 224 s</div>' +
-              '<p>Origin bandwidth is shared, so the wait grows linearly with the number of nodes, exactly when you scale out under load.</p>'
+              '<p>Origin bandwidth is shared, so the wait grows linearly with the number of nodes, exactly when you scale out under load.</p>' +
+              '<details><summary>Go deeper</summary><p>Where would a 50 GB/s origin come from? One object-store stream delivers roughly 0.1 GB/s, so even a 3 GB/s node needs 30 or more parallel ranged GETs of 8–64 MB parts, and the store side must spread them across key prefixes and front ends. Adding nodes adds no origin bandwidth, so N·S / B<sub>origin</sub> is the right first-order model. Egress and request charges are a second reason to fetch each byte once per region rather than once per node.</p></details>'
           },
           {
             say: 'Node local NVMe caches avoid downloading twice. Peer to peer broadcast lets new nodes copy from their neighbours in chunks, so every node forwards one chunk while it receives the next.',
             card: {
-              tag: 'HOW IT WORKS', title: 'Chunked, pipelined broadcast', body: 'Each node forwards chunk k while receiving chunk k+1, so the whole tree finishes in about one transfer time plus a small depth cost.',
-              more: '<p>Cut the file into k chunks of size c = S/k and forward them along h hops. The first chunk needs h·c/B to reach the last node, and the others stream behind it at rate B, so the total is (h + k − 1)·c/B ≈ (S + h·c)/B for k ≫ h. A whole-file binomial tree instead pays S/B once per level, ⌈log<sub>2</sub>N⌉ times.</p>'
+              tag: 'HOW IT WORKS', title: 'Chunked, pipelined broadcast', body: 'Each node forwards chunk k while receiving chunk k+1, so the whole fleet finishes in about one transfer time plus a small depth cost.',
+              more: '<p>Cut the file into k chunks of size c = S/k and forward them along h hops. The first chunk needs h·c/B to reach the last node, and the others stream behind it at rate B, so the total is (h + k − 1)·c/B ≈ (S + h·c)/B for k ≫ h. A whole-file binomial tree instead pays S/B once per level, ⌈log<sub>2</sub>N⌉ times. The caveat: every node must upload at line rate, so use a chain or a swarm in which peers serve different chunks; a plain binary tree would halve each parent\'s uplink and cost about 2S/B.</p>'
             },
-            deep: '<div class="eq">T<sub>doubling</sub> ≈ ⌈log<sub>2</sub>N⌉ · S / B<sub>NIC</sub>   (whole-file binomial tree)<br>T<sub>pipelined</sub> ≈ (S + h·c) / B<sub>NIC</sub>   (chunked chain or tree, depth h)</div>' +
-              '<p>With c = 64 MB, N = 16 and B<sub>NIC</sub> = 50 GB/s (400 Gb/s): whole-file doubling ≈ 56 s, chunked pipeline ≈ 14 s plus load, and a local NVMe hit (~25 GB/s RAID) ≈ 28 s. Chunking is what makes P2P fast: the Dragonfly, Kraken and BitTorrent idea. Numbers in the chart are illustrative.</p>'
+            deep: '<div class="eq">T<sub>doubling</sub> ≈ ⌈log<sub>2</sub>N⌉ · S / B<sub>NIC</sub>   (whole-file binomial tree)<br>T<sub>pipelined</sub> ≈ (S + h·c) / B<sub>NIC</sub>   (chunked chain or swarm, depth h)</div>' +
+              '<p>With c = 64 MB, N = 16 and B<sub>NIC</sub> = 50 GB/s (400 Gb/s): whole-file doubling ≈ 56 s, a chunked pipeline ≈ 14 s plus load (a 15-hop chain adds only 15 · 64 MB / 50 GB/s ≈ 0.02 s of pipeline fill), and a local NVMe hit (~25 GB/s RAID) ≈ 28 s. Chunking is what makes P2P fast: the Dragonfly, Kraken and BitTorrent idea, where each peer serves the chunks it already has. Numbers in the chart are illustrative.</p>'
           },
           {
             say: 'Streaming loaders then push tensors into GPU memory while the rest are still arriving, so each tensor parallel rank reads only its own shard and time to ready drops to seconds.',
-            card: { tag: 'STATE OF THE ART', title: 'Load while you download', body: 'Run:ai Model Streamer and fastsafetensors overlap storage reads, host staging and copies to HBM. GPUDirect Storage can skip the CPU bounce buffer.', more: '<p>ServerlessLLM goes further: it exploits the storage hierarchy (NVMe to DRAM to HBM) with chunked, pipelined loading and locality-aware placement, cutting cold-start latency by an order of magnitude for large models.</p>' },
+            card: { tag: 'STATE OF THE ART', title: 'Load while you download', body: 'Run:ai Model Streamer and fastsafetensors overlap storage reads, host staging and copies to HBM. GPUDirect Storage can skip the CPU bounce buffer.', more: '<p>ServerlessLLM goes further: it exploits the storage hierarchy (NVMe to DRAM to HBM) with chunked, pipelined loading and locality-aware placement, and reports 10 to 200 times lower latency than earlier serverless systems in its evaluation.</p>' },
             deep: '<ul><li><b>Streaming load</b> (Run:ai Model Streamer, fastsafetensors): overlap object-store reads, host staging and host-to-device copies; each TP rank reads only its shard.</li>' +
               '<li><b>GPUDirect Storage</b> can DMA NVMe → HBM, skipping the CPU bounce.</li>' +
               '<li><b>Result</b>: ~14 s of transfer plus a few seconds of overlap for a 700 GB checkpoint, against 224 s from the origin.</li></ul>'
@@ -791,7 +866,7 @@
             return ctx.animate(row0.b, { width: [0, row0.b._w] }, 1200, 'out', 300).then(function () { return ctx.pulse(row0.b, { color: 'red', dur: 600 }); });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: NVMe cache and the P2P broadcast tree */
-            var row1 = S.ttrRow(['NVMe cache', 30, 'amber'], 1);
+            var row1 = S.ttrRow(['NVMe cache', 28, 'amber'], 1);
             S.tree = ctx.group({ parent: S.ctl });
             ctx.text(1210, 320, 'P2P broadcast', { size: 11, color: 'dim', font: 'mono', parent: S.tree });
             ctx.text(1210, 335, 'chunked, pipelined', { size: 11, color: 'dim', font: 'mono', parent: S.tree });
@@ -843,16 +918,17 @@
           },
           {
             say: 'The autoscaler watches queue depth and the backlog of GPU seconds, not CPU load, and pulls nodes from a warm pool before the queue explodes.',
-            card: { tag: 'PITFALL', title: 'CPU load is the wrong signal', body: 'GPU work is bursty and queue driven. Scale on backlog and KV-cache utilisation, and hide the 2–10 minute bare-metal provisioning delay with warm pools.' },
+            card: { tag: 'PITFALL', title: 'CPU load is the wrong signal', body: 'GPU work is bursty and queue driven. Scale on backlog and KV-cache utilisation, and hide the multi-minute node provisioning delay with warm pools.' },
             deep: '<p><b>Autoscaling signal</b>: not CPU. Use queue depth, KV-cache utilisation and GPU-second backlog:</p>' +
               '<div class="eq">nodes<sub>+</sub> = ⌈ backlog<sub>GPU·s</sub> / (T<sub>drain</sub> · 8) ⌉ − idle<sub>nodes</sub></div>' +
-              '<p>e.g. 2 queued shots × 8 × 95 GPU·s = 1,520 GPU·s; drain target 190 s → 1 node. KEDA or custom controllers act on these metrics; warm pools hide the 2–10 min bare-metal provisioning time.</p>'
+              '<p>e.g. 2 queued shots × 8 × 95 GPU·s = 1,520 GPU·s; drain target 190 s → 1 node. KEDA or custom controllers act on these metrics; warm pools hide the multi-minute node provisioning time.</p>'
           },
           {
             say: 'Observability ties it together: every request and every GPU second is traced and attributed to a tenant, so latency and cost each have an owner.',
             card: { tag: 'HOW IT WORKS', title: 'One trace, one GPU-second ledger', body: 'DCGM exporter feeds Prometheus, OpenTelemetry spans follow each request, and per-tenant accounting turns GPU seconds into money.' },
             deep: '<ul><li><b>Observability</b>: DCGM exporter → Prometheus (SM active, tensor-pipe active, HBM used, NVLink/IB throughput); OpenTelemetry spans per request; per-tenant GPU·s accounting; SLO burn-rate alerts on TTFT/TPOT.</li>' +
-              '<li>Multi-window burn-rate alerts (for example 14.4× over 1 h and over 5 min for a 30-day SLO) page on fast budget burn without paging on noise.</li></ul>'
+              '<li>Multi-window burn-rate alerts (for example 14.4× over 1 h and over 5 min for a 30-day SLO) page on fast budget burn without paging on noise.</li></ul>' +
+              '<details><summary>Go deeper</summary><p>Classic GPU "utilisation" (<code>DCGM_FI_DEV_GPU_UTIL</code>) only says a kernel was resident during the sample window, so a GPU that reads 100% can sit at 20% MFU. Prefer the profiling fields <code>DCGM_FI_PROF_SM_ACTIVE</code>, <code>PIPE_TENSOR_ACTIVE</code> and <code>DRAM_ACTIVE</code>, or compute MFU from model FLOPs. Burn rate is the error rate divided by (1 − SLO): for a 99.9% 30-day SLO, a 14.4× burn spends 2% of the whole budget in one hour.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -862,6 +938,7 @@
           S.asN = ctx.node({ x: 1382, y: 660, w: 360, h: 54, title: 'Autoscaler', sub: 'queue depth · GPU-s backlog · KV util', icon: 'chart', color: 'red', titleSize: 15, parent: S.ctl2 });
           S.obN = ctx.node({ x: 1382, y: 740, w: 360, h: 54, title: 'Observability', sub: 'DCGM exporter · OTel · SLO burn', icon: 'eye', color: 'red', titleSize: 15, parent: S.ctl2 });
           [S.asN, S.obN].forEach(function (n) { n.setAttribute('opacity', 0); });
+          ctx.fade([S.tree, S.ttr], 0.3, 600);   /* the weight-distribution charts recede while attention moves to health */
           /* beat 0: health agents on every node */
           return ctx.reveal(S.hlN, { from: 'right' }).then(function () {
             return Promise.all([ctx.pulse(S.hlN, { color: 'red', dur: 600 }), ctx.pulse(S.cl[0], { color: 'red', dur: 800 }), ctx.pulse(S.cl[2], { color: 'red', dur: 800 })]);
@@ -925,10 +1002,10 @@
             deep: '<table><tr><th>Hop</th><th>Video shot</th></tr>' +
               '<tr><td>Global</td><td>queue wait 0–30 s</td></tr>' +
               '<tr><td>Cluster</td><td>gang admit + pod start ~2–5 s (warm)</td></tr>' +
-              '<tr><td>Engine</td><td>40 steps × CFG ≈ 75–95 s</td></tr>' +
+              '<tr><td>Engine</td><td>50 steps × CFG ≈ 95 s</td></tr>' +
               '<tr><td>Output</td><td>VAE decode ~5 s, upload clip</td></tr>' +
               '<tr><td>GPU cost</td><td>~760 GPU·s</td></tr></table>' +
-              '<p>The ~95 s is 80 forward passes (40 steps × 2 CFG branches) at roughly a second each on eight Blackwell GPUs, plus a few seconds of queueing, pod start and VAE decode.</p>'
+              '<p>The ~95 s of denoising is 100 forward passes (50 steps × 2 CFG branches) at about 0.95 s each on eight Blackwell GPUs. Queueing, pod start and VAE decode add roughly fifteen more seconds of wall clock that hold no denoising, so a warm shot completes in about 110 s end to end.</p>'
           },
           {
             say: 'Add it up and the whole trailer costs about one GPU minute of language work and seventy six GPU minutes of video. The two paths share hardware, but almost nothing else.',
@@ -962,7 +1039,7 @@
           /* beat 0: the LLM call */
           return Promise.all([
             ctx.reveal(S.tA, { from: 'draw', dur: 1400 }),
-            ctx.wait(800).then(function () { return ctx.reveal(tag(ctx, 632, 288, 'prefix-aware pick', 'amber', S.tagG), { from: 'scale' }); }),
+            ctx.wait(800).then(function () { return ctx.reveal(tag(ctx, 639, 288, 'prefix pick', 'amber', S.tagG), { from: 'scale' }); }),
             ctx.wait(1300).then(function () { return ctx.reveal(tag(ctx, 430, 604, 'TTFT ~0.3 s · ~60 tok/s', 'amber', S.tagG), { from: 'scale' }); })
           ]).then(function () {
             return ctx.packet(S.tA, { color: 'amber', dur: 1600, label: 'chat()', parent: S.tagG });

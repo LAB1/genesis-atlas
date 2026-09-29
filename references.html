@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>References · Genesis Atlas</title>
 <meta name="theme-color" content="#000000">
-<script>try { var t = JSON.parse(localStorage.getItem('atlas.settings.v2') || '{}').theme; if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
+<script>try { var t = JSON.parse(localStorage.getItem('atlas.settings.v2') || '{}').theme; var qt = /[?&]theme=(dark|light)/.exec(location.search); if (qt) t = qt[1]; if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/refs.css">
 </head>
@@ -13,7 +13,7 @@
 <header class="bar">
   <a class="brand" href="index.html"><span class="logo"></span>Genesis <em>Atlas</em></a>
   <div class="bar-actions">
-    <button class="pill" id="theme" title="Dark / light">◐ Theme</button>
+    <button class="pill" id="theme" title="Dark / light" aria-label="Switch between dark and light theme">◐ Theme</button>
     <a class="pill" id="back" href="index.html">&larr; Back to the atlas</a>
     <button class="pill" id="close" title="Close this tab">Close tab</button>
   </div>
@@ -23,8 +23,8 @@
   <h1>Papers, specs and systems cited</h1>
   <div class="sub" id="count"></div>
   <div class="controls">
-    <input class="search" id="q" placeholder="Search title, author, venue…" autocomplete="off">
-    <select id="chamber"></select>
+    <input class="search" id="q" placeholder="Search title, author, venue…" autocomplete="off" aria-label="Search references">
+    <select id="chamber" aria-label="Show references of one chamber"></select>
   </div>
   <div id="list"></div>
 </main>
@@ -75,8 +75,12 @@
     document.querySelectorAll('.ref.hl').forEach(function (e) { e.classList.remove('hl'); });
     if (!m) return;
     var el = document.getElementById('ref-' + m[1]);
-    if (el) { el.classList.add('hl'); setTimeout(function () { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); }
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (el) { el.classList.add('hl'); setTimeout(function () { el.scrollIntoView({ block: 'center', behavior: calm ? 'auto' : 'smooth' }); }, 60); }
   }
+  /* the sticky filter row hangs from the (possibly two-row) top bar */
+  function barH() { var b = document.querySelector('.bar'); if (b) document.documentElement.style.setProperty('--bar-h', Math.ceil(b.getBoundingClientRect().height) + 'px'); }
+  window.addEventListener('resize', barH); barH();
 
   $('#q').oninput = render; sel.onchange = render;
   window.addEventListener('hashchange', highlight);

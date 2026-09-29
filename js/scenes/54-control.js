@@ -7,6 +7,27 @@
   /* make elements invisible until the beat that introduces them reveals them */
   function hide(list) { (Array.isArray(list) ? list : [list]).forEach(function (e) { if (Array.isArray(e)) hide(e); else if (e) e.setAttribute('opacity', 0); }); }
 
+  /* The light theme inverts luminance with a CSS filter. Magenta, violet, blue and red keep a mid luminance, so small text in those
+   * hues turns pale on white. Lighten such text once (the inversion then makes it dark); hue and dark-theme legibility are unchanged. */
+  var HARD = [[255, 63, 210], [155, 123, 255], [77, 141, 255], [255, 77, 109]];
+  function tint(ctx) {
+    var list = ctx.layer.querySelectorAll('text');
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      if (t.hasAttribute('data-tt')) continue;
+      t.setAttribute('data-tt', '1');
+      var m = /^(?:#([0-9a-f]{6})|rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+))/i.exec(t.getAttribute('fill') || '');
+      if (!m) continue;
+      var rgb = m[1] ? [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)] : [+m[2], +m[3], +m[4]];
+      for (var k = 0; k < HARD.length; k++) {
+        if (Math.abs(rgb[0] - HARD[k][0]) + Math.abs(rgb[1] - HARD[k][1]) + Math.abs(rgb[2] - HARD[k][2]) < 8) {
+          t.setAttribute('fill', ctx.mix('rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')', '#ffffff', 0.42));
+          break;
+        }
+      }
+    }
+  }
+
   function buildRoad(ctx, S) {
     S.roadG = ctx.group();
     S.pills = ROAD.map(function (s, i) {
@@ -157,14 +178,15 @@
   Atlas.register({
     id: 'consistency',
     refs: [
-      'Wan Team (Alibaba), <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
       'Liu et al., <i>Phantom: Subject-Consistent Video Generation via Cross-Modal Alignment</i>, arXiv 2502.11079, 2025; Jiang et al., <i>VACE: All-in-One Video Creation and Editing</i>, ICCV 2025',
-      'He et al., <i>CameraCtrl: Enabling Camera Control for Text-to-Video Generation</i>, ICLR 2025; Bahmani et al., <i>AC3D: Analyzing and Improving 3D Camera Control in Video Diffusion Transformers</i>, CVPR 2025',
+      'He et al., <i>CameraCtrl: Enabling Camera Control for Video Diffusion Models</i>, ICLR 2025; Bahmani et al., <i>AC3D: Analyzing and Improving 3D Camera Control in Video Diffusion Transformers</i>, CVPR 2025',
       'Zhang, Rao &amp; Agrawala, <i>Adding Conditional Control to Text-to-Image Diffusion Models (ControlNet)</i>, ICCV 2023; Geng et al., <i>Motion Prompting: Controlling Video Generation with Motion Trajectories</i>, CVPR 2025; Burgert et al., <i>Go-with-the-Flow: Motion-Controllable Video Diffusion Models Using Real-Time Warped Noise</i>, CVPR 2025',
       'Hu et al., <i>LoRA: Low-Rank Adaptation of Large Language Models</i>, ICLR 2022',
       'Chen et al., <i>Diffusion Forcing: Next-token Prediction Meets Full-Sequence Diffusion</i>, NeurIPS 2024',
-      'Yin et al., <i>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models (CausVid)</i>, CVPR 2025; Huang et al., <i>Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion</i>, 2025',
-      'Zhang &amp; Agrawala, <i>Packing Input Frame Context in Next-Frame Prediction Models for Video Generation (FramePack)</i>, 2025'
+      'Yin et al., <i>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</i> (CausVid), CVPR 2025',
+      'Huang et al., <i>Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion</i>, NeurIPS 2025',
+      'Zhang et al., <i>Frame Context Packing and Drift Prevention in Next-Frame-Prediction Video Diffusion Models (FramePack)</i>, arXiv 2504.12626, 2025'
     ],
     steps: [
       /* ------------------------------------------------------------------ 1 */
@@ -194,8 +216,8 @@
             deep: '<p>Every control method is one of four <b>injection routes</b> into the DiT:</p>' +
               '<table><tr><th>Route</th><th>Mechanism</th><th>Examples</th></tr>' +
               '<tr><td>input channels</td><td>concat to z<sub>σ</sub> before patchify</td><td>I2V, FLF2V, inpainting masks</td></tr>' +
-              '<tr><td>sequence tokens</td><td>extra (clean) tokens in self-attention</td><td>reference identity, context frames, camera tokens</td></tr>' +
-              '<tr><td>adapter residuals</td><td>trainable side network, zero-init add</td><td>depth / pose / track ControlNets, VACE</td></tr>' +
+              '<tr><td>sequence tokens</td><td>extra (clean) tokens in self-attention</td><td>reference identity, context frames</td></tr>' +
+              '<tr><td>adapter residuals</td><td>trainable side network or embedding, zero-init add</td><td>camera Plücker maps, depth / pose / track ControlNets, VACE</td></tr>' +
               '<tr><td>weights</td><td>low-rank ΔW</td><td>character / style LoRA</td></tr></table>' +
               '<p>Route choice is a systems decision, with the trade-offs in the card above.</p>'
           },
@@ -210,29 +232,31 @@
           var S = ctx.state;
           buildRoad(ctx, S);
           var g = swap(ctx, S, 0);
-          S.dit = ctx.node({ x: 800, y: 440, w: 290, h: 120, title: 'Video DiT', sub: 'text-only ⇒ a new fox per sample', icon: 'film', color: 'lime', titleSize: 20, subSize: 11.5, glow: 'strong', parent: g });
+          S.dit = ctx.node({ x: 800, y: 440, w: 290, h: 250, title: 'Video DiT', sub: 'text-only ⇒ a new fox per sample', icon: 'film', color: 'lime', titleSize: 20, subSize: 11.5, glow: 'strong', parent: g });
           S.txt = ctx.node({ x: 800, y: 238, w: 290, h: 50, title: 'Text prompt', sub: 'cross-attn: "what", not "exactly how"', icon: 'doc', color: 'amber', titleSize: 14, subSize: 10.5, parent: g });
           S.lTxt = ctx.link(S.txt, S.dit, { from: 'b', to: 't', color: 'amber', parent: g });
-          var L = [['First / last frame', 'latent → input channels', 'image', 'cyan', 290, 'channels'], ['Reference identity', 'clean ref tokens in attention', 'eye', 'violet', 410, 'tokens'], ['Previous chunk', 'context frames · KV cache', 'clock', 'teal', 530, 'tokens']];
-          var R = [['Camera path', 'Plücker rays → tokens', 'globe', 'blue', 290, 'tokens'], ['Motion · depth · pose', 'adapter residuals', 'net', 'orange', 410, 'residual'], ['Character LoRA', 'ΔW = B·A in the weights', 'layers', 'magenta', 530, 'weights']];
+          var L = [['First / last frame', 'latent → input channels', 'image', 'cyan', 350, 'channels'], ['Reference identity', 'clean ref tokens in attention', 'eye', 'violet', 440, 'tokens'], ['Previous chunk', 'context frames · KV cache', 'clock', 'teal', 530, 'tokens']];
+          var R = [['Camera path', 'Plücker rays added to tokens', 'globe', 'blue', 350, 'residual'], ['Motion · depth · pose', 'adapter residuals', 'net', 'orange', 440, 'residual'], ['Character LoRA', 'ΔW = B·A in the weights', 'layers', 'magenta', 530, 'weights']];
           S.ins = []; S.inLinks = [];
           L.concat(R).forEach(function (c, i) {
             var left = i < 3;
             var n = ctx.node({ x: left ? 250 : 1350, y: c[4], w: 280, h: 56, title: c[0], sub: c[1], icon: c[2], color: c[3], titleSize: 14, subSize: 10.5, parent: g });
             S.ins.push(n);
-            var lk = ctx.link(n, S.dit, { from: left ? 'r' : 'l', to: left ? 'l' : 'r', color: c[3], label: c[5], labelDy: -12, parent: g });
+            /* straight, horizontal links onto the DiT's edge: the route label sits above its own line and no link crosses another */
+            var lk = ctx.link(n, { x: left ? S.dit.box.l : S.dit.box.r, y: c[4] }, { from: left ? 'r' : 'l', straight: true, color: c[3], label: c[5], labelDy: -18, parent: g });
             S.inLinks.push(lk);
           });
           S.routeT = ctx.text(800, 596, 'four injection routes: input channels · attention tokens · adapter residuals · weight deltas', { size: 13, font: 'mono', color: 'dim', anchor: 'middle', parent: g });
           /* the trailer strip, uncontrolled */
           S.shotG = ctx.group({ parent: g });
-          ctx.text(95, 656, 'THE TRAILER · 6 shots = 6 independent sampling runs · text-only: six different foxes', { size: 14, font: 'display', weight: 700, color: 'amber', parent: S.shotG });
+          S.shotTitle = ctx.text(95, 656, 'THE TRAILER · 6 shots = 6 independent sampling runs · text-only: six different foxes', { size: 14, font: 'display', weight: 700, color: 'amber', parent: S.shotG });
           var drifts = [0, 0.7, 0.3, 1, 0.5, 0.15], turns = [0, 0.6, -0.5, 0.3, -0.8, 0.9];
+          S.cardFox = [];
           S.cards = SHOTS.map(function (sh, i) {
             var x = 95 + i * 238, cg = ctx.group({ parent: S.shotG });
             ctx.rect(x, 682, 212, 110, { rx: 8, fill: '#08101f', stroke: ctx.alpha('lime', 0.4), sw: 1.2, parent: cg });
             ctx.line(x + 8, 772, x + 204, 772, { color: ctx.alpha('cyan', 0.5), sw: 1, parent: cg });
-            fox(ctx, cg, x + 50, 732, 1.35, drifts[i], turns[i]);
+            S.cardFox.push(fox(ctx, cg, x + 50, 732, 1.35, drifts[i], turns[i]));
             ctx.text(x + 100, 716, sh[0], { size: 12.5, font: 'mono', weight: 700, color: 'white', parent: cg });
             ctx.text(x + 100, 738, sh[1], { size: 11.5, font: 'mono', color: 'dim', parent: cg });
             ctx.text(x + 100, 758, '5 s · 720p', { size: 11, font: 'mono', color: 'lime', parent: cg });
@@ -240,6 +264,7 @@
           });
           S.shotNote = ctx.text(800, 830, 'the agents must pin identity, framing, motion and continuity — each lever is a step of this chamber', { size: 12.5, font: 'mono', color: 'dim', anchor: 'middle', parent: g });
           var labs = S.inLinks.map(function (l) { return l.labelEl; });
+          tint(ctx);
           hide([S.dit, S.txt, S.lTxt, S.ins, S.inLinks, labs, S.routeT, S.shotG, S.cards, S.shotNote]);
 
           /* beat 0: text only, and six different foxes */
@@ -261,8 +286,14 @@
               return ctx.pulse(S.dit, { color: 'lime', times: 2, dur: 700 });
             });
           }).then(function () { return ctx.beat(4); }).then(function () {
-            /* beat 4: the goal, one fox in six shots */
-            return Promise.all([ctx.reveal(S.shotNote, { from: 'up' })].concat(S.cards.map(function (c, i) { return ctx.pulse(c, { color: 'amber', dur: 500 }); })));
+            /* beat 4: the goal, one fox in six shots: every card now shows the same identity */
+            S.shotTitle.textContent = 'THE GOAL · 6 shots, one fox: identity, palette and lens agree in every shot';
+            S.shotTitle.setAttribute('fill', ctx.C.lime);
+            S.cards.forEach(function (c, i) {
+              ctx.fadeOut(S.cardFox[i], 500, true);
+              ctx.reveal(fox(ctx, c, 95 + i * 238 + 50, 732, 1.35, 0, turns[i]), { from: 'fade', dur: 700 });
+            });
+            return Promise.all([ctx.reveal(S.shotNote, { from: 'up' })].concat(S.cards.map(function (c) { return ctx.pulse(c, { color: 'lime', dur: 500 }); })));
           });
         }
       },
@@ -273,20 +304,23 @@
           {
             say: 'The simplest control is a keyframe. The storyboard agent\'s image for shot three is encoded by the VAE into a latent frame.',
             card: { tag: 'KEY IDEA', title: 'A keyframe is just an image', body: 'The storyboard agent hands over a picture. The same VAE that built the training latents encodes it into a latent frame.' },
-            deep: '<p><b>Channel concatenation</b> (Wan 2.1 I2V / FLF2V, SVD, CogVideoX-I2V) starts by encoding the given image with the model’s own causal VAE: a 3 × 720 × 1280 keyframe becomes a 16 × 90 × 160 latent frame E(I<sub>0</sub>). Using the same VAE as in training guarantees that the condition lives in exactly the latent space the DiT generates in.</p>'
+            deep: '<p><b>Channel concatenation</b> (Wan 2.1 I2V / FLF2V, SVD, CogVideoX-I2V) starts by encoding the given image with the model’s own causal VAE: a 3 × 720 × 1280 keyframe becomes a 16 × 90 × 160 latent frame E(I<sub>0</sub>). Using the same VAE as in training guarantees that the condition lives in exactly the latent space the DiT generates in.</p>' +
+              '<details><summary>Go deeper</summary><p>Conditioning in latent space is also cheaper: the keyframe is 3 × 720 × 1280 = 2.8 M numbers as pixels but 16 × 90 × 160 = 230 k as a latent, 12× fewer, and the DiT never saw raw pixels during training, so pixel-space conditioning would mismatch its input statistics.</p></details>'
           },
           {
             say: 'Wan\'s image to video model then builds its input from three tensors along the channel axis: the noisy latent, a binary mask that marks which frames are given, and the condition video, which is the keyframe followed by zeros.',
             card: { tag: 'HOW IT WORKS', title: 'Three tensors, one concat', body: 'The noisy latent, a 0 / 1 mask marking given frames, and a condition video: the keyframe padded with zeros.' },
             deep: '<div class="eq">x<sub>in</sub> = concat<sub>C</sub>( z<sub>σ</sub> [16], m [4], y = E([I<sub>0</sub>, 0, …, 0]) [16] ) ∈ ℝ<sup>36×21×90×160</sup></div>' +
-              '<p>The mask tells the network which latent frames are hard evidence (1) and which it must generate (0); y carries the evidence itself. Where m = 0 the y channels are zeros and carry no information, so the network learns to trust y only at masked-in frames.</p>'
+              '<p>The mask tells the network which latent frames are hard evidence (1) and which it must generate (0); y carries the evidence itself. Where m = 0 the padding frames are blank (zero-valued pixels, encoded by the same VAE) and carry no content, so the network learns to trust y only at masked-in frames.</p>' +
+              '<details><summary>Go deeper</summary><p>Why a mask <i>and</i> zero padding: the blank padding frames are just another video the VAE can encode, indistinguishable from a real, flat-coloured keyframe. Without m the network could not tell “nothing given here” from “a flat frame is required here”. The mask removes that ambiguity at the cost of 4 extra input channels.</p></details>'
           },
           {
-            say: 'Sixteen plus four plus sixteen makes thirty six input channels. Only the patch embedder widens; the rest of the network is reused. The mask has four channels because each latent frame summarizes four pixel frames.',
+            say: 'Sixteen plus four plus sixteen makes thirty six input channels, so the patch embedder widens while the transformer blocks are reused. The mask has four channels because each latent frame summarizes four pixel frames.',
             card: { tag: 'NUMBERS', title: 'A wider front door', stat: { v: '36', u: 'input channels', l: '16 noisy latent + 4 mask + 16 condition video, into a widened patch embedder: Conv3d 36 → 5120' } },
             deep: '<p><b>Why 4 mask channels:</b> the mask is defined on the 81 pixel frames; frame 0 is repeated 4× (84 frames), reshaped to 21 × 4, so each latent frame carries the 4 pixel-frame flags it summarises, matching the VAE’s 4× temporal compression and its causal first frame.</p>' +
-              '<pre>m = ones(81, h, w); m[1:] = 0        # only frame 0 is given\nm = cat([m[0:1].repeat(4), m[1:]])    # 84 frames\nm = m.view(21, 4, h, w)               # 4 flags per latent frame</pre>' +
-              '<p>Only the input projection grows (16 → 36 channels); the remaining ≈ 14 B parameters are reused and fine-tuned on image–video pairs.</p>'
+              '<pre>m = ones(81, h, w); m[1:] = 0\nm = cat([m[:1].repeat(4), m[1:]])\nm = m.view(21, 4, h, w)</pre>' +
+              '<p class="muted">Only frame 0 is given; repeating it 4× gives 84 frames, regrouped as 21 latent frames with 4 flags each (h, w are latent-grid sizes).</p>' +
+              '<p>The input projection grows (16 → 36 channels), and Wan 2.1 I2V also adds a CLIP-image cross-attention branch (extra K/V projections, ≈ 2 B parameters over 40 blocks); the ≈ 14 B backbone weights are reused and fine-tuned on image–video pairs.</p>'
           },
           {
             say: 'Give it both a first and a last frame, and the same mechanism interpolates between them. The agent uses this for match cuts: the last frame of shot two becomes the first frame of shot three.',
@@ -295,10 +329,10 @@
               '<p>Both modes use the same weights: the mask decides how much is given. The same idea covers inpainting, outpainting and video extension: they are just other mask patterns over the frame axis.</p>'
           },
           {
-            say: 'There is a second route, used by HunyuanVideo image to video, Wan two point two and LTX Video: put the clean keyframe latent into the token sequence with timestep zero. It needs no new input layer, and one model then serves both text to video and image to video.',
-            card: { tag: 'STATE OF THE ART', title: 'Keyframes as in-context tokens', body: 'A clean latent at timestep 0 joins the sequence. No widened input layer; one model does both text-to-video and image-to-video.' },
-            deep: '<p><b>Route B: in-context tokens with per-token timestep.</b> The clean keyframe latent enters the sequence with timestep 0 while the rest is noisy. Either it <i>replaces</i> the first latent frame’s tokens (HunyuanVideo-I2V “token replace”, Wan 2.2 TI2V-5B, LTX-Video first-frame conditioning; zero extra tokens) or it is <i>appended</i> as extra tokens at any frame index (LTX-Video multi-keyframe conditioning; +3,600 tokens per 720p latent frame).</p>' +
-              '<p>No retraining of the input layer is needed. Wan 2.1 I2V also encodes the keyframe with CLIP ViT-H/14 (257 tokens) and reads it through a decoupled image cross-attention, which helps preserve identity beyond the first few frames.</p>'
+            say: 'There is a second route, used by HunyuanVideo image to video, the five billion parameter Wan two point two model and LTX Video: put the clean keyframe latent into the token sequence with a timestep of zero, or close to it. It needs no new input layer, so a single model can serve both text to video and image to video.',
+            card: { tag: 'STATE OF THE ART', title: 'Keyframes as in-context tokens', body: 'A clean latent at timestep 0 joins the sequence. No widened input layer, so one model can do both text-to-video and image-to-video.' },
+            deep: '<p><b>Route B: in-context tokens with per-token timestep.</b> The clean keyframe latent enters the sequence with timestep 0 (LTX-Video: a small value) while the rest is noisy. Either it <i>replaces</i> the first latent frame’s tokens (HunyuanVideo-I2V “token replace”, Wan 2.2 TI2V-5B, LTX-Video first-frame conditioning; zero extra tokens) or it is <i>appended</i> as extra tokens at any frame index (LTX-Video multi-keyframe conditioning; each keyframe adds one latent frame of tokens, 3,600 in this chamber’s 720p layout).</p>' +
+              '<p>No new input layer is needed. For comparison, Wan 2.1 I2V also encodes the keyframe with CLIP ViT-H/14 (257 tokens) and reads it through a decoupled image cross-attention, which gives every block a global semantic view of the keyframe.</p>'
           }
         ],
         run: function (ctx) {
@@ -354,7 +388,7 @@
           S.modeT = ctx.text(470, 606, '', { size: 12.5, font: 'mono', color: 'white', parent: S.expG });
           ctx.text(470, 632, 'mask: 81 pixel frames, frame 0 repeated ×4 → 84 = 21 × 4', { size: 12, font: 'mono', color: 'dim', parent: S.expG });
           ctx.text(470, 654, '⇒ 4 mask channels per latent frame (VAE is 4× in time)', { size: 12, font: 'mono', color: 'dim', parent: S.expG });
-          ctx.text(470, 684, 'only the patch embedder widens (16 → 36); the rest of the DiT is reused', { size: 12, font: 'mono', color: 'dim', parent: S.expG });
+          ctx.text(470, 684, 'patch embedder widens (16 → 36); DiT blocks reused, plus a CLIP branch', { size: 12, font: 'mono', color: 'dim', parent: S.expG });
           /* route B */
           S.rb = ctx.group({ parent: g });
           ctx.rect(1000, 580, 550, 270, { rx: 10, fill: 'rgba(6,12,24,0.8)', stroke: ctx.alpha('violet', 0.45), sw: 1.2, parent: S.rb });
@@ -365,13 +399,14 @@
           }
           ctx.text(1072, 664, 'σ = 0', { size: 11.5, font: 'mono', color: 'violet', anchor: 'middle', parent: S.rb });
           ctx.text(1296, 664, 'noisy video tokens, σ = σₖ', { size: 11.5, font: 'mono', color: 'lime', anchor: 'middle', parent: S.rb });
-          [['clean keyframe latent is patchified and joins the', 'text'], ['sequence with per-token timestep 0; attention copies it', 'text'], ['replace frame 0: HunyuanVideo-I2V, Wan 2.2 TI2V', 'dim'], ['or append at any index (LTX-Video): +3,600 tok / frame', 'dim'], ['Wan 2.1 I2V also adds CLIP ViT-H tokens (257)', 'amber'], ['through a decoupled image cross-attention', 'amber']].forEach(function (l, k) {
+          [['clean keyframe latent is patchified and joins the', 'text'], ['sequence with per-token timestep 0; attention copies it', 'text'], ['replace frame 0: HunyuanVideo-I2V, Wan 2.2 TI2V', 'dim'], ['or append at any index (LTX-Video): +1 frame of tokens', 'dim'], ['Wan 2.1 I2V also adds CLIP ViT-H tokens (257)', 'amber'], ['through a decoupled image cross-attention', 'amber']].forEach(function (l, k) {
             ctx.text(1020, 694 + k * 24, l[0], { size: 12, font: 'mono', color: l[1], parent: S.rb });
           });
 
           S.flf = false; S.firstOn = false;
           i2vUpdate(ctx, S);
           var chipGs = S.i2vChips.map(function (c) { return c.g; });
+          tint(ctx);
           hide([S.gridG, S.catG, S.imgG, chipGs, S.expG, S.rb]);
 
           /* beat 0: the storyboard keyframe is VAE-encoded */
@@ -481,7 +516,7 @@
             var tx = 110 + k * 90;
             S.arcs.push(ctx.path('M' + sx + ',516 Q' + ((sx + tx) / 2) + ',' + (440 - k * 6) + ' ' + tx + ',516', { stroke: 'magenta', sw: 1.6, arrow: true, opacity: 0.85, parent: S.arcG }));
           });
-          ctx.text(760, 462, 'fox-token queries → reference keys (identity lookup)', { size: 12, font: 'mono', color: 'magenta', anchor: 'middle', parent: S.arcG });
+          ctx.text(760, 440, 'fox-token queries → reference keys (identity lookup)', { size: 12, font: 'mono', color: 'magenta', anchor: 'middle', parent: S.arcG });
           /* mask blocks */
           S.mkG = ctx.group({ parent: g });
           ctx.text(80, 612, 'ATTENTION BLOCKS  (query ↓ × key →)', { size: 13, font: 'display', weight: 700, color: 'white', parent: S.mkG });
@@ -504,6 +539,7 @@
             ['VACE (Wan): refs as context tokens in one editing model', 'dim'], ['Veo "ingredients to video": several refs → one clip', 'dim']].forEach(function (l, k) {
             ctx.text(840, 648 + k * 26, l[0], { size: 12, font: 'code', pre: true, color: l[1], parent: S.fxG });
           });
+          tint(ctx);
           hide([S.refG, S.vfG, S.vaeLab, S.stG, S.arcG, S.arcs, S.mkG, S.fxG]);
 
           /* beat 0: the character sheet and the frames to be generated */
@@ -541,28 +577,29 @@
               '<p><b>Related:</b> ReCamMaster re-renders an existing clip along a new trajectory.</p>'
           },
           {
-            say: 'For every pixel, that pose defines a ray, with an origin at the camera centre and a direction through the pixel.',
-            card: { tag: 'HOW IT WORKS', title: 'One ray per pixel', body: 'Given intrinsics K and extrinsics [R|t], each of the 720 × 1280 pixels gets a camera-centre origin and a unit direction.' },
+            say: 'For every pixel, that pose defines a ray, with an origin at the camera centre and a direction through the pixel. Click the dashed orbit to place the camera yourself, and watch the direction map turn.',
+            card: { tag: 'TRY IT', title: 'Click the orbit, move the camera', body: 'The frustum jumps to the clicked point and the ray-direction map recolours to match. Click away from the path to resume the orbit.' },
             deep: '<p>Per frame f with intrinsics K and extrinsics [R|t], every pixel (u, v) defines a ray:</p>' +
               '<div class="eq">o = −Rᵀt,&nbsp;&nbsp; d = normalize(Rᵀ K⁻¹ [u, v, 1]ᵀ)</div>' +
-              '<p>The coloured grid shows the direction d as RGB = (x, y, z) for an 8 × 8 subsample of the pixels. As the camera dollies in and orbits, the whole map rotates smoothly with it.</p>'
+              '<p>The coloured grid shows the direction d as RGB = (x, y, z) for an 8 × 8 subsample of the 720 × 1280 pixels. As the camera dollies in and orbits, the whole map rotates smoothly with it; the camera centre o moves, but every pixel of a frame shares the same o.</p>'
           },
           {
             say: 'A Plücker embedding encodes the ray as six numbers: its direction, and its moment, the cross product of the camera origin and the direction. The moment stays the same wherever you slide the origin along the ray.',
             card: { tag: 'KEY IDEA', title: 'Six numbers per ray', body: 'Plücker coordinates (o × d, d) are dense, treat intrinsics and extrinsics uniformly, and are invariant to where o sits on the ray.', more: '<p>Slide the origin along the ray: o′ = o + λd. Then o′ × d = o × d + λ (d × d) = o × d, because a vector crossed with itself is zero. The moment therefore identifies the ray, not the point you happened to pick on it.</p>' },
             deep: '<div class="eq">p(u, v) = (o × d, d) ∈ ℝ⁶</div>' +
-              '<p><b>Why Plücker:</b> (o × d, d) is invariant to where o slides along the ray, dense (one vector per pixel), and encodes intrinsics and extrinsics uniformly, so the network sees geometry in the same spatial layout as the latent. Feeding the raw 12 numbers of [R|t] per frame (MotionCtrl) also works, but CameraCtrl reported clearly better trajectory accuracy with dense Plücker maps.</p>' +
-              '<pre>d = normalize(R.T @ inv(K) @ [u, v, 1])\no = -R.T @ t\nplucker = cat([cross(o, d), d])   # 6 x H x W per frame</pre>'
+              '<p><b>Why Plücker:</b> (o × d, d) is invariant to where o slides along the ray, dense (one vector per pixel), and encodes intrinsics and extrinsics uniformly, so the network sees geometry in the same spatial layout as the latent. Feeding the raw 12 numbers of [R|t] per frame (MotionCtrl) also works, but in CameraCtrl’s ablation Plücker maps gave lower translation and rotation errors than raw camera parameters (12.98 vs 13.88 and 1.29 vs 1.51).</p>' +
+              '<pre>d = normalize(R.T @ inv(K) @ uv1)\no = -R.T @ t\np = cat([cross(o, d), d])</pre>' +
+              '<p class="muted">uv1 = [u, v, 1] per pixel; p is 6 × H × W per frame.</p>'
           },
           {
             say: 'These maps are patchified like the latent and added to the video tokens, so every token knows exactly which ray it sees.',
             card: { tag: 'HOW IT WORKS', title: 'Added to the video tokens', body: 'A small encoder reduces the 6 × 81 × H × W map to the latent grid, projects it to width d, and adds it token by token.' },
-            deep: '<p><b>Injection:</b> the 6 × 81 × H × W map is reduced to the latent grid (pixel-unshuffle or strided conv to 21 × 45 × 80), projected to d and <i>added</i> to the video tokens (or fed through an adapter). CameraCtrl II adds the patchified Plücker embedding to the video tokens of a video DiT; the base model can stay frozen while only the camera encoder and adapter are trained.</p>'
+            deep: '<p><b>Injection:</b> the 6 × 81 × H × W map is reduced to the latent grid (pixel-unshuffle or strided conv to 21 × 45 × 80), projected to d and <i>added</i> to the video tokens (or fed through an adapter). In DiT-based systems such as AC3D the camera branch is ControlNet-style and summed into the video tokens, so the base model can stay frozen while only the camera encoder and adapter are trained.</p>'
           },
           {
             say: 'Variants differ in where they inject. CameraCtrl used temporal attention in a U-Net, AC three D adds the signal only to the early blocks of a DiT, and text words such as slow dolly in remain the imprecise fallback.',
             card: { tag: 'STATE OF THE ART', title: 'Camera motion is low frequency', body: 'AC3D found that conditioning only the early blocks, mostly at high noise, is enough: camera motion is decided early.' },
-            deep: '<p>CameraCtrl added the map to the temporal-attention layers of a U-Net (AnimateDiff). In DiTs, AC3D found that conditioning only the early blocks, and mostly the high-noise part of sampling, suffices, because camera motion is low-frequency information resolved early in both depth and denoising time.</p>' +
+            deep: '<p>CameraCtrl added the map to the temporal-attention layers of a U-Net (AnimateDiff). In DiTs, AC3D (on an 11.5 B, 32-block video DiT) injects the camera only into the first 8 blocks and only during the first ~40% of the reverse trajectory, the high-noise part, because camera motion is low-frequency information resolved early in both depth and denoising time.</p>' +
               '<p>The variants list on the stage maps the design space: where to inject, how much of the network, how much of the trajectory. Fewer conditioned blocks also means less interference with the base model’s appearance prior.</p>'
           }
         ],
@@ -625,6 +662,25 @@
           });
 
           camUpdate(ctx, S, 0);
+          /* TRY IT: clicking near the orbit places the camera there (the loop of beat 2 honours S.camHold); clicking away resumes the orbit */
+          S.camHold = null;
+          S.camHint = ctx.label(600, 240, 'CLICK THE ORBIT', { color: 'cyan', size: 11.5, opacity: 0, parent: S.wv });
+          var pathPts = [];
+          for (i = 0; i <= 60; i++) pathPts.push(camScreen(camPos(i / 60)));
+          S.wv.style.cursor = 'pointer';
+          S.wv.addEventListener('click', function (e) {
+            if (!S.camLoop) return;
+            var svg = S.wv.ownerSVGElement, mtx = S.wv.getScreenCTM();
+            if (!svg || !mtx) return;
+            var pt = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            var p = pt.matrixTransform(mtx.inverse());
+            var best = 0, bd = 1e9;
+            pathPts.forEach(function (q, k) { var d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = k; } });
+            S.camHold = bd < 60 ? best / 60 : null;
+            camUpdate(ctx, S, S.camHold !== null ? S.camHold : 0.5);
+          });
+          tint(ctx);
           hide([S.wv, S.camPath, S.pkD, S.pkM, S.ch, S.cj, S.vr]);
 
           /* beat 0: a camera path around the fox, written as JSON */
@@ -633,8 +689,8 @@
           }).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: a ray per pixel; the direction map turns with the camera */
             var t0 = null;
-            S.camLoop = ctx.loop(function (t) { if (t0 === null) t0 = t; camUpdate(ctx, S, 0.5 + 0.5 * Math.cos((t - t0) * 0.6)); });
-            return ctx.reveal(S.pkD, { from: 'up' }).then(function () {
+            S.camLoop = ctx.loop(function (t) { if (t0 === null) t0 = t; camUpdate(ctx, S, S.camHold !== null ? S.camHold : 0.5 + 0.5 * Math.cos((t - t0) * 0.6)); });
+            return Promise.all([ctx.reveal(S.pkD, { from: 'up' }), ctx.reveal(S.camHint, { from: 'left', delay: 300 })]).then(function () {
               return ctx.pulse(S.dGrid, { color: 'cyan', dur: 700 });
             });
           }).then(function () { return ctx.beat(2); }).then(function () {
@@ -667,13 +723,14 @@
             say: 'Each point is rendered as a Gaussian heat map on the latent grid, one map per frame. Depth maps from a rough blockout, or pose skeletons, give structure in the same way.',
             card: { tag: 'HOW IT WORKS', title: 'Everything becomes a control video', body: 'Tracks, depth and pose are rendered as image sequences on the latent grid, so one adapter design serves all of them.' },
             deep: '<div class="eq">G<sub>t</sub>(h, w) = exp(−‖(h, w) − p(t)‖² / 2s²)&nbsp;&nbsp; (trajectory map per latent frame)</div>' +
-              '<p>The standard deviation s sets how strictly the object must sit on the track. Depth from a cheap 3D blockout fixes composition and perspective; pose skeletons fix a character’s limbs. All arrive as a 21 × 90 × 160 control latent.</p>'
+              '<p>The standard deviation s sets how strictly the object must sit on the track. Depth from a cheap 3D blockout fixes composition and perspective; pose skeletons fix a character’s limbs. All arrive as a 21 × 90 × 160 control latent.</p>' +
+              '<p>Training needs no manual labels: control videos are extracted from the training clips themselves, with a point tracker for trajectories, a monocular depth network for depth and an off-the-shelf estimator for pose.</p>'
           },
           {
             say: 'These control videos feed an adapter: a trainable copy of the first few blocks of the network, whose outputs are added to the frozen model.',
             card: { tag: 'HOW IT WORKS', title: 'A trainable copy, base frozen', body: 'The adapter copies the first N blocks and processes the control latents. The base DiT stays frozen (lock icons).' },
             deep: '<p><b>ControlNet-style adapter</b> (Zhang, Rao &amp; Agrawala): copy the first N blocks as a trainable branch; its output enters block i of the frozen DiT through a projection Z<sub>i</sub>.</p>' +
-              '<p><b>VACE</b> (Wan) generalises this: “context blocks” inserted every k-th layer consume a unified context (depth, pose, flow, masks, references), so one set of weights serves all editing tasks.</p>'
+              '<p><b>VACE</b> (Wan) generalises this: “context blocks” inserted every k-th layer (every fifth, 8 blocks in the Wan-14B version) consume a unified context (depth, pose, flow, masks, references), so one set of weights serves all editing tasks.</p>'
           },
           {
             say: 'Its outputs are added through zero initialized projections. Training therefore starts from the unmodified model and cannot damage it on day one, and the projections learn to open as training proceeds.',
@@ -685,7 +742,7 @@
             say: 'Related methods control motion without an adapter: Tora and Motion Prompting condition on trajectories, and Go with the Flow warps the initial noise along optical flow. An eight block adapter costs about twenty percent extra compute.',
             card: { tag: 'NUMBERS', title: 'What an adapter costs', stat: { v: '+20%', u: 'FLOPs per step', l: 'for an 8-block adapter on a 40-block DiT; LoRA-style adapters are cheaper but weaker for dense structure' } },
             deep: '<p><b>Trajectory methods:</b> DragNUWA, Tora (trajectory-oriented DiT) and Motion Prompting (sparse-to-dense point tracks). <b>Go-with-the-Flow</b> instead warps the <i>noise</i> along optical flow, so motion is controlled without any architecture change.</p>' +
-              '<p>Cost: an adapter of N = 8 blocks on Wan 14B adds ~20% FLOPs per step; LoRA-style adapters on the attention projections are cheaper but weaker for dense structure.</p>'
+              '<p>Cost: an adapter of N = 8 blocks on Wan 14B adds about 20% FLOPs per step (8 of 40 blocks, taking the control sequence to be as long as the video); LoRA-style adapters on the attention projections are cheaper but weaker for dense structure.</p>'
           }
         ],
         run: function (ctx) {
@@ -732,6 +789,7 @@
           var cin = ctx.node({ x: 1120, y: 290, w: 200, h: 44, title: 'control latents', sub: 'track · depth · pose', color: 'orange', titleSize: 13, subSize: 10.5, parent: S.ad });
           S.adL = [];
           S.zb = [];
+          S.zt = [];
           for (i = 0; i < 6; i++) {
             var y = 350 + i * 44;
             ctx.rect(1400, y, 150, 34, { rx: 5, fill: ctx.alpha('lime', 0.1), stroke: ctx.alpha('lime', 0.7), sw: 1.2, parent: S.ad });
@@ -741,7 +799,7 @@
               ctx.rect(1040, y, 160, 34, { rx: 5, fill: ctx.alpha('orange', 0.18), stroke: 'orange', sw: 1.2, parent: S.ad });
               ctx.text(1120, y + 17.5, 'adapter ' + (i + 1) + ' (trainable)', { size: 11.5, font: 'mono', color: 'orange', anchor: 'middle', parent: S.ad });
               S.zb.push(ctx.rect(1262, y + 5, 44, 24, { rx: 4, fill: ctx.alpha('magenta', 0.2), stroke: 'magenta', sw: 1.2, parent: S.ad }));
-              ctx.text(1284, y + 17.5, 'Z=0', { size: 11, font: 'mono', color: 'magenta', anchor: 'middle', parent: S.ad });
+              S.zt.push(ctx.text(1284, y + 17.5, 'Z=0', { size: 11, font: 'mono', color: 'magenta', anchor: 'middle', parent: S.ad }));
               ctx.line(1200, y + 17, 1260, y + 17, { color: 'orange', sw: 1.4, arrow: true, parent: S.ad });
               S.adL.push(ctx.link({ x: 1306, y: y + 17 }, { x: 1398, y: y + 17 }, { color: 'magenta', straight: true, parent: S.ad }));
               if (i < 2) ctx.line(1120, y + 34, 1120, y + 44, { color: 'orange', sw: 1.4, parent: S.ad });
@@ -751,6 +809,7 @@
           ctx.line(1120, 312, 1120, 348, { color: 'orange', sw: 1.4, arrow: true, parent: S.ad });
           ctx.text(1040, 500, 'copies of the first N blocks', { size: 11.5, font: 'mono', color: 'dim', parent: S.ad });
           ctx.text(1040, 518, 'feed the frozen stream via Z', { size: 11.5, font: 'mono', color: 'dim', parent: S.ad });
+          S.zState = ctx.text(1040, 552, 'step 0 · Z = 0 → adapter silent', { size: 11.5, font: 'mono', color: 'amber', weight: 600, parent: g });
           /* bottom equation + methods */
           S.eqE = ctx.text(70, 680, 'hᵢ ← hᵢ + Zᵢ · Aᵢ(c_ctrl, h),   Zᵢ = 0 at init  ⇒  fθ unchanged at training step 0', { size: 17, font: 'mono', color: 'white', parent: g });
           S.eqM = ctx.group({ parent: g });
@@ -760,7 +819,8 @@
             ['cost: an 8-block adapter on a 40-block DiT adds ~20% FLOPs per step; control strength is a tunable scale on Z', 'amber']].forEach(function (l, k) {
             ctx.text(70, 718 + k * 30, l[0], { size: 12.5, font: 'mono', color: l[1], parent: S.eqM });
           });
-          hide([S.sk, S.track, S.hm, S.hmaps, S.ad, S.eqE, S.eqM]);
+          tint(ctx);
+          hide([S.sk, S.track, S.hm, S.hmaps, S.ad, S.eqE, S.eqM, S.zState]);
 
           /* beat 0: the sketch becomes a track and the fox follows it */
           return Promise.all([ctx.reveal(S.sk, { from: 'left' }), ctx.reveal(S.track, { from: 'draw', dur: 1200, delay: 200 })]).then(function () {
@@ -778,7 +838,13 @@
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: zero-initialised projections */
-            return Promise.all([ctx.reveal(S.eqE, { from: 'up' })].concat(S.zb.map(function (z) { return ctx.pulse(z, { color: 'magenta', times: 2, dur: 600 }); })));
+            return Promise.all([ctx.reveal(S.eqE, { from: 'up' }), ctx.reveal(S.zState, { from: 'up' })].concat(S.zb.map(function (z) { return ctx.pulse(z, { color: 'magenta', times: 2, dur: 600 }); }))).then(function () {
+              /* at initialisation the adapter is silent; training opens Z and control flows into the frozen blocks */
+              S.zState.textContent = 'trained · Z ≠ 0 → control flows in';
+              S.zState.setAttribute('fill', ctx.C.lime);
+              S.zt.forEach(function (t) { t.textContent = 'Z≠0'; });
+              return Promise.all(S.adL.map(function (l) { return ctx.packet(l, { color: 'magenta', dur: 600 }); }));
+            });
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: related methods and the cost */
             return ctx.reveal(S.eqM, { from: 'up' });
@@ -797,19 +863,20 @@
           },
           {
             say: 'The fine tune learns only a low rank update: the product of a tall matrix B and a wide matrix A, of rank thirty two. B starts at zero, so training begins from the unchanged model.',
-            card: { tag: 'KEY IDEA', title: 'A low-rank update', body: 'ΔW = (α / r) · B · A with r = 32: two thin matrices instead of a full 5120 × 5120 correction.', more: '<p>Low rank works because fine-tuning updates have low intrinsic dimension: adapting a pretrained model to one subject moves the weights along a few directions, not thousands.</p>' },
+            card: { tag: 'KEY IDEA', title: 'A low-rank update', body: 'ΔW = (α / r) · B · A with r = 32: two thin matrices instead of a full 5120 × 5120 correction.', more: '<p>Low rank works in practice because fine-tuning updates appear to have a low intrinsic rank (the LoRA paper’s hypothesis): adapting a pretrained model to one subject moves the weights along a few directions, not thousands.</p>' },
             deep: '<div class="eq">W′ = W + (α / r) · B A,&nbsp;&nbsp; B ∈ ℝ<sup>d<sub>out</sub>×r</sup>, A ∈ ℝ<sup>r×d<sub>in</sub></sup>, B<sub>0</sub> = 0</div>' +
-              '<p>B starts at zero, so W′ = W at step 0 (the same trick as adaLN-Zero and ControlNet’s zero-convs). Parameters per adapted linear: r·(d<sub>in</sub> + d<sub>out</sub>). The animation is a rank-2 toy: every row of ΔW is a mix of A’s rows.</p>'
+              '<p>B starts at zero, so W′ = W at step 0 (the same trick as adaLN-Zero and ControlNet’s zero-convs). Parameters per adapted linear: r·(d<sub>in</sub> + d<sub>out</sub>). The animation is a rank-2 toy: every row of ΔW is a mix of A’s rows.</p>' +
+              '<details><summary>Go deeper</summary><p>With G = ∂L/∂W′ (the ordinary full-weight gradient), the two factors receive ∂L/∂B = (α/r)·G·Aᵀ and ∂L/∂A = (α/r)·Bᵀ·G. At B = 0 only B moves in the first step, so the update starts inside the row space of the random A and grows from there: LoRA is gradient descent restricted to rank-r matrices.</p></details>'
           },
           {
             say: 'Across all attention and feed forward layers of the fourteen billion parameter model, that is about one hundred fifty million parameters, roughly one percent, and a file of about three hundred megabytes.',
-            card: { tag: 'NUMBERS', title: 'Parameter budget', stat: { v: '≈ 153 M', u: 'trainable parameters', l: '1.1% of Wan 14B, a 0.31 GB bf16 file compared with 28 GB for the full model' } },
+            card: { tag: 'NUMBERS', title: 'Parameter budget', stat: { v: '≈ 153 M', u: 'trainable', l: 'parameters: 1.1% of Wan 14B, a 0.31 GB bf16 file compared with 28 GB for the full model' } },
             deep: '<table><tr><th>Wan 14B, r = 32</th><th>params</th></tr>' +
               '<tr><td>one 5120×5120 projection</td><td>327,680 (1.25% of 26.2M)</td></tr>' +
               '<tr><td>8 attn projections (self + cross q,k,v,o)</td><td>2.62M / block</td></tr>' +
               '<tr><td>FFN 5120↔13,824 (2 linears)</td><td>1.21M / block</td></tr>' +
               '<tr><td>× 40 blocks</td><td>≈ 153M ≈ 1.1% · 0.31 GB bf16</td></tr></table>' +
-              '<p>The rank is a capacity dial: ranks of 16 to 64 cover most character LoRAs, and higher ranks mostly add room to overfit a few dozen training images.</p>'
+              '<p>The rank is a capacity dial: ranks of 16 to 64 are a common range for character LoRAs, and higher ranks mostly add room to overfit a few dozen training images.</p>'
           },
           {
             say: 'The recipe is small: thirty to sixty images and short clips from the character sheet, captions with a rare trigger token, and a few GPU hours. At inference the update can be merged at zero cost, or hot swapped per request.',
@@ -875,16 +942,17 @@
             ctx.text(1170, 546 + k * 26, l[0], { size: 12.5, font: 'mono', color: l[1], parent: S.rc });
           });
           S.tr = ctx.group({ parent: g });
-          ctx.rect(70, 690, 1480, 160, { rx: 10, fill: 'rgba(6,12,24,0.8)', stroke: ctx.alpha('amber', 0.4), sw: 1.2, parent: S.tr });
-          ctx.text(90, 716, 'LoRA vs REFERENCE TOKENS', { size: 14, font: 'display', weight: 700, color: 'amber', parent: S.tr });
+          ctx.rect(70, 686, 1480, 178, { rx: 10, fill: 'rgba(6,12,24,0.8)', stroke: ctx.alpha('amber', 0.4), sw: 1.2, parent: S.tr });
+          ctx.text(90, 712, 'LoRA vs REFERENCE TOKENS', { size: 14, font: 'display', weight: 700, color: 'amber', parent: S.tr });
           [['', 'LoRA (weights)', 'reference tokens (attention)'], ['identity strength', 'strongest, all angles', 'good; weaker on unseen views'], ['per-character cost', 'training job (GPU-hours)', 'zero-shot'], ['inference cost', '0 when merged', '+R·3,600 tokens; attention grows quadratically'], ['failure mode', 'overfit: baked-in pose / style', 'copy-paste of ref pose / lighting']].forEach(function (rw, k) {
-            var y = 744 + k * 24;
+            var y = 742 + k * 23;
             var col = k === 0 ? 'white' : 'text';
             ctx.text(90, y, rw[0], { size: 12, font: 'mono', color: k === 0 ? 'white' : 'dim', parent: S.tr });
             ctx.text(400, y, rw[1], { size: 12, font: 'mono', color: k === 0 ? 'magenta' : col, weight: k === 0 ? 700 : 400, parent: S.tr });
             ctx.text(820, y, rw[2], { size: 12, font: 'mono', color: k === 0 ? 'violet' : col, weight: k === 0 ? 700 : 400, parent: S.tr });
           });
-          ctx.text(1290, 820, 'production: both', { size: 12.5, font: 'mono', color: 'lime', weight: 700, parent: S.tr });
+          ctx.text(1290, 812, 'production: both', { size: 12.5, font: 'mono', color: 'lime', weight: 700, parent: S.tr });
+          tint(ctx);
           hide([S.mxW, S.mx, S.pt, S.ptRows, S.rc, S.tr]);
 
           /* beat 0: the frozen weight matrix */
@@ -922,7 +990,8 @@
           {
             say: 'Chunked autoregression generates one chunk, then conditions the next chunk on a few clean context frames from the end of the previous one. It works with any image to video model, but every boundary is a potential seam.',
             card: { tag: 'TRADE-OFF', title: 'Simple, but seams at the joints', body: 'Two clean context frames link chunk 2 to chunk 1. It works with any I2V model, but errors can accumulate at each boundary.' },
-            deep: '<p><b>B · chunked AR with context:</b> generate chunk k conditioned on the last c clean latent frames of chunk k−1 (as mask-concat or clean tokens). Simple, and it works with any I2V-style model, but each boundary is a potential seam: the model sees only c frames of history, so slow drifts in lighting or identity slip through.</p>'
+            deep: '<p><b>B · chunked AR with context:</b> generate chunk k conditioned on the last c clean latent frames of chunk k−1 (as mask-concat or clean tokens). Simple, and it works with any I2V-style model, but each boundary is a potential seam: the model sees only c frames of history, so slow drifts in lighting or identity slip through.</p>' +
+              '<p>Cost becomes linear in length: N chunks of n tokens, each also attending c context frames of n<sub>s</sub> tokens, cost N·n·(n + c·n<sub>s</sub>) attention work, against (N·n)² for one long sequence.</p>'
           },
           {
             say: 'Diffusion forcing goes further. Each frame gets its own noise level, so near frames can be almost clean while far frames are still noisy, and a rolling window can stream forever.',
@@ -936,12 +1005,12 @@
             say: 'Causal distilled students like CausVid turn this into real time generation. A bidirectional teacher is distilled into a block causal student that takes four steps per chunk and keeps a key value cache, so past chunks are never recomputed.',
             card: { tag: 'STATE OF THE ART', title: 'Causal students stream in real time', body: 'CausVid distills a bidirectional teacher into a block-causal student: 4 steps per chunk, KV cache, about 9.4 fps after 1.3 s.' },
             deep: '<p><b>Causal students:</b> CausVid distils a bidirectional teacher (50 steps × 2 for guidance) into a block-causal student with DMD (distribution matching distillation): 4 steps per chunk and a KV cache of past chunks. The block-causal mask lets chunk k see chunks ≤ k, never the future.</p>' +
-              '<p>Result: ≈ 9.4 fps streaming after ≈ 1.3 s to the first frame on a single GPU, versus minutes for the teacher.</p>'
+              '<p>Result: ≈ 9.4 fps streaming after ≈ 1.3 s to the first frame on a single GPU at 352 × 640, versus 219 s for the bidirectional teacher to produce a 128-frame clip. The student is initialised from the teacher’s ODE trajectories and trained with an asymmetric loss: the bidirectional teacher supervises the causal student.</p>'
           },
           {
             say: 'Self Forcing trains the student on its own rollouts, closing the train test gap, and reaches about seventeen frames per second with sub second latency on one H one hundred. For our trailer, five to eight seconds per shot fits one window, so extension is needed only for a long take, and it brings drift.',
-            card: { tag: 'NUMBERS', title: 'Self Forcing: real-time streaming', stat: { v: '≈ 17', u: 'fps on one H100', l: 'sub-second latency, trained on its own rollouts with a video-level loss' } },
-            deep: '<p><b>Self Forcing</b> trains the student on its <i>own</i> rollouts with a video-level loss, closing the train–test gap that plagues autoregressive video models: ≈ 17 fps with sub-second latency on one H100. The limit of both students is the fixed KV window: the memory of the distant past fades.</p>' +
+            card: { tag: 'NUMBERS', title: 'Self Forcing: real-time streaming', stat: { v: '≈ 17', u: 'fps on one H100', l: '0.69 s latency, chunk-wise, 1.3 B student at 480p; trained on its own rollouts with a video-level loss' } },
+            deep: '<p><b>Self Forcing</b> trains the student on its <i>own</i> rollouts with a video-level loss, closing the train–test gap that plagues autoregressive video models. Its Wan 2.1 1.3 B student at 832 × 480 reaches ≈ 17 fps with 0.69 s latency on one H100 when generating 3-latent-frame chunks (the frame-wise variant: 8.9 fps at 0.45 s). The limit of both students is the fixed KV window: the memory of the distant past fades.</p>' +
               '<p>For the trailer, 5–8 s per shot fits one window, so AR extension is only needed for a long take. It brings <i>drift</i>, the subject of the next step.</p>'
           }
         ],
@@ -992,7 +1061,7 @@
           });
           ctx.text(970, 552, 'CausVid: ≈ 9.4 fps streaming, ≈ 1.3 s to first frame', { size: 12, font: 'mono', color: 'text', parent: S.cs });
           S.csB = ctx.group({ parent: g });
-          [['Self Forcing: trains on its own rollouts (no exposure', 'text'], ['bias) → ≈ 17 fps, sub-second latency, 1 H100', 'text'], ['limits: fixed KV window ⇒ memory of the distant past fades', 'dim']].forEach(function (l, k) {
+          [['Self Forcing: trains on its own rollouts (narrows the', 'text'], ['exposure-bias gap) → ≈ 17 fps, sub-second, 1 H100', 'text'], ['limits: fixed KV window ⇒ memory of the distant past fades', 'dim']].forEach(function (l, k) {
             ctx.text(970, 580 + k * 28, l[0], { size: 12, font: 'mono', color: l[1], parent: S.csB });
           });
           /* bottom equations */
@@ -1003,6 +1072,7 @@
           S.leB = ctx.text(70, 818, 'for the trailer: 5–8 s per shot fits one window — AR extension is only needed for a long take, and it brings drift (next)', { size: 12.5, font: 'mono', color: 'amber', parent: g });
 
           longUpdate(ctx, S, 0);
+          tint(ctx);
           hide([S.lrowG, S.lhead, S.cs, S.csB, S.leA, S.leB]);
           function sample() { return ctx.tween(2200, function (t) { longUpdate(ctx, S, t * 0.62); }, 'linear', 300); }
 
@@ -1050,7 +1120,7 @@
           },
           {
             say: 'Remedies attack this from several sides. Train on self generated rollouts, add noise to the context frames, and pin reference tokens in the cache as a permanent anchor.',
-            card: { tag: 'HOW IT WORKS', title: 'Three remedies flatten the curve', body: 'In the illustration, they hold similarity near 0.9 at 60 seconds, where naive extension falls to about 0.6.' },
+            card: { tag: 'HOW IT WORKS', title: 'Three remedies flatten the curve', body: 'In the illustration, they hold similarity between 0.84 and 0.88 at 60 seconds, where naive extension falls to about 0.6.' },
             deep: '<ul><li><b>Train on own rollouts</b> (Self Forcing; also the rationale behind diffusion forcing’s noisy context): the model sees its own artefacts and learns to correct them.</li>' +
               '<li><b>Noise-augment context</b> (σ<sub>ctx</sub> ≈ 0.1–0.3): conditioning frames are “trust but verify”, so high-frequency errors are not copied.</li>' +
               '<li><b>Anchor tokens</b>: keep reference / first-frame tokens permanently in the KV cache (an attention sink for identity) while the rolling window evicts the rest.</li></ul>'
@@ -1084,7 +1154,7 @@
           }
           /* plot: naive curve first, remedies later */
           S.pgA = ctx.group({ parent: g });
-          ctx.text(80, 410, 'identity similarity to the reference vs generated length (naive AR shown above)', { size: 12.5, font: 'mono', color: 'text', parent: S.pgA });
+          ctx.text(80, 410, 'identity similarity vs generated length · illustrative curves, 7.5 s chunks', { size: 12.5, font: 'mono', color: 'text', parent: S.pgA });
           var P = { xDomain: [0, 60], yDomain: [0.45, 1] };
           var p1 = ctx.plot(120, 440, 620, 300, naive, Object.assign({ color: 'red', sw: 2.4, yLabel: '', parent: S.pgA }, P));
           ctx.text(740, 774, 'seconds of video', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: S.pgA });
@@ -1108,7 +1178,7 @@
           ctx.text(820, 452, 'eₖ₊₁ = J eₖ + δₖ   ⇒   ‖eₖ‖ ~ k·δ (ρ(J) ≈ 1) or exponential (ρ(J) > 1)', { size: 13, font: 'mono', color: 'white', parent: S.mgWhy });
           ctx.text(820, 478, 'exposure bias: trained on p_data(context), run on pθ(context)', { size: 12.5, font: 'mono', color: 'dim', parent: S.mgWhy });
           S.mgRemT = ctx.text(820, 516, 'REMEDIES', { size: 14, font: 'display', weight: 700, color: 'lime', parent: g });
-          S.rem = [['train on own rollouts (Self Forcing): no train/test gap', 'loop'], ['noise-augment context frames, σ_ctx ≈ 0.1–0.3', 'wave'], ['anchor: ref / first-frame tokens pinned in the KV cache', 'lock'], ['compress history (FramePack): old frames → fewer tokens', 'layers'], ['rolling KV window + sink; re-anchor from the bible', 'db'], ['plan in shots: a cut resets the error (next step)', 'film']].map(function (r, k) {
+          S.rem = [['train on own rollouts (Self Forcing): smaller train/test gap', 'loop'], ['noise-augment context frames, σ_ctx ≈ 0.1–0.3', 'wave'], ['anchor: ref / first-frame tokens pinned in the KV cache', 'lock'], ['compress history (FramePack): old frames → fewer tokens', 'layers'], ['rolling KV window + sink; re-anchor from the bible', 'db'], ['plan in shots: a cut resets the error (next step)', 'film']].map(function (r, k) {
             var rg = ctx.group({ parent: g });
             var y = 550 + k * 46;
             ctx.circle(836, y, 15, { fill: ctx.alpha('lime', 0.12), stroke: ctx.alpha('lime', 0.6), sw: 1, parent: rg });
@@ -1116,6 +1186,7 @@
             ctx.text(862, y, r[0], { size: 13, font: 'mono', color: 'text', parent: rg });
             return rg;
           });
+          tint(ctx);
           hide([S.frG, S.fr, S.pgA, S.pgB, S.mg, S.mgWhy, S.mgRemT, S.rem, S.dc1, S.dc23]);
 
           /* beat 0: the chunks slowly change identity */
@@ -1151,25 +1222,25 @@
             say: 'Match cuts reuse the last frame of one shot as the first frame of the next, so the boundary frames are identical by construction.',
             card: { tag: 'HOW IT WORKS', title: 'Hand-offs at the cuts', body: 'S2 to S3 and S5 to S6 share a frame: FLF2V or I2V takes shot k’s last frame as shot k+1’s first.' },
             deep: '<p><b>Hand-offs:</b> for match cuts the agent passes shot k’s last frame as shot k+1’s first frame (FLF2V / I2V), so boundary frames are identical by construction. Everywhere else a cut resets the error, so shots may differ in staging while still sharing identity.</p>' +
-              '<p>The <code>handoffs</code> entry of the bible lists which pairs are match cuts, so the scheduler knows S3 must wait for the last frame of S2 while S1, S2 and S4 start immediately.</p>'
+              '<p>The <code>handoffs</code> entry of the bible lists which pairs are match cuts, so the scheduler knows S3 must wait for the last frame of S2 and S6 for that of S5, while S1, S2, S4 and S5 start immediately.</p>'
           },
           {
             say: 'After rendering, a critic embeds the fox in every shot and compares it with the references. Each shot is scored by its worst sampled frame.',
             card: { tag: 'HOW IT WORKS', title: 'Measure identity, do not eyeball', body: 'Detect and crop the fox, embed it with DINOv2 or CLIP, take the cosine to the mean reference embedding, min over frames.' },
             deep: '<p><b>Verification:</b> detect and crop the character in sampled frames, embed with E (DINOv2 or CLIP image features for a stylised fox; ArcFace-style face embeddings for humans) and score:</p>' +
               '<div class="eq">sim<sub>shot</sub> = min<sub>frames</sub> cos( E(crop), mean<sub>refs</sub> E(ref) )</div>' +
-              '<p>plus a VLM judge answering structured questions (“helmet crack on the left?”, “orange suit stripe present?”) that embeddings miss.</p>'
+              '<p>plus a VLM judge answering structured questions (“helmet crack on the left?”, “orange suit stripe present?”) that embeddings miss. The min over frames is deliberately harsh: viewers notice a single off-model frame more than a slightly low average.</p>'
           },
           {
             say: 'Shot four scores zero point six two, below the threshold of zero point seven five. Only that shot is sent back, to be re-rendered with stronger reference guidance.',
-            card: { tag: 'NUMBERS', title: 'One shot fails the check', stat: { v: '0.62', u: 'shot 4 similarity', l: 'below the 0.75 threshold: only S4 is re-rendered; retries are bounded, then a human decides' }, more: '<p>In practice τ is calibrated on shots that humans rated acceptable versus visibly off-model. Raising τ catches more subtle drift but re-renders more shots; lowering it saves compute but lets small identity changes through. The bounded retry count caps the worst case.</p>' },
+            card: { tag: 'NUMBERS', title: 'One shot fails the check', stat: { v: '0.62', u: 'S4 similarity', l: 'below the 0.75 threshold: only S4 is re-rendered; retries are bounded, then a human decides' }, more: '<p>In practice τ is calibrated on shots that humans rated acceptable versus visibly off-model. Raising τ catches more subtle drift but re-renders more shots; lowering it saves compute but lets small identity changes through. The bounded retry count caps the worst case.</p>' },
             deep: '<p><b>Repair policy:</b> sim &lt; τ (here 0.75) → re-render only that shot with a new seed, higher reference / LoRA scale, or a keyframe taken from a passing neighbour. Retries are bounded (here ≤ 2), then the job escalates to the human.</p>' +
               '<p>The loop on the stage is an ordinary workflow: bible → six parallel <code>render_shot</code> tasks → critic → editor, with a conditional back-edge from the critic to the failing shot. It is durable, so a crash mid-loop resumes instead of restarting.</p>'
           },
           {
             say: 'The re-render scores zero point eight nine, and now all six shots agree. The fix cost one extra five second render, instead of redoing the trailer.',
-            card: { tag: 'NUMBERS', title: 'Repair one shot, not six', stat: { v: '1 of 6', u: 'shots re-rendered', l: 'S4: 0.62 → 0.89 for about 3 extra minutes on 8 GPUs, instead of a full re-run' } },
-            deep: '<p>Cost is one extra 5 s render (≈ 3 min on 8 GPUs) instead of re-running the trailer, and the other five shots stay bit-for-bit identical, so their approvals stand. With a per-shot failure probability p the expected extra work is about p renders per shot, which is why a critic in the loop beats over-sampling everything.</p>' +
+            card: { tag: 'NUMBERS', title: 'Repair one shot, not six', stat: { v: '1 of 6', u: 'shots redone', l: 'S4: 0.62 → 0.89 for one more ~95 s render on 8 GPUs (≈ 13 GPU-min), instead of a full re-run' } },
+            deep: '<p>Cost is one extra 5 s render (≈ 95 s of diffusion on 8 GPUs, about 13 GPU-min) instead of re-running the trailer (≈ 76 GPU-min), and the other five shots are left untouched, so their approvals stand. With a per-shot failure probability p the expected extra work is about p renders per shot, which is why a critic in the loop beats over-sampling everything.</p>' +
               '<div class="note">The trailer now goes to the editor with six verified shots. The audio, edit and delivery stages are the subject of the next subsystem.</div>'
           }
         ],
@@ -1186,7 +1257,7 @@
             ctx.path('M' + (x + 2) + ',330 Q' + (x + 111) + ',312 ' + (x + 220) + ',330', { stroke: 'cyan', sw: 1, fill: ctx.alpha('cyan', 0.12), parent: cg });
             ctx.text(x + 12, 240, sh[0], { size: 12.5, font: 'mono', weight: 700, color: 'white', parent: cg });
             ctx.text(x + 12, 258, sh[1], { size: 11, font: 'mono', color: 'dim', parent: cg });
-            var fx = fox(ctx, cg, x + 64, 296, 1.5, i === 3 ? 0.75 : 0.03, [0, 0.6, -0.5, 0.3, -0.2, 0.8][i]);
+            var fx = fox(ctx, cg, x + 64, 296, 1.5, i === 3 ? 0.3 : 0.03, [0, 0.6, -0.5, 0.3, -0.2, 0.8][i]);
             ctx.text(x + 124, 290, 'refs ✓', { size: 11, font: 'mono', color: 'violet', parent: cg });
             ctx.text(x + 124, 308, 'LoRA ✓', { size: 11, font: 'mono', color: 'magenta', parent: cg });
             S.shots.push({ g: cg, fr: fr, fox: fx, x: x });
@@ -1247,6 +1318,7 @@
           ctx.text(390, 786, 'S4: retry (new seed, ref scale ↑)', { size: 11.5, font: 'mono', color: 'red', anchor: 'middle', parent: S.ol });
           ctx.text(70, 822, 'bounded retries (≤ 2), then escalate to the human', { size: 11.5, font: 'mono', color: 'dim', parent: S.ol });
           S.baseY = base; S.yOf = yOf;
+          tint(ctx);
           var shotGs = S.shots.map(function (s) { return s.g; });
           /* the bars start at zero height and grow when the critic appears */
           S.sbars.forEach(function (b) {
@@ -1260,7 +1332,8 @@
           return Promise.all([ctx.reveal(S.shotG, { dur: 200 }), ctx.reveal(shotGs, { from: 'up', stagger: 120 }), ctx.reveal(S.bible, { from: 'left', delay: 500 })]).then(function () {
             return S.bible.typeAll();
           }).then(function () { return ctx.beat(1); }).then(function () {
-            /* beat 1: match cuts hand a frame over */
+            /* beat 1: match cuts hand a frame over: the two pairs of shots that share a boundary frame light up */
+            [1, 2, 4, 5].forEach(function (i) { S.shots[i].fr.setAttribute('stroke', ctx.C.cyan); S.shots[i].fr.setAttribute('stroke-width', 2.2); });
             return Promise.all([ctx.reveal(S.ho, { dur: 200 }), ctx.reveal(S.hoArcs, { from: 'draw', dur: 800, stagger: 200 })]).then(function () {
               return Promise.all(S.hoArcs.map(function (a) { return ctx.packet(a, { color: 'cyan', dur: 900, label: 'frame' }); }));
             });
@@ -1272,8 +1345,11 @@
               return ctx.reveal(S.svals, { from: 'up', stagger: 80, dur: 300 });
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
-            /* beat 3: shot 4 fails and is queued for a re-render */
+            /* beat 3: shot 4 fails and is queued for a re-render; the off-model fox is now plain to see */
             S.shots[3].fr.setAttribute('stroke', ctx.C.red);
+            ctx.fadeOut(S.shots[3].fox, 300, true);
+            S.shots[3].fox = fox(ctx, S.shots[3].g, S.shots[3].x + 64, 296, 1.5, 0.75, 0.3);
+            ctx.reveal(S.shots[3].fox, { from: 'fade', dur: 500 });
             return Promise.all([ctx.reveal(S.verdict, { from: 'up' }), ctx.reveal(S.crT[2], { from: 'up', delay: 200 }), ctx.reveal(S.ol, { from: 'up', delay: 300 }), ctx.pulse(S.shots[3].g, { color: 'red', times: 2, dur: 600 })]).then(function () {
               return ctx.packet(S.back, { color: 'red', dur: 1000, label: 'S4' });
             });

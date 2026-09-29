@@ -79,14 +79,16 @@
   Atlas.register({
     id: 'llm-serving',
     refs: [
-      'Yu et al., <i>Orca: A Distributed Serving System for Transformer-Based Generative Models</i>, OSDI 2022',
-      'Kwon et al., <i>Efficient Memory Management for LLM Serving with PagedAttention</i>, SOSP 2023',
+      'Yu et al., <i>Orca: A Distributed Serving System for Transformer-Based Generative Models</i>, OSDI 2022; Agrawal et al., <i>Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve</i>, OSDI 2024',
+      'Kwon et al., <i>Efficient Memory Management for Large Language Model Serving with PagedAttention</i>, SOSP 2023',
       'Zheng et al., <i>SGLang: Efficient Execution of Structured Language Model Programs</i> (RadixAttention), NeurIPS 2024',
-      'Agrawal et al., <i>Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve</i>, OSDI 2024',
-      'Zhong et al., <i>DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving</i>, OSDI 2024; Patel et al., <i>Splitwise</i>, ISCA 2024',
-      'Qin et al., <i>Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving</i>, FAST 2025; NVIDIA <i>Dynamo</i> + NIXL, 2025; DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i> (inference deployment), 2024',
-      'Lin et al., <i>AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration</i>, MLSys 2024; OCP <i>Microscaling (MX) Formats Spec v1.0</i>, 2023; NVIDIA NVFP4 (Blackwell), 2025',
-      'Leviathan et al., <i>Fast Inference from Transformers via Speculative Decoding</i>, ICML 2023; Li et al., <i>EAGLE-3</i>, 2025'
+      'Zhong et al., <i>DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving</i>, OSDI 2024; Patel et al., <i>Splitwise: Efficient Generative LLM Inference Using Phase Splitting</i>, ISCA 2024',
+      'Qin et al., <i>Mooncake: Trading More Storage for Less Computation — A KVCache-centric Architecture for Serving LLM Chatbot</i>, FAST 2025',
+      'NVIDIA, <i>Dynamo</i> distributed inference framework (KV-aware router, NIXL), 2025',
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Lin et al., <i>AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration</i>, MLSys 2024; OCP <i>Microscaling Formats (MX) Specification</i> v1.0, 2023; NVIDIA, <i>Introducing NVFP4 for Efficient and Accurate Low-Precision Inference</i>, NVIDIA Technical Blog 2025',
+      'Leviathan, Kalman &amp; Matias, <i>Fast Inference from Transformers via Speculative Decoding</i>, ICML 2023',
+      'Li et al., <i>EAGLE-3: Scaling up Inference Acceleration of Large Language Models via Training-Time Test</i>, 2025'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -95,8 +97,8 @@
         beats: [
           {
             say: 'When the director agent asks the planner model for a shot list, the request lands on an LLM serving engine. Its API server tokenizes the text and puts the request in a waiting queue.',
-            card: { tag: 'KEY IDEA', title: 'A request becomes a sequence', body: 'Every agent call turns into a <b>sequence</b> with a prompt, a token budget and an output stream. Four agents in flight means four sequences to interleave.' },
-            deep: '<p>vLLM V1, SGLang and TensorRT-LLM split the server in two: <b>API processes</b> (HTTP, tokenizer, detokenizer, streaming) and one <b>engine-core process</b> per replica that owns the GPUs. The split means Python-side JSON parsing and tokenization can never starve the accelerator; the halves talk over ZeroMQ or shared-memory queues.</p>' +
+            card: { tag: 'KEY IDEA', title: 'A request becomes a sequence', body: 'Every agent call turns into a <b>sequence</b> with a prompt, a token budget and an output stream. Our six agents\' calls are a few of the dozens of sequences a busy replica interleaves.' },
+            deep: '<p>vLLM V1 and SGLang split the server in two: <b>API processes</b> (HTTP, tokenizer, detokenizer, streaming) and one <b>engine-core process</b> per replica that owns the GPUs. The split means Python-side JSON parsing and tokenization overlap with GPU work instead of stalling it; the halves talk over ZeroMQ sockets.</p>' +
               '<p>A request is a small record: prompt token ids, <code>SamplingParams</code> (temperature, top-p, max tokens, stop strings, grammar) and an arrival timestamp. It waits in a first-come or priority queue until the scheduler admits it.</p>'
           },
           {
@@ -109,12 +111,12 @@
             say: 'One forward pass then processes every scheduled sequence together, reading the weights and the KV cache once. A sampler turns the resulting logits into exactly one new token per sequence.',
             card: { tag: 'NUMBERS', title: 'One pass, one token each', stat: { v: '+37', u: 'tokens', l: 'one iteration: 37 running sequences in, 37 new tokens out' } },
             deep: '<pre>while True:\n  batch = sched.schedule()\n  logits = model(batch)\n  toks = sample(logits)\n  sched.update(toks) # EOS: free KV\n  stream(toks)       # SSE to agents</pre>' +
-              '<p>Shapes for our 70B planner at tensor-parallel 4: hidden states <code>[Σ n<sub>i</sub>, 8192]</code>; logits <code>[B, 128,256]</code> in FP32, and in decode only the last position of each sequence is projected. Each layer ends with two all-reduces over NVLink, and every GPU streams its 17.5 GB weight shard and its slice of the KV cache once per pass.</p>'
+              '<p>Shapes for our 70B planner at tensor-parallel 4: hidden states <code>[Σ n<sub>i</sub>, 8192]</code>; logits <code>[B, 128256]</code> (cast to FP32 for sampling), and in decode only the last position of each sequence is projected. Each layer ends with two all-reduces over NVLink, and every GPU streams its 17.5 GB weight shard and its slice of the KV cache once per pass.</p>'
           },
           {
-            say: 'Then the loop repeats. Each iteration takes roughly ten milliseconds at this batch size, and up to forty when a large prefill shares the step. Finished sequences leave, new ones join, and every stream grows by one token.',
-            card: { tag: 'NUMBERS', title: 'Ten milliseconds per turn', stat: { v: '≈ 9 ms', l: 'per iteration at batch 37: 5.2 ms of weight streaming plus about 0.1 ms per sequence' },
-              more: '<p>Derivation: t ≈ (W/TP + B · L · kv) / BW = 17.5 GB / 3.35 TB/s + 37 × 335 MB / 3.35 TB/s = 5.2 ms + 3.7 ms ≈ 8.9 ms, with L = 4k tokens of context per sequence. Real engines add a few hundred microseconds for kernel launches, sampling and the two all-reduces per layer, hence "roughly ten milliseconds".</p>' },
+            say: 'Then the loop repeats. Each iteration takes about nine milliseconds at this batch size, and up to forty when a large prefill shares the step. Finished sequences leave, new ones join, and every stream grows by one token.',
+            card: { tag: 'NUMBERS', title: 'Nine milliseconds per turn', stat: { v: '≈ 9 ms', l: 'per iteration at batch 37: 5.2 ms of weight streaming plus about 0.1 ms per sequence' },
+              more: '<p>Derivation: t ≈ (W/TP + B · L · kv) / BW = 17.5 GB / 3.35 TB/s + 37 × 335 MB / 3.35 TB/s = 5.2 ms + 3.7 ms ≈ 8.9 ms, with L = 4k tokens of context per sequence. Real engines add a few hundred microseconds for kernel launches, sampling and the two all-reduces per layer, so measured iterations land at 9 to 10 ms.</p>' },
             deep: '<p>Iteration time is the metronome of the whole system. A pure-decode step at batch B costs about <code>5.2 ms + 0.1 ms × B</code> on this configuration (derived in the next step), so 37 sequences take ≈ 9 ms and one replica emits roughly 4,000 tokens per second. A step that also carries a large prefill chunk can stretch to 30–40 ms.</p>' +
               '<p>Tokens are streamed as they are produced: the detokenizer emits text deltas incrementally, handling partial UTF-8 sequences, and the API server relays them as server-sent events, so an agent can start parsing tool-call JSON before the reply has ended.</p>'
           },
@@ -289,6 +291,15 @@
             deep: '<p><b>Capacity wall</b>: about 50 GB of KV pool per GPU ÷ 80 KiB per token ≈ 610k tokens ≈ 150 concurrent 4k contexts. At the wall, throughput is ≈ 7.4k tokens/s and ITL ≈ 20 ms.</p>' +
               '<p>Beyond it the scheduler must queue or preempt (swap KV to CPU, or drop and recompute). Hence the next three mechanisms: keep every batch slot busy (continuous batching), pack KV densely (paging) and never store or compute the same KV twice (prefix caching).</p>' +
               '<p><span class="muted">Real engines also reserve activation and CUDA-graph memory, so the pool is smaller than 80 GB minus weights.</span></p>'
+          },
+          {
+            say: 'Now try it yourself. Click either plot to pick a batch size, and watch the cyan point slide along the memory roof while step time, throughput and the capacity walls respond.',
+            card: { tag: 'TRY IT', title: 'Pick your own batch size', body: 'Click the plots. Throughput reaches half of its ceiling near <b>B = 52</b>, where weights and KV cost the same share of the step. Past <b>150</b> the BF16 pool is full.' },
+            deep: '<p>Throughput is a rational function of the batch, with a hard ceiling set by the KV term alone:</p>' +
+              '<div class="eq">T(B) = B / (a + b·B),   a = 5.2 ms,  b = 0.10 ms   ⇒   T<sub>max</sub> = 1/b = 10,000 tok/s</div>' +
+              '<p>T reaches half of the ceiling at <b>B = a/b = 52</b>, where weight streaming and KV streaming each take half of the step. Beyond it the marginal gain <code>dT/dB = a / (a + bB)²</code> falls with the square of the step time, so the last sequences buy little.</p>' +
+              '<p>The latency target rarely binds first: a 50 ms step allows B ≤ (50 − 5.2) / 0.1 ≈ 448, far above the 150-sequence KV wall. Capacity, not latency, fixes the operating point.</p>' +
+              '<details><summary>Go deeper</summary><p>An FP8 KV cache halves b to 0.05 ms and doubles the wall to 300 sequences, so the ceiling rises to 20,000 tok/s and the half-ceiling knee moves to a/b = 104. Grouped-query or latent attention (MLA) shrink b further, which is why KV compression is worth more than any GEMM trick at long context.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -372,10 +383,21 @@
             S.cur.setAttribute('x1', p1.x); S.cur.setAttribute('x2', p1.x);
             S.d1.setAttribute('cx', p1.x); S.d1.setAttribute('cy', p1.y);
             S.d2.setAttribute('cx', p2.x); S.d2.setAttribute('cy', p2.y);
-            S.readout.textContent = 'B = ' + Math.round(b) + '   ITL ' + it.toFixed(1) + ' ms   ' + Math.round(th).toLocaleString('en-US') + ' tok/s   ' + (b > 150 ? '(needs FP8 KV)' : '');
+            S.readout.textContent = 'B = ' + Math.round(b) + '   ITL ' + it.toFixed(1) + ' ms   ' + Math.round(th).toLocaleString('en-US') + ' tok/s   ' + (b > 300 ? '(beyond both KV walls)' : (b > 150 ? '(needs FP8 KV)' : ''));
           }
           setB(1);
-          hide([DG, cap1, PLT, cap2, pAtt, kvNote, walls, cap3]);
+          /* beat 6: half-ceiling marker, and both plots become clickable */
+          var KN = ctx.group({ parent: G });
+          var xk = P1.toPx(52, 0).x;
+          ctx.line(xk, 262, xk, 440, { color: ctx.alpha('lime', 0.6), sw: 1.2, dash: '3 3', parent: KN });
+          ctx.text(PX, 786, 'dotted line: half of the 10,000 tok/s ceiling at B = a / b = 52', { size: 11.5, font: 'mono', color: 'lime', parent: KN });
+          var hit = ctx.rect(PX, 250, PW, 440, { fill: 'rgba(255,255,255,0.001)', parent: G });
+          hit.addEventListener('click', function (ev) {
+            if (!S.tryB) return;
+            var r = hit.getBoundingClientRect();
+            setB(ctx.clamp(Math.round((ev.clientX - r.left) / r.width * 320), 1, 320));
+          });
+          hide([DG, cap1, PLT, cap2, pAtt, kvNote, walls, cap3, KN]);
           /* beat 1: the roofline */
           return Promise.all([
             ctx.reveal(RL, { from: 'left' }),
@@ -404,6 +426,14 @@
             ctx.reveal(walls, { delay: 300 });
             ctx.reveal(cap3, { from: 'up', delay: 900 });
             return ctx.tween(3200, function (t) { setB(64 + 86 * t); }, 'inOut');
+          }).then(function () { return ctx.beat(5); }).then(function () {
+            /* beat 6: click either plot to pick a batch size */
+            S.tryB = true;
+            hit.style.cursor = 'crosshair';
+            ctx.hud('click a plot to set the batch size B');
+            ctx.reveal(KN, { delay: 200 });
+            return ctx.wait(500).then(function () { return ctx.tween(2200, function (t) { setB(150 - 98 * t); }, 'inOut'); })
+              .then(function () { return ctx.pulse(S.d1, { color: 'lime', times: 2, dur: 600 }); });
           });
         }
       },
@@ -571,7 +601,7 @@
               '<ul><li><b>reservation</b>: slots the request has not used yet but nobody else may touch;</li>' +
               '<li><b>internal fragmentation</b>: slab space that is never used because the output stops early;</li>' +
               '<li><b>external fragmentation</b>: gaps between slabs that no new slab fits into.</li></ul>' +
-              '<p>The vLLM paper measured only 20.4–38.2 % of KV memory holding real token states in FasterTransformer and the Orca allocators. KV memory sets the batch size (previous step), so this waste directly caps throughput.</p>'
+              '<p>The vLLM paper measured only 20.4–38.2 % of KV memory holding real token states in the Orca-style allocators it profiled (max-length, power-of-two and oracle reservation), against 96.3 % for vLLM. KV memory sets the batch size (previous step), so this waste directly caps throughput.</p>'
           },
           {
             say: 'PagedAttention borrows the operating system\'s answer, virtual memory. The KV cache is cut into fixed blocks of sixteen tokens, and the whole pool is just an array of such blocks that any sequence can use.',
@@ -594,14 +624,21 @@
             say: 'Watch the pool. Blocks are allocated as sequences grow, one every sixteen tokens. When the critic\'s sequence ends, its blocks return to the free list at once, and a newcomer reuses them immediately, with no compaction and no copying.',
             card: { tag: 'HOW IT WORKS', title: 'Allocate and free in O(1)', body: 'Growing pops a block from the free list; finishing pushes every block back. All blocks have the same size, so fragmentation cannot happen.' },
             deep: '<p>Allocation is popping a block id from a free list; freeing decrements reference counts and pushes ids back. Because all blocks have the same size, <b>external fragmentation is impossible</b>, and the only waste is the unused tail of each sequence\'s last block.</p>' +
-              '<p>When the pool is exhausted the scheduler <b>preempts</b>: it swaps a victim\'s blocks to CPU memory, or drops them and recomputes later (recompute is often cheaper than a PCIe swap for short sequences). Both work at block granularity.</p>'
+              '<p>When the pool is exhausted the scheduler <b>preempts</b>: it swaps a victim\'s blocks to CPU memory, or drops them and recomputes later (the vLLM paper finds recomputation is often the cheaper of the two, especially at small block sizes). Both work at block granularity.</p>'
           },
           {
             say: 'The result: waste is bounded by one partly filled block per sequence, under four percent. Parallel samples can even share prompt blocks, copy on write. The payoff is two to four times the throughput at the same latency.',
             card: { tag: 'NUMBERS', title: 'Paging pays for itself', stat: { v: '2–4×', l: 'vLLM throughput over Orca and FasterTransformer at equal latency (SOSP 2023)' } },
             deep: '<p>Waste is bounded by one partially filled block per sequence: under 4 % measured, versus only 20.4–38.2 % of KV memory holding real tokens in contiguous allocators. Result: 2–4× throughput at the same latency, with larger gains for long sequences and beam search.</p>' +
               '<p><b>Copy-on-write</b>: parallel samples and beam candidates share prompt blocks through reference counts; a block is copied only when a writer diverges. The same indirection later enables <b>prefix sharing</b> across unrelated requests (next step).</p>' +
+              '<p><b>Beyond one flat pool</b>: hybrid KV-cache managers give sliding-window and state-space layers their own block types, and tiered stores (CPU DRAM, NVMe, remote: LMCache, Mooncake Store) extend the pool past HBM.</p>' +
               '<p><span class="muted">Cost: attention gathers K/V through the table; modern kernels hide it almost entirely.</span></p>'
+          },
+          {
+            say: 'Now inspect the pool yourself. Click any physical block to see which sequence owns it and which logical block it holds, or whether it still sits on the free list.',
+            card: { tag: 'TRY IT', title: 'Click a physical block', body: 'The kernel needs logical to physical. The block manager also keeps the <b>reverse</b>: an owner, a reference count, or the free list. Click and read it.' },
+            deep: '<p>The kernel only needs the forward map, logical block to physical block. The block manager also keeps the reverse: per physical block a reference count, a content hash for prefix caching and a last-access time for LRU. In a compact layout that is about 32 bytes per block, so 38,000 blocks need roughly 1.2 MB of metadata.</p>' +
+              '<p>The forward maps are tiny as well: a 4k-token sequence needs 256 int32 entries, 1 KB, and 150 such sequences 150 KB. Copy-on-write is a single comparison: if <code>ref[blk] &gt; 1</code> when a writer arrives, allocate a fresh block, copy its 1.25 MiB and repoint that one table entry.</p>'
           }
         ],
         run: function (ctx) {
@@ -636,8 +673,9 @@
           for (var b = 0; b < NB; b++) {
             var x = PX0 + (b % COLS) * (BW + GAP), y = PY0 + Math.floor(b / COLS) * (BH + GAP);
             var r = ctx.rect(x, y, BW, BH, { rx: 5, fill: '#0b1324', stroke: ctx.alpha('faint', 1), sw: 1, parent: PG });
-            ctx.text(x + 5, y + 9, '#' + b, { size: 11, font: 'mono', color: 'dim', parent: PG });
+            ctx.text(x + 5, y + 9, '#' + b, { size: 11, font: 'mono', color: 'dim', parent: PG }).style.pointerEvents = 'none';
             var lab = ctx.text(x + BW / 2, y + 30, '', { size: 12.5, font: 'mono', weight: 700, color: 'white', anchor: 'middle', parent: PG });
+            lab.style.pointerEvents = 'none';
             pool.push({ r: r, lab: lab, cx: x + BW / 2, cy: y + BH / 2 });
           }
           var SEQC = { A: 'cyan', B: 'lime', C: 'violet', D: 'orange' };
@@ -728,7 +766,7 @@
             ctx.rect(cxx, cyy, 44, 30, { rx: 4, fill: ctx.alpha(SEQC[sq.id], 0.14), stroke: SEQC[sq.id], sw: 1, parent: cg });
             ctx.text(cxx + 22, cyy + 12, '#' + phys, { size: 11, font: 'mono', color: 'white', anchor: 'middle', parent: cg });
             var fb = ctx.rect(cxx + 3, cyy + 23, 0, 4, { rx: 1, fill: SEQC[sq.id], parent: cg });
-            var cn = ctx.line(cxx + 44, cyy + 15, pool[phys].cx, pool[phys].cy, { color: ctx.alpha(SEQC[sq.id], 0.4), sw: 1, parent: sq.g });
+            var cn = ctx.line(cxx + 44, cyy + 15, pool[phys].cx, pool[phys].cy, { color: ctx.alpha(SEQC[sq.id], 0.3), sw: 0.9, parent: sq.g });
             sq.cons.push(cn);
             return { g: cg, fb: fb };
           }
@@ -757,6 +795,7 @@
             var freed = sq.table.slice();
             freed.forEach(function (p) { setBlock(p, null); ctx.pulse(pool[p].r, { color: 'white', dur: 500 }); });
             free = freed.concat(free);
+            sq.freed = true;
             sq.tt.textContent = 'EOS → ' + freed.length + ' blocks back to the free list';
             sq.cons.forEach(function (c) { c.setAttribute('opacity', 0); });
             sq.g.setAttribute('opacity', 0.35);
@@ -770,6 +809,23 @@
           for (var f2 = 0; f2 < 8; f2++) frames.push(function () { grow(seqs.A, 1); grow(seqs.C, 1); grow(seqs.D, 1); });
           S.pf = 0;
           function apply(n) { while (S.pf < n && S.pf < frames.length) { frames[S.pf](); S.pf++; } }
+          /* beat 6: click a physical block to read its owner (the reverse of the page table) */
+          function describe(i) {
+            var o = null;
+            ['A', 'B', 'C', 'D'].forEach(function (id) {
+              var s = seqs[id];
+              if (o || !s || s.freed) return;
+              var j = s.table.indexOf(i);
+              if (j >= 0) o = { s: s, j: j };
+            });
+            if (o) {
+              evT.textContent = 'physical #' + i + ' = ' + o.s.id + o.j + ':  block_table[' + o.s.id + '][' + o.j + '] = ' + i + ', tokens ' + (16 * o.j) + '–' + (16 * o.j + 15) + ' of ' + NAMES[o.s.id].slice(4);
+              ctx.pulse(o.s.chips[o.j].g, { color: SEQC[o.s.id], dur: 600 });
+            } else if (starSet[i]) evT.textContent = 'physical #' + i + ' belongs to another sequence in the batch (ref = 1)';
+            else evT.textContent = 'physical #' + i + ' is on the free list: any sequence may pop it';
+            ctx.pulse(pool[i].r, { color: 'white', dur: 500 });
+          }
+          pool.forEach(function (p, i) { p.r.addEventListener('click', function () { if (S.tryPool) describe(i); }); });
           /* beat 1: contiguous slabs waste memory */
           return Promise.all([
             ctx.reveal(HB, { from: 'down' }),
@@ -818,6 +874,12 @@
             ctx.hud('KV waste: 60–80 % (contiguous) → < 4 % (paged)');
             return ctx.reveal(WP, { from: 'up' }).then(function () { return ctx.reveal(WC, { from: 'up' }); })
               .then(function () { return ctx.pulse(WP, { color: 'lime', dur: 700 }); });
+          }).then(function () { return ctx.beat(5); }).then(function () {
+            /* beat 6: click any physical block; a short tour of four first */
+            S.tryPool = true;
+            pool.forEach(function (p) { p.r.style.cursor = 'pointer'; });
+            ctx.hud('click a physical block to see its owner');
+            return [26, 43, 0, 27].reduce(function (p, i) { return p.then(function () { describe(i); return ctx.wait(1100); }); }, ctx.wait(400));
           });
         }
       }
@@ -837,7 +899,7 @@
             card: { tag: 'HOW IT WORKS', title: 'A radix tree of KV blocks', body: 'Edges are token spans, nodes own their KV blocks. vLLM gets the same effect by hashing each 16-token block together with its predecessor.' },
             deep: '<p>Two equivalent implementations:</p>' +
               '<ul><li><b>vLLM automatic prefix caching</b>: each full block is keyed by a hash chain <code>h<sub>i</sub> = H(h<sub>i−1</sub>, tokens<sub>16i…16i+15</sub>, extras)</code> (extras: LoRA id, image hashes for multimodal prompts). A hit bumps the block\'s refcount and skips its prefill.</li>' +
-              '<li><b>SGLang RadixAttention</b>: a radix tree whose edges are token spans and whose nodes own KV blocks. Eviction is LRU over leaves with refcount 0; the scheduler orders the queue <i>longest-prefix-first</i> to maximise hits.</li></ul>' +
+              '<li><b>SGLang RadixAttention</b>: a radix tree whose edges are token spans and whose nodes own KV blocks. Eviction is LRU over leaves with refcount 0; the paper\'s cache-aware scheduler orders the queue <i>longest-prefix-first</i> to maximise hits (<code>lpm</code> in SGLang\'s flags).</li></ul>' +
               '<p>Both key on exact token ids, so a single differing token invalidates everything after it.</p>'
           },
           {
@@ -851,7 +913,7 @@
           {
             say: 'Only the four hundred twelve new tokens are prefilled. Time to first token drops from about a third of a second to roughly thirty milliseconds, and the GPU time saved goes to other requests.',
             card: { tag: 'NUMBERS', title: 'Prefill the miss only', stat: { v: '≈ 11×', l: 'lower TTFT for this request: 0.34 s down to about 0.03 s' },
-              more: '<p>Prefill costs about 35 µs per token per GPU here (2 × 17.5 GFLOP at roughly 1 PFLOP/s effective FP8), so 9,596 tokens take ≈ 0.34 s and 412 tokens ≈ 14 ms, plus one decode step and scheduling overhead. SGLang reports up to 6.4× throughput on agentic and few-shot workloads.</p>' },
+              more: '<p>Prefill costs about 35 µs per token per GPU here (2 × 17.5 GFLOP at roughly 1 PFLOP/s effective FP8), so 9,596 tokens take ≈ 0.34 s and 412 tokens ≈ 14 ms, plus one decode step and scheduling overhead. SGLang reports up to 6.4× throughput across workloads such as agent control and few-shot learning.</p>' },
             deep: '<div class="eq">TTFT ≈ n<sub>new</sub> · c<sub>tok</sub> + t<sub>step</sub> ≈ 412 × 35 µs + ≈ 15 ms ≈ 30 ms</div>' +
               '<p>Without the cache: 9,596 × 35 µs ≈ 0.34 s. The 412 new tokens attend over the cached 9,184 through the paged KV cache, so the result is exact, not approximate.</p>' +
               '<p>Beyond latency, every cached token is prefill compute the GPU can spend on somebody else\'s request, so throughput improves by a similar factor whenever prefill dominates.</p>'
@@ -985,9 +1047,9 @@
         title: 'Chunked prefill',
         beats: [
           {
-            say: 'Prefill and decode have opposite personalities. A twelve thousand token prompt from the writer is a huge compute bound job. If the engine runs it alone, sixty four decoding agents freeze for almost half a second.',
+            say: 'Prefill and decode have opposite personalities. A twelve thousand token prompt from the writer is a huge compute bound job. If the engine runs it alone, sixty four concurrent decoding streams freeze for almost half a second.',
             card: { tag: 'NUMBERS', title: 'A half-second stall', stat: { v: '444 ms', l: 'worst inter-token latency when a 12,288-token prefill monopolises one iteration' } },
-            deep: '<p>Prefill is compute-bound: 12,288 tokens × 35 µs ≈ 430 ms of tensor-core work, so the iteration that contains it lasts about 444 ms. Every decoder sharing that iteration waits for it: 64 agents see one 444 ms gap between two tokens, against a normal 11.6 ms. This is a <b>generation stall</b>: tail ITL and any streaming UI suffer even though average throughput looks fine.</p>' +
+            deep: '<p>Prefill is compute-bound: 12,288 tokens × 35 µs ≈ 430 ms of tensor-core work, so the iteration that contains it lasts about 444 ms. Every decoder sharing that iteration waits for it: 64 concurrent streams (agents from many creators\' jobs) see one 444 ms gap between two tokens, against a normal 11.6 ms. This is a <b>generation stall</b>: tail ITL and any streaming UI suffer even though average throughput looks fine.</p>' +
               '<p>Prefill-prioritising schedulers, like early vLLM, make it worse: every new arrival pre-empts decode for a whole iteration.</p>'
           },
           {
@@ -1004,13 +1066,24 @@
             deep: '<table><tr><th></th><th>prefill alone</th><th>chunked, τ = 1,024</th></tr>' +
               '<tr><td>worst ITL (64 decoders)</td><td>≈ 444 ms</td><td>≈ 38 ms</td></tr>' +
               '<tr><td>new request TTFT</td><td>≈ 0.43 s</td><td>13 × 38 ms ≈ 0.49 s</td></tr></table>' +
-              '<p>Reported: 2.6× serving capacity for Mistral-7B on one A100 and up to 5.6× for Falcon-180B (Sarathi-Serve, OSDI 2024). Chunked prefill is on by default in vLLM V1 and SGLang.</p>'
+              '<p>Reported over vLLM: 2.6× serving capacity for Mistral-7B on one A100 and up to 5.6× for Falcon-180B with pipeline parallelism (Sarathi-Serve, OSDI 2024). Chunked prefill is on by default in vLLM V1, and SGLang exposes it through the <code>chunked_prefill_size</code> flag.</p>'
           },
           {
             say: 'The price is a slightly slower first token for the newcomer, about fourteen percent here. The budget is set from the latency target: below roughly three hundred thirty tokens an iteration is still memory bound, so prefill rides along for free.',
-            card: { tag: 'TRADE-OFF', title: 'The budget trades TTFT for ITL', body: 'A bigger budget finishes the prompt sooner but stretches every decoder\'s step. Pick <b>τ</b> from the TPOT objective, not from peak throughput.' },
+            card: { tag: 'TRADE-OFF', title: 'The budget trades TTFT for ITL', body: 'A bigger budget finishes the prompt sooner, up to a point, but stretches every decoder\'s step. Pick <b>τ</b> from the TPOT objective, not from peak throughput.' },
             deep: '<p>Choosing τ: below ≈ 330 tokens (t<sub>mem</sub> / c<sub>tok</sub> = 11.6 ms / 35 µs) the iteration is still memory-bound, so prefill tokens ride along for free. Above it each extra token costs c<sub>tok</sub>. The TPOT objective fixes the ceiling: for 50 ms, τ ≤ (50 − 2) / 0.035 ≈ 1,370.</p>' +
               '<p>TTFT: 0.43 s → 0.49 s (+14 %). Knobs: <code>max_num_batched_tokens</code> in vLLM, <code>chunked_prefill_size</code> in SGLang. Budgets that are too small add launch overhead and re-read the weights more often.</p>'
+          },
+          {
+            say: 'Your turn. Click the iteration time plot to choose the token budget, and read the worst gap between tokens and the time to first token of the new request. Too small a budget starves the prompt, too large a budget brings the stall back.',
+            card: { tag: 'TRY IT', title: 'Slide the token budget', body: 'Click the plot. At <b>τ = 128</b> the prompt crawls, 2.6 s to first token. At <b>2,048</b> every decoder stalls for 74 ms. Between 768 and 1,370 both stay healthy.' },
+            deep: '<div class="eq">n(τ) = ⌈ P / (τ − d) ⌉,   t<sub>iter</sub>(τ) = max(t<sub>mem</sub>, c<sub>tok</sub>·τ) + t<sub>ovh</sub>,   TTFT ≈ n(τ) · t<sub>iter</sub>(τ)</div>' +
+              '<p>Here P = 12,288 prompt tokens, d = 64 decodes per iteration, t<sub>mem</sub> = 11.6 ms, c<sub>tok</sub> = 35 µs, t<sub>ovh</sub> = 2 ms. The worst ITL grows linearly with τ past the knee at 330, while TTFT explodes when τ is so small that the prompt needs hundreds of nearly empty iterations.</p>' +
+              '<table><tr><th>τ</th><th>128</th><th>256</th><th>512</th><th>1,024</th><th>2,048</th></tr>' +
+              '<tr><td>ITL, ms</td><td>13.6</td><td>13.6</td><td>19.9</td><td>37.8</td><td>73.7</td></tr>' +
+              '<tr><td>iterations</td><td>192</td><td>64</td><td>28</td><td>13</td><td>7</td></tr>' +
+              '<tr><td>TTFT, s</td><td>2.61</td><td>0.87</td><td>0.56</td><td>0.49</td><td>0.52</td></tr></table>' +
+              '<p>Between about 768 and 2,048 TTFT is flat within 10 %; the bumps are ceiling effects of the last, partial chunk. So the ITL target picks the budget: for 50 ms, τ ≤ 1,370.</p>'
           }
         ],
         run: function (ctx) {
@@ -1018,7 +1091,7 @@
           ctx.hud('');
           setStrip(S, [0, 1]);
           var G = clearPanel(ctx, S);
-          heading(ctx, G, 60, 182, 'CHUNKED PREFILL — PIGGYBACK PROMPTS ON DECODE', '64 agents decoding · a 12,288-token Writer prompt arrives at iteration 3', 'red');
+          heading(ctx, G, 60, 182, 'CHUNKED PREFILL — PIGGYBACK PROMPTS ON DECODE', '64 streams decoding · a 12,288-token Writer prompt arrives at iteration 3', 'red');
           var X0 = 150, SW = 56.25, BWd = 34;
           function bxAt(i) { return X0 + i * SW + (SW - BWd) / 2; }
           function chart(y0, h, title, col) {
@@ -1085,6 +1158,7 @@
           ctx.text(1120, 284, '12,288-token context → 13 chunks', { size: 12, font: 'mono', color: 'amber', parent: R });
           ctx.rect(1120, 300, 400, 30, { rx: 4, fill: 'none', stroke: ctx.alpha('amber', 0.6), sw: 1, dash: '4 3', parent: R });
           var pbar = ctx.rect(1120, 300, 400, 30, { rx: 4, fill: ctx.alpha('amber', 0.55), stroke: 'amber', sw: 1, parent: R });
+          var pDone = ctx.text(1320, 315, 'prompt sliced: 12 × 960 + 768 tokens', { size: 11.5, font: 'mono', color: 'amber', anchor: 'middle', parent: R });
           var para1 = ctx.para(1120, 380, [
             'tokens / iter = 64 decode + 960 prefill',
             't_iter ≈ max(t_mem, t_comp) + 2 ms',
@@ -1114,12 +1188,27 @@
           var kx = tpl.toPx(331, 0).x;
           ctx.line(kx, 768, kx, tpl.toPx(331, 13.6).y, { color: ctx.alpha('cyan', 0.6), sw: 1, dash: '2 3', parent: TP });
           var pt = tpl.toPx(1024, 37.8);
-          ctx.circle(pt.x, pt.y, 5, { fill: 'lime', parent: TP, glow: true });
-          ctx.text(pt.x + 12, pt.y + 24, 'τ = 1,024 → 38 ms', { size: 11.5, font: 'mono', color: 'lime', parent: TP });
+          S.tauDot = ctx.circle(pt.x, pt.y, 5, { fill: 'lime', parent: TP, glow: true });
           [[0, '0'], [1024, '1k'], [2048, '2k']].forEach(function (t) { ctx.text(tpl.toPx(t[0], 0).x, 784, t[1], { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: TP }); });
           ctx.text(kx, 784, 'knee ≈ 330', { size: 11, font: 'mono', color: 'cyan', anchor: 'middle', parent: TP });
           ctx.text(1520, 804, 'token budget τ (tokens / iteration)', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: TP });
-          hide([gB, lineB, itlBL, para1, para2, TP, spikeT, lineA]); hide(decB);
+          S.tauR1 = ctx.text(1120, 832, '', { size: 12, font: 'mono', weight: 700, color: 'lime', parent: TP });
+          S.tauR2 = ctx.text(1120, 852, '', { size: 12, font: 'mono', color: 'text', parent: TP });
+          /* the budget model behind the plot: n iterations of t_iter each (see the deep-dive) */
+          function setTau(tau) {
+            var it = Math.max(11.6, 0.035 * tau) + 2, n = Math.ceil(12288 / Math.max(1, tau - 64)), p = tpl.toPx(tau, it);
+            S.tauDot.setAttribute('cx', p.x); S.tauDot.setAttribute('cy', p.y);
+            S.tauR1.textContent = 'τ = ' + Math.round(tau).toLocaleString('en-US') + ' · worst ITL ' + Math.round(it) + ' ms · ' + (it <= 50.05 ? 'within the 50 ms SLO' : 'OVER the 50 ms SLO');
+            S.tauR2.textContent = 'prompt in ' + n + ' iterations → TTFT ≈ ' + (n * it / 1000).toFixed(2) + ' s';
+          }
+          setTau(1024);
+          var tauHit = ctx.rect(1130, 668, 390, 102, { fill: 'rgba(255,255,255,0.001)', parent: G });
+          tauHit.addEventListener('click', function (ev) {
+            if (!S.tryTau) return;
+            var r = tauHit.getBoundingClientRect();
+            setTau(ctx.clamp(Math.round((ev.clientX - r.left) / r.width * 2048 / 16) * 16, 128, 2048));
+          });
+          hide([pDone, gB, lineB, itlBL, para1, para2, TP, spikeT, lineA]); hide(decB);
           hide(chunks.map(function (cc) { return cc.r; })); hide(barsA); hide([gA, R, lg]);
           /* beat 1: prefill alone stalls everyone */
           ctx.reveal([gA, R, lg], { from: 'up', stagger: 150 });
@@ -1149,13 +1238,23 @@
               }));
             }).then(function () {
               return Promise.all([ctx.reveal(lineB, { from: 'draw', dur: 900 }), ctx.reveal(itlBL, { delay: 600 })]);
-            });
+            }).then(function () { return ctx.reveal(pDone, { dur: 300 }); });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 4: the price and the tuning of the budget */
             ctx.hud('worst ITL 444 ms → 38 ms · TTFT +14 %');
             return Promise.all([ctx.reveal(para2, { from: 'right' }), ctx.reveal(TP, { from: 'up', delay: 400 })]).then(function () {
               return ctx.pulse(itlBL, { color: 'red', dur: 600 });
             });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 5: click the plot to set the token budget; a short tour of both extremes first */
+            S.tryTau = true;
+            tauHit.style.cursor = 'crosshair';
+            ctx.hud('click the plot to set the token budget');
+            ctx.highlight(tauHit, { color: 'lime', pad: 3, parent: G });
+            return ctx.wait(500).then(function () { return ctx.tween(1300, function (t) { setTau(1024 - 896 * t); }, 'inOut'); })
+              .then(function () { return ctx.tween(1700, function (t) { setTau(128 + 1920 * t); }, 'inOut'); })
+              .then(function () { return ctx.tween(1200, function (t) { setTau(2048 - 1024 * t); }, 'inOut'); })
+              .then(function () { return ctx.pulse(S.tauDot, { color: 'lime', times: 2, dur: 600 }); });
           });
         }
       }
@@ -1192,13 +1291,13 @@
           },
           {
             say: 'Each pool scales on its own signal, with its own parallel layout. DistServe reports seven point four times more requests at the same latency targets, and DeepSeek serves prefill and decode on very different expert parallel layouts.',
-            card: { tag: 'STATE OF THE ART', title: 'DeepSeek-V3: EP32 and EP320', body: 'Prefill runs on 32-GPU units, decode on 320-GPU units, each with its own expert-parallel degree. The prefill to decode mix is tuned online.' },
+            card: { tag: 'STATE OF THE ART', title: 'DeepSeek-V3: EP32 and EP320', body: 'Prefill runs on 32-GPU units, decode on 320-GPU units, each with its own expert-parallel degree, as the DeepSeek-V3 report describes.' },
             deep: '<ul><li><b>DistServe</b> (OSDI 2024): optimises goodput per GPU; 7.4× more requests or 12.6× tighter SLOs than colocated serving.</li>' +
               '<li><b>Splitwise</b> (ISCA 2024): prefill on H100, decode on cheaper or power-capped parts.</li>' +
               '<li><b>Mooncake</b> (Kimi, FAST 2025): KV-cache-centric, a distributed KV pool in CPU DRAM and SSD across the cluster.</li>' +
               '<li><b>NVIDIA Dynamo</b> + NIXL: disaggregated serving, KV-aware router, GPU-direct KV movement.</li>' +
-              '<li><b>MoE planners</b> gain even more: DeepSeek-V3 serves prefill on 32-GPU units (EP32) and decode on 320-GPU units (EP320).</li></ul>' +
-              '<p>Agent traffic (long prompts, short answers) needs a <b>high P:D ratio</b>; the xPyD mix is tuned online from queue depth and KV occupancy.</p>'
+              '<li><b>MoE models</b> split even further: the DeepSeek-V3 report deploys prefill on 4-node, 32-GPU units (EP32) and decode on 40-node, 320-GPU units (EP320).</li></ul>' +
+              '<p>Agent traffic (long prompts, short answers) needs a <b>high P:D ratio</b>; the xPyD mix has to follow the traffic, guided by queue depth and KV occupancy.</p>'
           }
         ],
         run: function (ctx) {
@@ -1346,7 +1445,7 @@
             deep: '<table><tr><th>70B</th><th>BF16</th><th>FP8</th><th>NVFP4</th></tr>' +
               '<tr><td>weights</td><td>140 GB</td><td>70 GB</td><td>≈ 39 GB</td></tr>' +
               '<tr><td>KV / token</td><td>320 KiB</td><td>160 KiB</td><td>≈ 90 KiB</td></tr></table>' +
-              '<p>Because decode is memory-bound, bytes are speed: at TP = 4 the weight-streaming floor per step falls from 10.4 ms (BF16, 35 GB per GPU) to 5.2 ms (FP8) and about 2.9 ms (NVFP4). FP8 KV doubles concurrent sequences (earlier steps) but needs per-tensor or per-head scales and a long-context accuracy check.</p>'
+              '<p>Because decode is memory-bound, bytes are speed: at TP = 4 the weight-streaming floor per step falls from 10.4 ms (BF16, 35 GB per GPU) to 5.2 ms (FP8) and about 2.9 ms (NVFP4; that format needs Blackwell tensor cores, so the last figure just holds the H100\'s 3.35 TB/s fixed to isolate the byte count). FP8 KV doubles concurrent sequences (earlier steps) but needs per-tensor or per-head scales and a long-context accuracy check.</p>'
           },
           {
             say: 'The second lever is speculative decoding. A cheap draft head proposes several tokens ahead, here four, at a small fraction of the cost of the big model.',
@@ -1360,12 +1459,12 @@
               more: '<p>With independent acceptance probability α per draft token, P(first i tokens accepted) = α<sup>i</sup>. The target pass always contributes one more token (the correction or a bonus), so E[tokens] = 1 + Σ<sub>i=1…k</sub> α<sup>i</sup> = (1 − α<sup>k+1</sup>) / (1 − α). For α = 0.8 and k = 4: 1 + 0.8 + 0.64 + 0.512 + 0.410 = 3.36.</p>' },
             deep: '<p>The target scores k+1 positions in <b>one</b> pass. Accept draft token i with probability min(1, p<sub>i</sub> / q<sub>i</sub>); at the first rejection, resample from norm(max(0, p − q)) and stop. The output distribution is exactly the target\'s.</p>' +
               '<div class="eq">E[tokens / target pass] = (1 − α<sup>k+1</sup>) / (1 − α) = 3.36  (α = 0.8, k = 4)</div>' +
-              '<p>At large batch the verify pass is no longer free (decode becomes compute-bound), so engines adapt k to load. EAGLE-3 reports up to 6.5× at batch 1 and ≈ 1.4× at batch 64 (SGLang).</p>'
+              '<p>At large batch the verify pass is no longer free (decode becomes compute-bound), so engines adapt k to load. EAGLE-3 reports speedups of up to 6.5× at batch 1, and a 1.38× throughput gain at batch 64 in SGLang (Llama 3.1 8B on one H100, chain length 3).</p>'
           },
           {
             say: 'The third lever is CUDA graphs. A decode step launches roughly a thousand small kernels. Capturing them once and replaying with a single launch removes the CPU gaps between kernels, and lets the CPU plan the next step while the GPU runs this one.',
             card: { tag: 'HOW IT WORKS', title: 'One launch instead of a thousand', body: 'Capture the whole decode step once per batch size, replay it with a single launch, and let the CPU schedule the next step in the meantime.' },
-            deep: '<p><b>CUDA graphs</b>: a decode step launches about 1,000 kernels (80 layers × roughly a dozen), each costing 4–6 µs of CPU launch time: several ms of CPU work on a ≈ 12 ms GPU step. Graphs are captured per batch-size bucket (1, 2, 4, 8 … 512, padding up) and replayed with one launch.</p>' +
+            deep: '<p><b>CUDA graphs</b>: a decode step launches about 1,000 kernels (80 layers × roughly a dozen), each costing an estimated 4–6 µs of CPU launch time: several ms of CPU work on a ≈ 12 ms GPU step. Graphs are captured for a ladder of batch sizes (vLLM\'s default: 1, 2, 4, then steps of 8 up to 256 and steps of 16 up to 512); a batch is padded up to the next captured size and replayed with one launch.</p>' +
               '<p>vLLM V1 uses piecewise graphs (attention runs outside the graph) plus full graphs for pure-decode batches. CPU-side scheduling for step <i>t+1</i> overlaps with the GPU executing step <i>t</i>, so the GPU never waits for Python.</p>'
           }
         ],
@@ -1442,7 +1541,7 @@
           var B2 = ctx.group({ parent: G });
           var ver = ctx.node({ x: 820, y: 390, w: 460, h: 50, title: 'target 70B · ONE forward over k + 1 = 5 positions', color: 'amber', titleSize: 13, parent: B2 });
           ctx.text(590, 446, 'verify', { size: 12, font: 'mono', color: 'amber', parent: B2 });
-          var RS = [[' climbs', 'lime'], [' out', 'lime'], [' of', 'lime'], [' the', 'red'], [' its', 'amber']];
+          var RS = [[' climbs', 'lime'], [' out', 'lime'], [' of', 'lime'], [' the', 'red'], [' its · fix', 'amber']];
           var rx2 = 650, res = [];
           RS.forEach(function (t, i) {
             var l = ctx.label(rx2, 470, t[0], { color: t[1], size: 12, anchor: 'start', parent: B2 });
@@ -1454,12 +1553,18 @@
           ctx.text(590, 540, 'E[tok/pass] = (1 − α^(k+1)) / (1 − α) = 3.36', { size: 12.5, font: 'mono', color: 'white', parent: B3 });
           ctx.text(590, 562, 'α = 0.8, k = 4 · accept w.p. min(1, p/q) → lossless', { size: 11, font: 'mono', color: 'dim', parent: B3 });
           var B4 = ctx.group({ parent: G });
-          var sp = ctx.plot(630, 610, 400, 140, function (b) { return 1 + 2.2 / (1 + b / 24); }, { xDomain: [1, 256], yDomain: [0.8, 3.4], color: 'violet', sw: 2.2, xLabel: 'batch size', yLabel: 'speedup', parent: B4 });
+          var spf = function (b) { return 1 + 2.36 / (1 + Math.pow(b / 17, 1.2)); };
+          var sp = ctx.plot(630, 610, 400, 140, spf, { xDomain: [1, 256], yDomain: [0.8, 3.6], color: 'violet', sw: 2.2, xLabel: 'batch size', yLabel: 'speedup', parent: B4 });
           var one = sp.toPx(1, 1);
           ctx.line(630, one.y, 1030, one.y, { color: 'dim', sw: 1, dash: '4 4', parent: B4 });
           ctx.text(622, one.y, '1×', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: B4 });
-          ctx.text(590, 792, 'shape only: once decode is compute-bound the verify', { size: 11, font: 'mono', color: 'dim', parent: B4 });
-          ctx.text(590, 810, 'pass costs real FLOPs → shrink k or disable under load', { size: 11, font: 'mono', color: 'dim', parent: B4 });
+          var an1 = sp.toPx(1, spf(1)), an2 = sp.toPx(64, spf(64));
+          ctx.circle(an1.x, an1.y, 4.5, { fill: 'violet', parent: B4, glow: true });
+          ctx.text(an1.x + 14, an1.y + 4, 'ideal 3.36× (α = 0.8, k = 4)', { size: 11, font: 'mono', color: 'violet', parent: B4 });
+          ctx.circle(an2.x, an2.y, 4.5, { fill: 'lime', parent: B4, glow: true });
+          ctx.text(an2.x + 12, an2.y - 20, 'EAGLE-3 in SGLang ≈ 1.4× at B = 64', { size: 11, font: 'mono', color: 'lime', parent: B4 });
+          ctx.text(590, 792, 'schematic through the two anchors: once decode is compute-bound', { size: 11, font: 'mono', color: 'dim', parent: B4 });
+          ctx.text(590, 810, 'the verify pass costs real FLOPs → shrink k or disable under load', { size: 11, font: 'mono', color: 'dim', parent: B4 });
           /* C: CUDA graphs */
           var C1 = ctx.group({ parent: G });
           ctx.text(1110, 272, 'eager: one launch per kernel', { size: 12, font: 'mono', color: 'dim', parent: C1 });
@@ -1538,7 +1643,7 @@
             say: 'So how do we judge an engine? Not by raw throughput. Push more offered load and throughput keeps rising until the hardware saturates, and it looks healthy the whole way.',
             card: { tag: 'KEY IDEA', title: 'Throughput hides broken promises', body: 'Tokens per second counts a reply that arrived ten seconds late exactly like one that arrived instantly.' },
             deep: '<p>Throughput is monotone in offered load λ until saturation: it rises linearly while the engine keeps up, then flattens at capacity. It says nothing about <i>when</i> tokens arrive. An agent that needs its plan within a second gets no value from a thousand tokens per second delivered after ten.</p>' +
-              '<p>Service-level objectives make the requirement explicit. For interactive agents a typical pair is p90 TTFT ≤ 1 s and p90 TPOT ≤ 50 ms.</p>'
+              '<p>Service-level objectives make the requirement explicit. For interactive agents a plausible pair, and the one assumed in this chamber, is p90 TTFT ≤ 1 s and p90 TPOT ≤ 50 ms.</p>'
           },
           {
             say: 'But queues grow, time to first token explodes, and requests start missing their deadlines. Goodput counts only the requests that meet both latency targets, and it peaks well before saturation.',
@@ -1558,8 +1663,8 @@
             card: { tag: 'PITFALL', title: 'Reported gains do not multiply', body: 'Each number is measured against its own baseline and workload. Combined gains are smaller and depend on traffic shape. Benchmark your own.' },
             deep: '<ul><li><b>Orca</b>: 36.9× over FasterTransformer on GPT-3 175B at equal latency.</li>' +
               '<li><b>vLLM</b>: 2–4× throughput over Orca-style allocators.</li>' +
-              '<li><b>SGLang</b>: up to 6.4× on agentic and few-shot traffic.</li>' +
-              '<li><b>Sarathi-Serve</b>: 2.6× (Mistral-7B) to 5.6× (Falcon-180B) capacity.</li>' +
+              '<li><b>SGLang</b>: up to 6.4× on workloads such as agent control and few-shot learning.</li>' +
+              '<li><b>Sarathi-Serve</b>: 2.6× (Mistral-7B) to 5.6× (Falcon-180B) serving capacity over vLLM.</li>' +
               '<li><b>DistServe</b>: 7.4× more requests at the same objectives.</li>' +
               '<li><b>EAGLE-3</b>: up to 6.5× at batch 1, about 1.4× at batch 64.</li></ul>' +
               '<p>Autoscaling and admission control key on queue depth, KV-pool utilisation and SLO attainment, not GPU utilisation: a memory-bound decode reads "100 % busy" at low FLOP utilisation.</p>'
@@ -1568,7 +1673,7 @@
             say: 'For our trailer, that is what keeps the agent crew responsive. Every call re-sends the same eight thousand token prefix, so prefix aware routing and radix caching prefill only the new tokens, and the real GPU budget goes to video diffusion.',
             card: { tag: 'WHY IT MATTERS', title: 'Agents iterate at conversational speed', body: 'A dozen agents can loop with sub-second TTFT, leaving the cluster\'s real budget, minutes of GPU time per shot, for video.' },
             deep: '<div class="note">For the trailer: every agent call re-sends the same ≈ 8.2k-token system + tools + bible prefix. Prefix-aware routing to a warm replica plus radix caching means only the few hundred new tokens per call are prefilled, so a dozen agents can iterate with sub-second TTFT while the GPU cluster\'s real budget goes to video diffusion.</div>' +
-              '<p>Interactive agents want p90 TTFT ≤ 1 s and p90 TPOT ≤ 50 ms; the LLM pool is sized for the goodput peak of that pair, and the video pool is sized separately for throughput.</p>'
+              '<p>Assuming p90 TTFT ≤ 1 s and p90 TPOT ≤ 50 ms for interactive agents, the LLM pool is sized for the goodput peak of that pair, and the video pool is sized separately for throughput.</p>'
           }
         ],
         run: function (ctx) {
@@ -1607,8 +1712,9 @@
           var pt1 = base.toPx(pk1[0], pk1[1]), pt2 = base.toPx(pk2[0], pk2[1]);
           ctx.circle(pt1.x, pt1.y, 6, { fill: 'red', parent: m1, glow: true });
           ctx.text(pt1.x - 12, pt1.y - 14, 'goodput peak ' + pk1[1].toFixed(2), { size: 11.5, font: 'mono', color: 'red', anchor: 'end', parent: m1 });
-          var fail = base.toPx(1.3, 0.25);
-          ctx.text(fail.x, fail.y, 'queues explode → SLOs missed', { size: 11.5, font: 'mono', color: 'red', parent: m1 });
+          var fail = base.toPx(1.06, 0.4), fail2 = base.toPx(1.06, 0.22);
+          ctx.text(fail.x, fail.y, 'queues explode,', { size: 11.5, font: 'mono', color: 'red', parent: m1 });
+          ctx.text(fail2.x, fail2.y, 'SLOs missed', { size: 11.5, font: 'mono', color: 'red', parent: m1 });
           ctx.circle(pt2.x, pt2.y, 6, { fill: 'lime', parent: m2, glow: true });
           ctx.text(pt2.x - 12, pt2.y - 14, 'goodput peak ' + pk2[1].toFixed(2), { size: 11.5, font: 'mono', color: 'lime', anchor: 'end', parent: m2 });
           S.gcur = ctx.line(PX, PY, PX, PY + PH, { color: ctx.alpha('white', 0.5), sw: 1, dash: '2 3', parent: G });
@@ -1661,9 +1767,8 @@
           setL(0);
           /* interactive: click the plot to place the load cursor (enabled from beat 3) */
           var hit = ctx.rect(PX, PY, PW, PH, { rx: 0, fill: 'rgba(255,255,255,0.001)', parent: G });
-          hit.style.cursor = 'crosshair';
           hit.addEventListener('click', function (ev) {
-            if (!S.tryOn) return;
+            if (!S.tryLoad) return;
             var r = hit.getBoundingClientRect();
             setL(ctx.clamp((ev.clientX - r.left) / r.width * 3, 0, 3));
           });
@@ -1684,7 +1789,8 @@
               .then(function () { return ctx.tween(4000, function (t) { setL(3 * t); }, 'inOut'); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 3: the full stack moves the peak up and right; the plot becomes clickable */
-            S.tryOn = true;
+            S.tryLoad = true;
+            hit.style.cursor = 'crosshair';
             ctx.hud('size for the goodput peak');
             ctx.reveal([lgRows[2], lgRows[3]], { delay: 200, stagger: 250 });
             return Promise.all([ctx.reveal(ct2.curve, { from: 'draw', dur: 1200 }), ctx.reveal(cg2.curve, { from: 'draw', dur: 1200, delay: 300 })]).then(function () {

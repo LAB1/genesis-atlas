@@ -104,12 +104,13 @@
     refs: [
       'Radford et al., <i>Robust Speech Recognition via Large-Scale Weak Supervision (Whisper)</i>, ICML 2023',
       'Zeghidour et al., <i>SoundStream: An End-to-End Neural Audio Codec</i>, IEEE/ACM TASLP 2022',
-      'Défossez et al., <i>High Fidelity Neural Audio Compression (EnCodec)</i>, TMLR 2023; Kumar et al., <i>Improved RVQGAN (DAC)</i>, NeurIPS 2023',
+      'Défossez et al., <i>High Fidelity Neural Audio Compression (EnCodec)</i>, TMLR 2023; Kumar et al., <i>High-Fidelity Audio Compression with Improved RVQGAN (DAC)</i>, NeurIPS 2023',
       'Hsu et al., <i>HuBERT: Self-Supervised Speech Representation Learning by Masked Prediction of Hidden Units</i>, TASLP 2021',
       'Borsos et al., <i>AudioLM: a Language Modeling Approach to Audio Generation</i>, TASLP 2023',
       'Défossez et al., <i>Moshi: a speech-text foundation model for real-time dialogue</i> (Mimi codec), 2024',
       'Desplanques et al., <i>ECAPA-TDNN: Emphasized Channel Attention, Propagation and Aggregation in TDNN Based Speaker Verification</i>, Interspeech 2020',
-      'Chu et al., <i>Qwen2-Audio Technical Report</i>, 2024; Du et al., <i>CosyVoice 2</i>, 2024'
+      'Du et al., <i>CosyVoice 2: Scalable Streaming Speech Synthesis with Large Language Models</i>, 2024',
+      'Chu et al., <i>Qwen2-Audio Technical Report</i>, 2024'
     ],
     setup: function (ctx) {
       var S = ctx.state;
@@ -125,7 +126,7 @@
             card: { tag: 'NUMBERS', title: 'The memo as delivered', stat: { v: '4.0 M', u: 'samples', l: '42 s × 48,000 Hz × 2 channels, compressed by AAC on the phone' } },
             deep: '<p>The waveform above is what the microphone recorded: sound pressure over time, one number per sample. Phones usually store it as AAC-LC in an <code>.m4a</code> container.</p>' +
               '<div class="eq">42 s × 48,000 Hz × 2 channels = 4,032,000 samples</div>' +
-              '<p>AAC encoders prepend about 1,024 to 2,112 samples of priming delay, and phone containers can start at a non-zero timestamp, so the container timestamps and edit list, not a raw sample count, are the truth about where each moment falls. The 4.0 M figure is therefore the decoded length, a few thousand samples off the nominal one.</p>'
+              '<p>AAC streams typically carry roughly 1,000 to 2,100 samples of priming delay (Apple declares 2,112), and phone containers can start at a non-zero timestamp, so the container timestamps and edit list, not a raw sample count, are the truth about where each moment falls. The 4.0 M figure is therefore the decoded length, a few thousand samples off the nominal one.</p>'
           },
           {
             say: 'The first job is unglamorous but essential. Decode it, and average the two channels to mono.',
@@ -491,7 +492,7 @@
               '<p>Positions are fixed sinusoids added once at the input; attention is bidirectional, since the whole 30 s clip is available offline.</p>'
           },
           {
-            say: 'Because Whisper was trained on millions of hours of transcribed audio, these features already encode phonemes, words, language, and a good deal about the speaker.',
+            say: 'Because Whisper large version three was trained on millions of hours of weakly labelled and pseudo labelled audio, these features already encode phonemes, words, language, and a good deal about the speaker.',
             card: { tag: 'WHY IT MATTERS', title: 'Features for free', body: 'One million hours of weakly labelled and four million of pseudo-labelled audio make the frames robust to noise and accents. Audio LLMs start from them.' },
             deep: '<table><tr><th>Whisper-large-v3 encoder</th><th></th></tr>' +
               '<tr><td>training data (v3)</td><td>1 M h weakly labelled + 4 M h pseudo-labelled</td></tr></table>' +
@@ -634,23 +635,23 @@
               '<tr><td>raw Whisper frames</td><td>50 Hz</td><td>2100</td></tr></table>'
           },
           {
-            say: 'Audio language models pool adjacent frames, for example averaging pairs down to twenty five per second, as Qwen two Audio does, or stacking four frames into one at twelve and a half per second.',
-            card: { tag: 'HOW IT WORKS', title: 'Pool neighbouring frames', body: 'Average pairs of frames (Qwen2-Audio, 25 Hz) or stack four into one (12.5 Hz). Two or four times fewer tokens.' },
+            say: 'Audio language models pool adjacent frames, for example averaging pairs down to twenty five per second, as Qwen two Audio does, or using a learned adaptor down to twelve and a half per second, as Kimi Audio does.',
+            card: { tag: 'HOW IT WORKS', title: 'Pool neighbouring frames', body: 'Pool pairs of frames (Qwen2-Audio, 25 Hz) or use an adaptor down to 12.5 Hz (Kimi-Audio; stacking four frames is one way). Two or four times fewer tokens.' },
             deep: '<table><tr><th>method</th><th>rate</th><th>memo (42 s)</th></tr>' +
-              '<tr><td>avg-pool ×2 (Qwen2-Audio)</td><td>25 Hz</td><td>1050</td></tr>' +
-              '<tr><td>stack ×4 + MLP (Kimi-Audio-style)</td><td>12.5 Hz</td><td>525</td></tr>' +
+              '<tr><td>stride-2 pooling (Qwen2-Audio)</td><td>25 Hz</td><td>1050</td></tr>' +
+              '<tr><td>adaptor to 12.5 Hz (Kimi-Audio; e.g. stack ×4 + MLP)</td><td>12.5 Hz</td><td>525</td></tr>' +
               '<tr><td>window Q-Former (SALMONN)</td><td>1 query / 17 frames (~3 Hz)</td><td>~124 (88 per 30 s)</td></tr></table>' +
               '<p>Pooling before the MLP is cheaper than after: the MLP then runs on 25 rather than 50 vectors per second, and averaging adjacent frames is a mild low-pass in time that loses little, because neighbouring 20 ms frames are strongly correlated.</p>'
           },
           {
             say: 'The pooled frames are then projected into the language model\'s embedding space with a small MLP, just like the visual tokens.',
             card: { tag: 'KEY IDEA', title: 'Project to LLM width', body: 'A small MLP maps each pooled 1280-wide frame to the 3584-wide embedding the LLM expects. Audio tokens now sit beside words.' },
-            deep: '<div class="eq">stack: h<sub>j</sub> = MLP([x<sub>4j</sub>; x<sub>4j+1</sub>; x<sub>4j+2</sub>; x<sub>4j+3</sub>]) ∈ ℝ<sup>d<sub>LLM</sub></sup>, &nbsp; [x] ∈ ℝ<sup>4·1280</sup></div>' +
+            deep: '<div class="eq">e.g. stacking four frames: h<sub>j</sub> = MLP([x<sub>4j</sub>; x<sub>4j+1</sub>; x<sub>4j+2</sub>; x<sub>4j+3</sub>]) ∈ ℝ<sup>d<sub>LLM</sub></sup>, &nbsp; [x] ∈ ℝ<sup>4·1280</sup></div>' +
               '<p>As with images, training is staged: first only the projector (and often the encoder) learns from speech–text pairs, then the LLM is unfrozen for audio instruction data.</p>'
           },
           {
-            say: 'Our forty two second memo becomes about one thousand and fifty tokens, roughly seven times more than its transcript, because they also carry tone, pace and emotion.',
-            card: { tag: 'NUMBERS', title: 'Memo in LLM tokens', stat: { v: '1,050', u: 'tokens', l: 'at 25 Hz, about 7× a ~140-token transcript, because tone, pace and emotion are kept' } },
+            say: 'Our forty two second memo becomes about one thousand and fifty tokens, roughly seven and a half times more than its transcript, because they also carry tone, pace and emotion.',
+            card: { tag: 'NUMBERS', title: 'Memo in LLM tokens', stat: { v: '1,050', u: 'tokens', l: 'at 25 Hz, about 7.5× a ~140-token transcript, because tone, pace and emotion are kept' } },
             deep: '<table><tr><th>method</th><th>rate</th><th>memo (42 s)</th></tr>' +
               '<tr><td>transcript only (ASR)</td><td>~3.3 tok/s</td><td>~140</td></tr></table>' +
               '<p>Why not just transcribe? The narrator\'s pacing, emphasis and emotion are exactly what the TTS agent must reproduce; a transcript drops all of it. The LLM can answer "where does the narrator pause for effect?" only from audio tokens.</p>' +
@@ -752,8 +753,8 @@
           },
           {
             say: 'The leftover error is quantized by a second codebook, then a third, each stage refining the one before.',
-            card: { tag: 'KEY IDEA', title: 'Each stage refines the last', body: 'The residual after stage 1 is quantized by codebook 2, then 3, then 4. The error shrinks geometrically, like adding bits to a number.', more: '<p>Training: codebooks updated by EMA k-means, commitment loss β‖z − sg(q)‖², straight-through gradients; <i>quantizer dropout</i> samples N_q per batch so one model serves many bitrates. DAC improves codebook utilisation with low-dimensional factorised, L2-normalised code lookup.</p>' },
-            deep: '<ul><li><b>Training</b>: codebooks updated by EMA k-means, commitment loss β‖z − sg(q)‖², straight-through gradients; <i>quantizer dropout</i> samples N_q per batch so one model serves many bitrates.</li></ul>' +
+            card: { tag: 'KEY IDEA', title: 'Each stage refines the last', body: 'The residual after stage 1 is quantized by codebook 2, then 3, then 4. The error shrinks geometrically, like adding bits to a number.', more: '<p>Training: codebooks updated by EMA k-means, commitment loss β‖z − sg(q)‖², straight-through gradients; <i>quantizer dropout</i> (SoundStream) samples N_q at random per training example so one model serves many bitrates, and EnCodec trains over a list of target bandwidths. DAC improves codebook utilisation with low-dimensional factorised, L2-normalised code lookup.</p>' },
+            deep: '<ul><li><b>Training</b>: codebooks updated by EMA k-means, commitment loss β‖z − sg(q)‖², straight-through gradients; <i>quantizer dropout</i> (SoundStream) samples N_q at random per training example so one model serves many bitrates.</li></ul>' +
               '<div class="eq">E‖z − q<sub>N</sub>‖² decreases roughly geometrically in N — coarse-to-fine, like a bit-plane code</div>' +
               '<p>Why residual, not one big codebook? N<sub>q</sub> stages of K = 1024 entries address K<sup>N<sub>q</sub></sup> = 2<sup>10·N<sub>q</sub></sup> distinct reconstructions (2<sup>80</sup> for N<sub>q</sub> = 8) while storing only N<sub>q</sub>·K = 8,192 vectors and searching N<sub>q</sub>·K distances per frame. A flat codebook of that capacity is impossible to store, train or search.</p>'
           },
@@ -928,13 +929,14 @@
               '<tr><td>EnCodec 24 kHz</td><td>75 Hz</td><td>8 × 1024</td><td>6.0 kbps</td><td>25,200</td></tr>' +
               '<tr><td>DAC 44.1 kHz</td><td>86 Hz</td><td>9 × 1024</td><td>7.75 kbps</td><td>≈ 32,500</td></tr>' +
               '<tr><td>Mimi (Moshi)</td><td>12.5 Hz</td><td>8 × 2048</td><td>1.1 kbps</td><td>4,200</td></tr></table>' +
+              '<p><span class="muted">The DAC paper rounds its 9-codebook setting to 8 kbps; the exact product is 7.75 kbps.</span></p>' +
               '<p>Modelling N<sub>q</sub> parallel streams with an LM: <b>flatten</b> (N<sub>q</sub>·T tokens, expensive), <b>delay pattern</b> (MusicGen: codebook i shifted by i steps, one step predicts all), <b>AR + NAR</b> (VALL-E: autoregress codebook 1, fill 2..8 in parallel), <b>RQ/depth transformer</b> (Moshi: a big temporal transformer per frame, a small depth transformer across the 8 codebooks).</p>' +
               '<div class="note">Low frame rate is the big lever for LLM-style generation: Mimi\'s 12.5 Hz makes a minute of speech 750 frames, cheaper than the text of many prompts.</div>'
           },
           {
             say: 'Now try it yourself: click the codebook buttons to trade bitrate against fidelity, and watch the token count for our memo change.',
             card: { tag: 'TRY IT', title: 'Trade bitrate for fidelity', body: 'Click N_q = 1, 2, 4 or 8. The grid dims, the bitrate and memo size update, and the quality bars show the price of each codebook removed.' },
-            deep: '<p>Each codebook removed saves 75 × 10 = 750 bit/s and 3,150 tokens for the 42 s memo, but throws away the finest layer of detail: breath, room tone, timbre nuance. For narration in the creator\'s own voice, 6 kbps is the sweet spot; for a chat assistant, Mimi\'s 1.1 kbps trades some fidelity for latency.</p>'
+            deep: '<p>Each codebook removed saves 75 × 10 = 750 bit/s and 3,150 tokens for the 42 s memo, but throws away the finest layer of detail: breath, room tone, timbre nuance. For narration in the creator\'s own voice, 6 kbps is a common operating point; for a chat assistant, Mimi\'s 1.1 kbps trades some fidelity for latency.</p>'
           }
         ],
         run: function (ctx) {
@@ -971,7 +973,7 @@
           };
           var cd = ctx.code({ x: 90, y: 676, w: 1440, title: 'bitrate = frames/s × N_q × log2(K)', lang: 'text', size: 13, color: 'amber', typing: true, maxLines: 3, lines: [
             'EnCodec 24 kHz   75 Hz × 8 × 10 bit = 6.0 kbps    memo: 25,200 tokens   (1.5 / 3 / 6 / 12 / 24 kbps with 2…32 codebooks)',
-            'DAC 44.1 kHz     86 Hz × 9 × 10 bit = 7.75 kbps   memo: ≈ 32,500 tokens (music-grade, factorised codes)',
+            'DAC 44.1 kHz     86 Hz × 9 × 10 bit = 7.75 kbps   memo: ≈ 32,500 tokens (universal audio, factorised codes)',
             'Mimi (Moshi)   12.5 Hz × 8 × 11 bit = 1.1 kbps    memo:  4,200 tokens   (streaming, 1st codebook = semantic)'
           ], parent: P });
           hide(chips.map(function (c) { return c.g; })); hide([cn, qn, cd, S.qual, S.brSub]);
@@ -1011,7 +1013,7 @@
           {
             say: 'There are two kinds of discrete audio tokens. Semantic tokens come from self supervised speech models such as HuBERT or w two v BERT: take intermediate features, cluster them with k-means, and each token roughly marks a phonetic unit, whoever is speaking.',
             card: { tag: 'HOW IT WORKS', title: 'Semantic tokens: what was said', body: 'K-means cluster ids of HuBERT features at 50 Hz. Roughly one id per phone, nearly the same for any speaker.' },
-            deep: '<p><b>Semantic tokens</b>: HuBERT is trained to predict k-means cluster ids of masked frames (iteratively re-clustered). Discretise layer-L features (e.g. HuBERT-base layer 9, K = 500) at 50 Hz; deduplicate repeats for LM training. CosyVoice 2\'s supervised tokenizer instead applies FSQ inside an ASR-trained encoder at 25 Hz: more text-aligned.</p>' +
+            deep: '<p><b>Semantic tokens</b>: HuBERT is trained to predict k-means cluster ids of masked frames (iteratively re-clustered). Discretise mid-depth features at 50 Hz (here HuBERT layer 9 with K = 500, a setting in the range HuBERT and SpeechTokenizer use); deduplicate repeats for LM training. CosyVoice 2\'s supervised tokenizer instead inserts FSQ into the encoder of the SenseVoice-Large ASR model at 25 Hz: more text-aligned.</p>' +
               '<p>Low entropy: the same phone gives the same id regardless of who says it, so a language model can predict them like text.</p>'
           },
           {
@@ -1027,8 +1029,8 @@
           },
           {
             say: 'Modern speech generators predict semantic tokens first, which is cheap and text like, and add acoustic detail second, once the content is fixed.',
-            card: { tag: 'STATE OF THE ART', title: 'Semantic first, acoustic second', body: 'AudioLM: semantic, then coarse acoustic, then fine acoustic. CosyVoice 2 and Seed-TTS: an LLM predicts semantic tokens, a flow-matching decoder adds the rest.' },
-            deep: '<p><b>Hierarchies</b>: AudioLM (semantic → coarse acoustic → fine acoustic). Modern TTS (CosyVoice 2, Seed-TTS) = LLM → semantic tokens → flow-matching decoder to mel → vocoder.</p>' +
+            card: { tag: 'STATE OF THE ART', title: 'Semantic first, acoustic second', body: 'AudioLM: semantic, then coarse acoustic, then fine acoustic. CosyVoice 2: an LLM predicts semantic tokens, a flow-matching decoder adds the rest.' },
+            deep: '<p><b>Hierarchies</b>: AudioLM (semantic → coarse acoustic → fine acoustic). CosyVoice 2 = LLM → semantic tokens → chunk-aware flow-matching decoder to mel → vocoder. Seed-TTS has an autoregressive main model and a fully diffusion-based variant (Seed-TTS_DiT).</p>' +
               '<p>Splitting the job this way lets the language model spend its capacity on <i>content and prosody</i> (low entropy, long range) and hands timbre and acoustic detail to a decoder conditioned on the speaker embedding of the last step.</p>'
           },
           {
@@ -1063,7 +1065,7 @@
           var sn = note(ctx, P, 300, y1 + 64, 'semantic ids @ 50 Hz: ≈ one cluster per phone; same ids for any speaker → dedup → "71 12 305 88 240 …"', 'violet');
           var r = ctx.rng(8), acu = ctx.matrix(300, 610, 4, 43, { cell: 20, gap: 2, values: function () { return ctx.cmap('heat', 0.2 + 0.8 * r()); }, parent: P });
           var an = note(ctx, P, 300, 718, 'acoustic ids (RVQ codec @ 50 Hz, 4 × 43): high entropy — timbre, breath, room, mic', 'orange');
-          var tts = ctx.para(300, 780, ['TTS stack (CosyVoice 2 / Seed-TTS style):', 'LLM → semantic tokens → flow-matching → mel → vocoder'], { size: 13, font: 'mono', color: 'text', lh: 21, parent: P });
+          var tts = ctx.para(300, 780, ['TTS stack (CosyVoice 2 style):', 'LLM → semantic tokens → flow-matching → mel → vocoder'], { size: 13, font: 'mono', color: 'text', lh: 21, parent: P });
           var mim = ctx.para(1100, 780, ['SpeechTokenizer (HuBERT teacher) and', 'Mimi (WavLM teacher): codebook 1 is', 'distilled → semantic; rest → acoustic'], { size: 13, font: 'mono', color: 'amber', lh: 21, parent: P });
           var cb1 = ctx.rect(296, 606, 43 * 22 + 4, 28, { rx: 5, stroke: 'amber', sw: 2, dash: '6 4', parent: P });
           var cb1t = ctx.text(1256, 596, 'codebook 1 ← semantic teacher', { size: 12, font: 'mono', color: 'amber', anchor: 'end', parent: P });
@@ -1111,16 +1113,16 @@
         title: 'Speaker embedding',
         beats: [
           {
-            say: 'Finally, the voice identity. A speaker verification network such as ECAPA TDNN reads filterbank frames through dilated convolutions with squeeze and excitation.',
-            card: { tag: 'HOW IT WORKS', title: 'ECAPA-TDNN front end', body: 'Eighty-dimensional filterbank frames go through dilated Res2 convolutions with squeeze-and-excitation, at any clip length.' },
-            deep: '<p><b>ECAPA-TDNN</b>: 80-d fbank → Conv1D(k5) → 3 SE-Res2Blocks (dilations 2, 3, 4; C = 1024) → multi-layer feature aggregation → attentive statistics pooling → FC → <b>192-d</b>.</p>' +
+            say: 'Finally, the voice identity. A speaker verification network such as ECAPA TDNN reads eighty dimensional spectral frames through dilated convolutions with squeeze and excitation.',
+            card: { tag: 'HOW IT WORKS', title: 'ECAPA-TDNN front end', body: 'Eighty-dimensional spectral frames (MFCCs in the paper) go through dilated Res2 convolutions with squeeze-and-excitation, at any clip length.' },
+            deep: '<p><b>ECAPA-TDNN</b>: 80-d MFCC / fbank → Conv1D(k5) → 3 SE-Res2Blocks (dilations 2, 3, 4; C = 1024) → multi-layer feature aggregation → attentive statistics pooling → FC → <b>192-d</b>.</p>' +
               '<p>Dilations 2, 3, 4 widen the temporal receptive field without more parameters; the Res2 split processes channel groups hierarchically for multi-scale features; squeeze-and-excitation re-weights channels using global clip statistics.</p>'
           },
           {
             say: 'Attentive statistics pooling collapses any length of speech into one weighted mean and standard deviation, and a linear layer produces a one hundred ninety two dimensional embedding.',
             card: { tag: 'NUMBERS', title: 'One vector per voice', stat: { v: '192', u: 'dims', l: 'ECAPA-TDNN embedding for any length of speech, trained with AAM-softmax on 5,994 speakers' }, more: '<p>AAM-softmax adds an additive angular margin m to the target-class angle: logit = s·cos(θ<sub>y</sub> + m), with s = 30 and m = 0.2. It forces embeddings of one speaker into a tight angular cone, exactly the geometry that cosine scoring relies on later.</p>' },
             deep: '<div class="eq">α<sub>t</sub> = softmax<sub>t</sub>(vᵀ tanh(W h<sub>t</sub> + b)), &nbsp; μ = Σ α<sub>t</sub> h<sub>t</sub>, &nbsp; σ = √(Σ α<sub>t</sub> h<sub>t</sub>⊙h<sub>t</sub> − μ⊙μ)</div>' +
-              '<p>Trained with AAM-softmax (m = 0.2, s = 30) on VoxCeleb2 (5,994 speakers); ≈ 0.9% EER on VoxCeleb1-O. Attention weights let the pooling focus on frames rich in speaker information, and ignore silence.</p>'
+              '<p>Trained with AAM-softmax (m = 0.2, s = 30) on VoxCeleb2 (5,994 speakers); 0.87% EER on VoxCeleb1-O for the C = 1024 model. Attention weights let the pooling focus on frames rich in speaker information, and ignore silence.</p>'
           },
           {
             say: 'Clips of the same person land close together in cosine distance, while other speakers stay far away.',
@@ -1132,7 +1134,7 @@
             say: 'After a consent check, this embedding and a clean reference clip condition the voice that will narrate the trailer.',
             card: { tag: 'PITFALL', title: 'A voice is biometric data', body: 'Cloning is only enabled for the account owner\'s verified voice, and every generated line is watermarked.' },
             deep: '<ul><li><b>Cloning</b>: zero-shot TTS conditions on the embedding (CosyVoice uses an x-vector) and/or on the reference audio in-context (F5-TTS, Seed-TTS).</li>' +
-              '<li><b>Evaluation</b>: the critic scores the synthesised narration with speaker similarity (cosine of WavLM-TDNN embeddings, "SIM-o"); typical good zero-shot systems reach 0.6–0.75.</li>' +
+              '<li><b>Evaluation</b>: the critic scores the synthesised narration with speaker similarity (cosine of WavLM-large-based speaker-verification embeddings, "SIM-o"); F5-TTS reports 0.66 on LibriSpeech-PC (Voicebox 0.64, E2 TTS 0.69, real speech 0.69).</li>' +
               '<li><b>Safety</b>: cloning only the account owner\'s verified voice, plus audio watermarking (e.g. AudioSeal) on every generated line.</li></ul>'
           }
         ],
@@ -1141,7 +1143,7 @@
           ctx.remove(S.p8, 400);
           var P = S.p9 = ctx.group();
           title(ctx, P, 90, 372, 'ECAPA-TDNN speaker embedding');
-          var blocks = [['80-d fbank frames', 'T × 80 · any length', 'orange'], ['Conv1D + 3 SE-Res2Blocks', 'dilation 2, 3, 4 · C 1024', 'orange'], ['multi-layer aggregation', 'concat block outputs', 'orange'], ['attentive stats pooling', 'weighted μ, σ over time', 'amber'], ['FC → 192-d embedding', 'AAM-softmax in training', 'amber']];
+          var blocks = [['80-d MFCC / fbank frames', 'T × 80 · any length', 'orange'], ['Conv1D + 3 SE-Res2Blocks', 'dilation 2, 3, 4 · C 1024', 'orange'], ['multi-layer aggregation', 'concat block outputs', 'orange'], ['attentive stats pooling', 'weighted μ, σ over time', 'amber'], ['FC → 192-d embedding', 'AAM-softmax in training', 'amber']];
           var ns = blocks.map(function (b, i) { return ctx.node({ x: 290, y: 430 + i * 88, w: 390, h: 58, title: b[0], sub: b[1], color: b[2], titleSize: 14, subSize: 11, glow: false, parent: P }); });
           var ls = [];
           for (var i = 0; i < 4; i++) ls.push(ctx.link(ns[i], ns[i + 1], { color: 'orange', straight: true, parent: P }));

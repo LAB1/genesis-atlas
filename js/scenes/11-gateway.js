@@ -95,12 +95,13 @@
     refs: [
       'Eisenbud et al., <i>Maglev: A Fast and Reliable Software Network Load Balancer</i>, USENIX NSDI 2016',
       'Dean &amp; Barroso, <i>The Tail at Scale</i>, Communications of the ACM 56(2), 2013',
-      'Nichols &amp; Jacobson, <i>Controlling Queue Delay</i>, ACM Queue 2012; Nichols et al., <i>RFC 8289: Controlled Delay Active Queue Management</i>, IETF 2018',
-      'Beyer et al. (eds.), <i>Site Reliability Engineering</i>, O\'Reilly 2016, ch. 21 “Handling Overload” and ch. 22 “Addressing Cascading Failures”',
+      'Nichols &amp; Jacobson, <i>Controlling Queue Delay</i>, ACM Queue 2012',
+      'Nichols et al., <i>RFC 8289: Controlled Delay Active Queue Management</i>, IETF 2018',
+      'Beyer et al. (eds.), <i>Site Reliability Engineering: How Google Runs Production Systems</i>, O\'Reilly 2016',
       'ATM Forum, <i>Traffic Management Specification 4.0</i> (GCRA), 1996',
       'Brooker, <i>Exponential Backoff and Jitter</i>, AWS Architecture Blog, 2015',
-      'Envoy Proxy documentation: <i>HTTP filter chain, JWT authentication, ext_authz, global and local rate limiting, circuit breaking, retry budgets</i>, 2025; SPIFFE project, <i>Secure Production Identity Framework for Everyone</i> specification (SVIDs, workload API), CNCF 2024',
-      'Kwiatkowski et al., <i>Post-quantum hybrid ECDHE-MLKEM key agreement for TLS 1.3</i> (X25519MLKEM768), IETF draft-ietf-tls-ecdhe-mlkem, 2025'
+      'Envoy Proxy documentation: <i>HTTP filter chain, JWT authentication, ext_authz, global and local rate limiting, circuit breaking, retry budgets</i>, 2025; SPIFFE project, <i>Secure Production Identity Framework for Everyone</i> specification (SVIDs, workload API), CNCF, graduated 2022',
+      'Kwiatkowski et al., <i>RFC 10024: Post-Quantum Traditional (PQ/T) Hybrid Key Agreement Mechanisms for TLS 1.3</i> (X25519MLKEM768), IETF 2026'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -119,7 +120,7 @@
             deep: '<table><tr><th>Layer</th><th>Decides</th><th>Cost / decision</th></tr>' +
               '<tr><td>Anycast + GeoDNS</td><td>which PoP / region</td><td>0 (routing)</td></tr>' +
               '<tr><td>Scrub / WAF</td><td>attack vs user</td><td>ns–µs (XDP/eBPF, SYN cookies)</td></tr>' +
-              '<tr><td>L4 LB</td><td>which gateway host</td><td>~100 ns per packet (hash + table)</td></tr></table>' +
+              '<tr><td>L4 LB</td><td>which gateway host</td><td>~100–350 ns per packet (hash + table; Maglev reports about 350 ns)</td></tr></table>' +
               '<p>None of these layers parses HTTP. They work on packet headers, which is why they keep up with line rate even under attack.</p>'
           },
           {
@@ -149,7 +150,7 @@
             ['Creators', 'mobile · web · API', 'user', 'white', 'many devices', '—'],
             ['Anycast Edge', 'GeoDNS · BGP · PoP', 'globe', 'blue', 'which PoP?', 'RTT ~5–30 ms'],
             ['Scrub + WAF', 'DDoS · bots · rules', 'shield', 'pink', 'attack or user?', 'inline · ns–µs'],
-            ['L4 LB', 'ECMP · Maglev', 'net', 'blue', 'which host?', '~100 ns/pkt'],
+            ['L4 LB', 'ECMP · Maglev', 'net', 'blue', 'which host?', '~100–350 ns/pkt'],
             ['L7 Gateway', 'TLS · JWT · routes', 'server', 'blue', 'who? allowed?', '~10–100 µs'],
             ['Admission', 'rate · quota · shed', 'queue', 'cyan', 'may it run now?', '< 1 ms'],
             ['Job Services', 'gRPC · mTLS', 'layers', 'magenta', 'do the work', '→ orchestrator']
@@ -247,7 +248,7 @@
           {
             say: 'Every edge location announces the same IP prefix over BGP. That is anycast: the internet\'s own routing delivers each user to a nearby point of presence.',
             card: { tag: 'KEY IDEA', title: 'One address, many places', body: 'Every point of presence advertises the same prefix. BGP path selection, not DNS, decides which one you reach.' },
-            deep: '<p><b>Anycast</b>: every PoP advertises <code>203.0.113.0/24</code>; BGP picks the “best” path (shortest AS path, local preference), usually but not always the geographically nearest. Risk: route flaps can move a TCP flow mid-connection, which QUIC connection IDs help survive.</p>' +
+            deep: '<p><b>Anycast</b>: every PoP advertises <code>203.0.113.0/24</code>; BGP picks the “best” path (shortest AS path, local preference), usually but not always the geographically nearest. Risk: a route change can move a TCP flow to another PoP mid-connection, which resets it; QUIC\'s preferred-address feature (RFC 9000) lets a server move the client from the shared anycast address to a unicast one.</p>' +
               '<p>Nearest by BGP is not nearest by latency, because path selection ignores RTT. Operators steer with communities and AS-path prepending, and verify with client-side RTT probes.</p>'
           },
           {
@@ -258,19 +259,19 @@
           },
           {
             say: 'When the Frankfurt site withdraws its route for maintenance, its users quietly shift to London. There is no DNS record to expire, only a routing update. Click any site to withdraw it yourself.',
-            card: { tag: 'TRY IT', title: 'Click a site to withdraw it', body: 'Its users re-route in seconds, because failover is a BGP route withdrawal. DNS failover would wait out a 30 to 60 second TTL plus every resolver cache.' },
-            deep: '<p>Failover is a route withdrawal: BGP convergence takes seconds, and there is no DNS TTL to wait out. The traffic that was going to Frankfurt lands on the next-best PoP by AS path, here London. The number beside each site is how many of the 42 sample users it serves. Click any other site to take it out as well, and click it again to bring it back.</p>' +
+            card: { tag: 'TRY IT', title: 'Click a site to withdraw it', body: 'Most networks re-route within about ten seconds, because failover is a BGP route withdrawal. DNS failover would wait out a 30 to 60 second TTL plus every resolver cache.' },
+            deep: '<p>Failover is a route withdrawal: BGP convergence typically takes seconds to tens of seconds (a 2024 measurement study found about 80 percent of the Internet converged within roughly 10 seconds, with a long tail), and there is no DNS TTL to wait out. The traffic that was going to Frankfurt lands on the next-best PoP by AS path, here London. The number beside each site is how many of the 42 sample users it serves. Click any other site to take it out as well, and click it again to bring it back.</p>' +
               '<p>The catch is capacity. Peers must absorb the shifted load, so each site is provisioned with N+1 headroom, or the failover itself becomes the overload: withdraw two neighbours and watch the survivor collect both crowds.</p>'
           },
           {
             say: 'Anycast is also the first DDoS defense. A flood aimed at one address is split by BGP across dozens of sites, so no single site takes the whole attack.',
             card: {
-              tag: 'NUMBERS', title: 'Absorb it everywhere', stat: { v: '22.2 Tb/s', l: 'a UDP flood Cloudflare reported mitigating in September 2025: only a globally spread edge can soak that up' },
-              more: '<p>Big floods are usually <i>reflection</i> attacks: a small spoofed request makes an open service send a large reply to the victim. Typical bandwidth amplification is about 28–54× for DNS, up to 556× for NTP, and over 50,000× for memcached, which produced the 1.35 Tb/s attack on GitHub in 2018. Edges drop the well-known reflector source ports by default.</p>'
+              tag: 'NUMBERS', title: 'Absorb it everywhere', stat: { v: '31.4 Tb/s', l: 'a flood Cloudflare reported mitigating in late 2025, lasting 35 seconds: only a globally spread edge can soak that up' },
+              more: '<p>Some big floods are <i>reflection</i> attacks: a small spoofed request makes an open service send a large reply to the victim. Published amplification factors are about 28–54× for DNS, roughly 557× for NTP, and up to about 51,000× for memcached, which produced the 1.35 Tb/s attack on GitHub in 2018. The record floods of 2025 came instead from botnets sending traffic directly. Edges commonly drop traffic from well-known reflector source ports.</p>'
             },
             deep: '<p><b>Volumetric math</b>: an attack of A b/s from bots spread by BGP over N PoPs lands roughly</p>' +
               '<div class="eq">A<sub>PoP</sub> ≈ A · w<sub>i</sub>, &nbsp; Σ w<sub>i</sub> = 1 &nbsp;⇒&nbsp; needs C<sub>PoP</sub> ≥ max<sub>i</sub> A·w<sub>i</sub></div>' +
-              '<p>Volumetric floods passed 20 Tb/s in 2025. Only a network with hundreds of Tb/s of aggregate edge capacity absorbs that, and only if anycast spreads it.</p>'
+              '<p>Volumetric floods passed 30 Tb/s in 2025. Only a network whose aggregate edge capacity is many times that peak absorbs it, and only if anycast spreads the load.</p>'
           },
           {
             say: 'Each site then scrubs locally, with SYN cookies, client fingerprints and firewall rules, so only clean traffic moves inward.',
@@ -367,7 +368,7 @@
               'api.genesis.example.   60 IN CNAME  eu.api.genesis.example.',
               'eu.api.genesis.example. 60 IN A      203.0.113.7   ; anycast',
               '; ECS lets DNS see the user\'s /24, not the resolver',
-              '; TTL 60 s bounds DNS failover; anycast fails over in seconds'
+              '; TTL 60 s bounds DNS failover; anycast: ~10 s typical'
             ] });
             return ctx.reveal(dns, { from: 'right' }).then(function () { return ctx.pulse(dns, { color: 'blue', dur: 700 }); });
           }
@@ -378,7 +379,7 @@
               var dx = p.name === 'FRA' ? 72 : (p.name === 'LHR' ? -78 : (p.x > 700 ? -62 : 0)), dy = (p.name === 'FRA' || p.name === 'LHR') ? 44 : 28;
               p.tag = ctx.label(p.x + dx, p.y + dy, p.name + ': BGP withdraw', { color: 'red', textColor: 'white', bgAlpha: 0.55, size: 11, parent: map, opacity: 0 });
             });
-            var line3 = ctx.text(60, 712, 'Anycast failover = route withdrawal (seconds), not DNS TTL expiry + resolver caching', { size: 13, font: 'mono', color: 'text', parent: B, opacity: 0 });
+            var line3 = ctx.text(60, 712, 'Anycast failover = route withdrawal (~10 s typical), not DNS TTL expiry + resolver caching', { size: 13, font: 'mono', color: 'text', parent: B, opacity: 0 });
             pops.forEach(function (p) {
               p.g.style.cursor = 'pointer';
               p.g.addEventListener('click', function () {
@@ -455,18 +456,18 @@
             say: 'Inside the site, routers spread packets across a fleet of layer-four load balancers using equal-cost multipath hashing. Behind them stand the gateway hosts that will do the real work.',
             card: { tag: 'HOW IT WORKS', title: 'ECMP: hash, do not coordinate', body: 'Routers hash each flow\'s five-tuple onto the balancers. Adding or removing one reshuffles some flows, which is harmless here.' },
             deep: '<p><b>ECMP</b>: routers hash the 5-tuple (source and destination address and port, protocol) onto k equal-cost next hops, which are the L4 balancers. Adding or removing a balancer rehashes some flows, which is harmless because every balancer computes the <i>same</i> backend choice.</p>' +
-              '<p>Modern software L4 tiers such as Katran (Meta, XDP/eBPF) and Cloudflare\'s Unimog run on commodity servers and sustain millions of packets per second per core.</p>'
+              '<p>Software L4 tiers such as Maglev, Katran (Meta, XDP/eBPF) and Cloudflare\'s Unimog run on commodity servers; in Maglev\'s own measurements one machine forwards about 12 million small packets per second with kernel bypass.</p>'
           },
           {
             say: 'Each balancer builds the same Maglev lookup table from the same backend list. Every backend takes turns claiming its next preferred free slot, until all thirteen slots are owned.',
             card: {
-              tag: 'NUMBERS', title: 'A prime-sized lookup table', stat: { v: '65,537', u: 'slots', l: 'typical production table size (a prime); the demo uses 13. Each host owns floor or ceiling of M over N slots' },
+              tag: 'NUMBERS', title: 'A prime-sized lookup table', stat: { v: '65,537', u: 'slots', l: 'the default table size in the Maglev paper (a prime); the demo uses 13. Each host owns floor or ceiling of M over N slots' },
               more: '<p>Why the counts differ by at most one: in every round each backend claims exactly one free slot, so after r rounds all backends own r slots. Because every permutation eventually visits every slot (M is prime), a backend can always find a free one until the table is full.</p>'
             },
             deep: '<p><b>Maglev table</b> (M prime, e.g. 65,537; here 13). Each backend i has a permutation of table slots:</p>' +
               '<div class="eq">offset<sub>i</sub> = h<sub>1</sub>(name<sub>i</sub>) mod M, &nbsp; skip<sub>i</sub> = h<sub>2</sub>(name<sub>i</sub>) mod (M−1) + 1<br>perm<sub>i</sub>[j] = (offset<sub>i</sub> + j·skip<sub>i</sub>) mod M</div>' +
               '<pre>while filled &lt; M:\n  for i in backends:\n    s = next free slot in perm[i]\n    entry[s] = i</pre>' +
-              '<p>Because M is prime, every permutation visits every slot exactly once. Round-robin claiming gives near-perfect balance: each backend owns ⌊M/N⌋ or ⌈M/N⌉ slots.</p>'
+              '<p>Because M is prime, every permutation visits every slot exactly once. Round-robin claiming gives near-perfect balance: each backend owns ⌊M/N⌋ or ⌈M/N⌉ slots. The paper picks M above 100·N to keep the imbalance under 1 %.</p>'
           },
           {
             say: 'To route a packet, hash its five-tuple, take the remainder modulo the table size, and read the entry. Because every balancer holds the identical table, any of them can take any packet.',
@@ -478,7 +479,7 @@
             say: 'When a gateway host dies, the table is rebuilt with minimal disruption: the dead host\'s slots move, plus the odd extra slot. Click any gateway to kill it and watch the table change.',
             card: { tag: 'TRY IT', title: 'Click a gateway to kill it', body: 'Here gw-3 died and 3 of 13 slots changed: 2 were its own, 1 was collateral. Minimal is not zero.' },
             deep: '<p>Properties of the table: near-perfect balance and <b>near-minimal disruption</b> when the set changes. Minimal is not zero: a removed backend frees its slots, and because the fill order shifts, a few other slots can change too (here 1 of 13). The paper trades a little extra disruption for perfect balance.</p>' +
-              '<details><summary>Go deeper</summary><p>The paper compares tables of 65,537 and 655,373 entries. A larger M lowers both the imbalance and the extra churn, since each is on the order of N/M of the table, at the price of a bigger table and slower generation. Consistent hashing (Karger) disrupts less but balances worse, which matters more for a load balancer than for a cache.</p></details>'
+              '<details><summary>Go deeper</summary><p>The paper compares tables of 65,537 and 655,373 entries in a 1,000-backend test. The larger table balances better and changes fewer entries when backends fail, at the price of a bigger table and slower generation (1.8 ms versus 22.9 ms). Consistent hashing (Karger) disrupts less but balances worse, which matters more for a load balancer than for a cache.</p></details>'
           },
           {
             say: 'A connection tracking table pins established flows to their backend, so even the few remapped slots do not break live connections. Replies skip the balancer entirely, using direct server return.',
@@ -514,7 +515,7 @@
           /* beat 1: the table is filled in population order */
           function b1() {
             var g = ctx.group({ parent: B });
-            ctx.text(tx, 262, 'Maglev lookup table  (M = 13 here · 65,537 in production)', { size: 13, font: 'mono', color: 'text', parent: g });
+            ctx.text(tx, 262, 'Maglev lookup table  (M = 13 here · 65,537 by default in the paper)', { size: 13, font: 'mono', color: 'text', parent: g });
             for (var j = 0; j < M; j++) {
               ctx.text(tx + j * cw + 24, 286, String(j), { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: g });
               cells.push(ctx.rect(tx + j * cw, 298, 48, 44, { rx: 5, fill: 'rgba(255,255,255,0.03)', stroke: 'faint', sw: 1, parent: g }));
@@ -628,7 +629,7 @@
             say: 'The chosen gateway host runs a layer-seven proxy, like Envoy, as a chain of filters. Each filter can continue, change, or answer the request itself.',
             card: { tag: 'KEY IDEA', title: 'A pipeline of filters', body: 'Seven filters see each decoded request in order. Every one can pass it on, enrich it, or short-circuit with a precise error.' },
             deep: '<p>An L7 proxy is a pipeline of <b>filters</b> over a decoded request; each may continue, mutate, or short-circuit with a response. Envoy models this as an HTTP filter chain per listener, with per-route overrides.</p>' +
-              '<p>The order is a security decision: cheap checks that need no identity run first, everything that touches data or policy runs after authentication. End to end the chain costs roughly 50–150 µs of CPU per request.</p>'
+              '<p>The order is a security decision: cheap checks that need no identity run first, everything that touches data or policy runs after authentication. End to end, a lean chain plausibly costs on the order of 0.1 ms of CPU per request; for scale, Istio\'s published sidecar figure, with mTLS enabled, is about 0.2 vCPU per 1,000 requests per second, or 200 µs each.</p>'
           },
           {
             say: 'TLS one point three terminates here, with a hybrid post-quantum key exchange, and the HTTP codec decodes the streams. Now the request has a hostname, a method and a path.',
@@ -636,7 +637,7 @@
               tag: 'STATE OF THE ART', title: 'Post-quantum by default', body: 'The hybrid X25519MLKEM768 key share is now the default in major browsers and CDNs, protecting today\'s traffic from harvest-now-decrypt-later.',
               more: '<p>ML-KEM-768 has a 1,184-byte encapsulation key and a 1,088-byte ciphertext. With X25519 added, the hybrid key share is 1,216 bytes from the client and 1,120 bytes from the server. The ClientHello therefore spans two packets, which once tripped middleboxes that assumed a single-packet hello.</p>'
             },
-            deep: '<ul><li><b>TLS 1.3</b> termination: 1-RTT handshake, key share <code>X25519MLKEM768</code> (hybrid classical plus ML-KEM, on by default in major browsers and CDNs since 2024–25), session tickets for resumption, certificates issued via ACME with short lifetimes.</li>' +
+            deep: '<ul><li><b>TLS 1.3</b> termination: 1-RTT handshake, key share <code>X25519MLKEM768</code> (hybrid classical plus ML-KEM, on by default in major browsers and CDNs since 2024–25 and specified in RFC 10024 in August 2026), session tickets for resumption, certificates issued via ACME with short lifetimes.</li>' +
               '<li><b>HTTP codec</b>: h2 and h3 streams are decoded and normalized into one header map, so later filters never care which protocol carried the request.</li></ul>' +
               '<p>The hybrid keeps the session safe unless <i>both</i> X25519 and ML-KEM (FIPS 203) are broken, at the cost of about 1 KB extra in each handshake flight.</p>'
           },
@@ -716,7 +717,7 @@
             fl = F.map(function (f, i) { return ctx.node({ x: 130 + i * 208, y: 280, w: 184, h: 78, title: f[0], sub: f[1], icon: f[2], color: f[3], titleSize: 15, subSize: 11, parent: B }); });
             for (var i = 0; i < 6; i++) links.push(ctx.link(fl[i], fl[i + 1], { color: 'blue', straight: true, parent: B }));
             req = code(ctx, B, { x: 60, y: 400, w: 700, title: 'request as the upstream will see it', lang: 'text', size: 12, color: 'cyan', typing: true, maxLines: 8, lines: [] });
-            ctx.hud('7 filters · ~50–150 µs CPU per request');
+            ctx.hud('7 filters · ~0.1 ms CPU per request');
             return Promise.all([ctx.reveal(fl, { from: 'left', stagger: 100 }), ctx.reveal(links, { from: 'draw', stagger: 80, delay: 300 }), ctx.reveal(req, { from: 'up', delay: 500 })]).then(function () {
               return links.reduce(function (p, l) { return p.then(function () { return ctx.packet(l, { color: 'lime', dur: 240, r: 4 }); }); }, Promise.resolve());
             });
@@ -1014,7 +1015,7 @@
             card: { tag: 'NUMBERS', title: 'Price the job, not the request', stat: { v: '≈ 5,960', u: 'GPU-s', l: 'estimated cost of the trailer: 5,420 GPU-seconds of planned work times a 1.1 safety margin' } },
             deep: '<p><b>Cost-based admission</b>. Estimated GPU-seconds for the trailer:</p>' +
               '<div class="eq">Ĝ = Σ<sub>shots</sub> n<sub>gpu</sub>·t<sub>shot</sub> + G<sub>redo</sub> + G<sub>LLM</sub> + G<sub>enc</sub> + G<sub>post</sub> ≈ 4,560 + 760 + 100 ≈ 5.4·10<sup>3</sup> GPU-s</div>' +
-              '<p>The estimate comes from a regression on (resolution, duration, steps, model) fitted to past jobs, plus a safety margin (×1.1). The first term is 6 shots × 8 GPUs × 95 s; 760 is one budgeted critic re-render of a shot (8 GPUs × 95 s); the 100 covers planning (40), encoders (20) and audio, edit and encode (40).</p>'
+              '<p>The estimate comes from a regression on (resolution, duration, steps, model) fitted to past jobs, plus a safety margin (×1.1). The first term is 6 shots × 8 GPUs × 95 s; 760 is the budgeted allowance for one critic re-render, priced as a whole shot (8 GPUs × 95 s), of which a windowed repair usually commits only 240; the 100 covers planning (40), encoders (20) and audio, edit and encode (40).</p>'
           },
           {
             say: 'It checks the tenant\'s balance and the concurrency cap, then places a hold on the estimate, much like a card authorization.',
@@ -1024,8 +1025,8 @@
           },
           {
             say: 'When the job finishes, the actual usage is settled and the rest of the hold is released back to the tenant.',
-            card: { tag: 'NUMBERS', title: 'Pay for what ran', stat: { v: '840', u: 'GPU-s', l: 'released: the 5,960 held minus the 5,120 GPU-seconds actually metered on completion' } },
-            deep: '<p>Completion <b>settles</b> the actual metered GPU-seconds and releases the remainder; failure releases the whole hold. Settlement is idempotent, keyed by <code>job_id</code>, so a retried “job finished” event cannot charge twice.</p>' +
+            card: { tag: 'NUMBERS', title: 'Pay for what ran', stat: { v: '960', u: 'GPU-s', l: 'released: the 5,960 held minus the 5,000 GPU-seconds actually metered on completion' } },
+            deep: '<p>Completion <b>settles</b> the actual metered GPU-seconds and releases the remainder; failure releases the whole hold. Settlement is idempotent, keyed by <code>job_id</code>, so a retried “job finished” event cannot charge twice. For the running example the meter reads 5,000 GPU-seconds: 4,560 for the six shots, 240 for the windowed repair of one shot and 200 for encoders, voice and edit (the orchestration chamber shows the same bill).</p>' +
               '<p>Holds carry a TTL slightly above the job\'s maximum runtime, so a crashed orchestrator cannot strand a tenant\'s budget forever. Billing reconciles against metered GPU telemetry, never against the estimate.</p>'
           }
         ],
@@ -1105,7 +1106,7 @@
               'if tenant.available < est: return 429 quota_exceeded',
               'if tenant.running_video_jobs >= 2: enqueue(fair_share)',
               'hold(tenant, est)          # like a card authorization',
-              'on finish: settle(actual=5,120); release(est - actual)'
+              'on finish: settle(actual=5,000); release(est - actual)'
             ] });
             ctx.reveal(q2, { from: 'up', dur: 500 });
             holdT.textContent = 'hold 5,960';
@@ -1115,8 +1116,8 @@
           }
           /* beat 4: settle and release */
           function b4() {
-            holdT.textContent = 'settled 5,120';
-            return ctx.tween(800, function (e) { hold.setAttribute('width', (5960 - 840 * e) * sc); holdT.setAttribute('x', L0 + (8200 + (5960 - 840 * e) / 2) * sc); avail.textContent = 'available ' + Math.round(5840 + 840 * e).toLocaleString('en-US') + ' (840 released)'; }).then(function () {
+            holdT.textContent = 'settled 5,000';
+            return ctx.tween(800, function (e) { hold.setAttribute('width', (5960 - 960 * e) * sc); holdT.setAttribute('x', L0 + (8200 + (5960 - 960 * e) / 2) * sc); avail.textContent = 'available ' + Math.round(5840 + 960 * e).toLocaleString('en-US') + ' (960 released)'; }).then(function () {
               return ctx.pulse(avail, { color: 'lime', dur: 700 });
             });
           }
@@ -1134,7 +1135,7 @@
             say: 'Rate limits protect against one noisy tenant. Load shedding protects the whole system when everyone arrives at once.',
             card: { tag: 'KEY IDEA', title: 'Two different protections', body: 'Rate limits enforce fairness between tenants. Load shedding keeps the service alive when total demand exceeds capacity.' },
             deep: '<p><b>Why shed</b>: past saturation, queues grow without bound, latency exceeds client timeouts, and servers do work nobody is waiting for. Throughput measured at the server stays high while <i>useful</i> throughput collapses: <b>goodput collapse</b>.</p>' +
-              '<p>Rejecting early keeps useful throughput near the capacity μ. A rate limit cannot do this, because a hundred well-behaved tenants can each stay under their limit and still overload the cluster together. Google\'s SRE book makes the same split: per-client throttling versus criticality-based load shedding.</p>' +
+              '<p>Rejecting early keeps useful throughput near the capacity μ. A rate limit cannot do this, because a hundred well-behaved tenants can each stay under their limit and still overload the cluster together. Google\'s SRE book makes the same split: per-customer limits versus criticality-based load shedding.</p>' +
               '<details><summary>Go deeper</summary><p>Why the cliff is so sharp: in an M/M/1 queue with arrival rate λ and service rate μ, the mean time in system is</p>' +
               '<div class="eq">W = 1 / (μ − λ) = (1/μ) / (1 − ρ), &nbsp; ρ = λ/μ</div>' +
               '<p>With μ = 12 requests per second, ρ = 0.5 gives W = 167 ms, ρ = 0.95 gives 1.67 s and ρ = 0.99 gives 8.3 s; at ρ ≥ 1 there is no steady state at all. Real service times are burstier than exponential, and the Pollaczek–Khinchine formula multiplies the queueing delay by (1 + c<sub>s</sub>²)/2, so the true cliff is steeper still.</p></details>'
@@ -1294,12 +1295,12 @@
             card: { tag: 'PITFALL', title: 'Synchronized retries are an attack', body: 'Clients that fail together retry together, arriving in waves exactly when the dependency is weakest. Jitter breaks the waves.' },
             deep: '<p><b>Backoff with full jitter</b> (Brooker, AWS):</p>' +
               '<div class="eq">sleep<sub>n</sub> = U(0, min(cap, base · 2<sup>n</sup>))</div>' +
-              '<p>Jitter de-correlates clients; without it, synchronized retries arrive as waves exactly when the dependency is weakest. In Brooker\'s simulations full jitter completes the same work with far fewer calls than plain exponential backoff, because retries spread out instead of colliding again and again.</p>'
+              '<p>Jitter de-correlates clients; without it, synchronized retries arrive as waves exactly when the dependency is weakest. In Brooker\'s simulation of 100 contending clients, full jitter cut the call count by more than half compared with plain exponential backoff, because retries spread out instead of colliding again and again.</p>'
           },
           {
-            say: 'A retry budget caps retries at about ten percent of traffic, because three layers each retrying three times would multiply the load twenty-seven fold.',
+            say: 'A retry budget caps retries at about ten percent of traffic, because three layers each making three attempts would multiply the load twenty-seven fold.',
             card: { tag: 'NUMBERS', title: 'Retries multiply through layers', stat: { v: '27×', l: 'worst-case load when 3 layers each make 3 attempts: r to the power k' } },
-            deep: '<p><b>Retry amplification</b>: with k layers each doing r attempts, worst-case load multiplies by r<sup>k</sup> (3 layers × 3 attempts = 27×). The fix: retry at one layer only, and enforce a <b>retry budget</b>, for example retries ≤ 10 % of requests per client or cluster (Envoy <code>retry_budget</code>, gRPC retry throttling).</p>' +
+            deep: '<p><b>Retry amplification</b>: with k layers each doing r attempts, worst-case load multiplies by r<sup>k</sup> (3 layers × 3 attempts = 27×; Google\'s SRE book counts 4³ = 64 when each layer makes three retries). The fix: retry at one layer only, and enforce a <b>retry budget</b>, for example retries ≤ 10 % of requests, the SRE book\'s per-client figure (Envoy\'s <code>retry_budget</code> defaults to 20 %; gRPC has retry throttling).</p>' +
               '<p>Idempotency keys make every retry <i>safe</i>; budgets make retries <i>affordable</i>. Both are needed.</p>'
           },
           {
@@ -1314,10 +1315,10 @@
           {
             say: 'And for idempotent reads, hedged requests send a backup copy after the ninety-fifth percentile latency, cutting the tail. Only the first reply counts, and the loser is cancelled.',
             card: {
-              tag: 'NUMBERS', title: 'Hedging cuts the tail', stat: { v: '≈ 24×', u: 'lower p99.9', l: 'BigTable benchmark: hedging after 10 ms cut p99.9 from 1,800 to 74 ms for 2 % more requests' },
-              more: '<p>Why it works: if replicas are independent, the chance that both copies are slow is the product of the tails. The original lands beyond the p99 with probability 1 %, and the backup, sent at the p95 mark, is also slow with probability of at most about 5 %: 0.01 × 0.05 = 0.05 %. Only 5 % of requests ever send a second copy. Correlated slowness (same rack, same garbage-collection pause) erodes the gain.</p>'
+              tag: 'NUMBERS', title: 'Hedging cuts the tail', stat: { v: '≈ 24×', u: 'lower p99.9', l: 'Google BigTable benchmark, reading 1,000 keys: hedging after 10 ms cut p99.9 from 1,800 to 74 ms for 2 % more requests' },
+              more: '<p>Why it works: if replicas are independent, both copies must be slow. The original lands beyond the p99 with probability 1 %. The backup, sent at the p95 mark, must also overrun what is left of the budget; suppose that happens with probability about 5 %. Then both are slow only 0.01 × 0.05 = 0.05 % of the time, a twentyfold cut in that tail. Only about 5 % of requests ever send a second copy. Correlated slowness (same rack, same garbage-collection pause) erodes the gain.</p>'
             },
-            deep: '<p><b>Hedged requests</b> (Dean &amp; Barroso): send a second copy if no reply arrives within the p95 latency, which caps the extra load at about 5 %; cancel the loser when one replies. In their BigTable benchmark (1,000 keys spread over 100 servers), hedging after 10 ms cut the 99.9th-percentile latency from 1,800 ms to 74 ms for only 2 % more requests.</p>' +
+            deep: '<p><b>Hedged requests</b> (Dean &amp; Barroso): send a second copy if no reply arrives within the p95 latency, which caps the extra load at about 5 %; cancel the loser when one replies. In their BigTable benchmark (reading 1,000 keys spread over 100 servers), hedging after 10 ms cut the 99.9th-percentile latency of the whole read from 1,800 ms to 74 ms for only 2 % more requests.</p>' +
               '<p>Use it only for idempotent, cancellable operations such as status reads and cache fetches; never for <code>POST /v1/jobs</code> without its idempotency key.</p>'
           }
         ],
@@ -1447,8 +1448,8 @@
           },
           {
             say: 'Inside a region, services speak gRPC with protocol buffers over mutual TLS. The schema is the contract, and deadlines and cancellation are part of the protocol.',
-            card: { tag: 'HOW IT WORKS', title: 'Schema-first RPC', body: 'Protobuf is 3 to 10 times smaller and faster to parse than JSON, and gRPC carries deadlines, cancellation and streaming natively.' },
-            deep: '<p><b>Internal RPC</b>: gRPC over HTTP/2 with protobuf. It is schema-first, roughly 3–10× smaller and faster to parse than JSON, with native deadlines (propagated as <code>grpc-timeout</code>), cancellation, and server streaming (<code>Watch</code> for job events).</p>' +
+            card: { tag: 'HOW IT WORKS', title: 'Schema-first RPC', body: 'Protobuf is usually smaller and cheaper to parse than JSON, by a margin that depends on the data, and gRPC carries deadlines, cancellation and streaming natively.' },
+            deep: '<p><b>Internal RPC</b>: gRPC over HTTP/2 with protobuf. It is schema-first and typically smaller and cheaper to parse than JSON (large gains for numeric fields, small for string-heavy payloads; the “3 to 10 times smaller” in Google\'s early protobuf documentation was measured against XML), with native deadlines (propagated as <code>grpc-timeout</code>), cancellation, and server streaming (<code>Watch</code> for job events).</p>' +
               '<p>A deadline set at the gateway shrinks as it travels down the call tree, so a slow leaf can never keep a request alive after the caller has given up. This is the same idea as the shedding step, applied inside the mesh.</p>'
           },
           {

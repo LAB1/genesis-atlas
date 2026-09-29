@@ -1,7 +1,10 @@
 """Screenshot one beat of one step with headless Edge/Chrome (one process, memory-light).
 
 usage: python tools/shot.py <scene-id> <step(1-based)> [beat(1-based)] [--theme dark|light] [--size 1920x1080] [--out file.png]
+                            [--pending] [--open progress|map|zoom|home|deep|settings|focus|hist|more[,..]]
+       python tools/shot.py references [ref-number] [--theme light] [--size 800x900]
 The image shows the state at the END of that beat (its callout card and deep-dive blocks included).
+CSS animations / transitions are jumped to their end state (they would otherwise be frozen at frame 0).
 Default output: tools/shots/<id>-<step>[-b<beat>][-light].png     (theme default: dark, size 1600x1000)
 """
 import os
@@ -24,11 +27,16 @@ def main():
     beat = args[2] if len(args) > 2 else None
     spec = '%s:%s' % (sid, step) + (':' + beat if beat else '')
     if not out:
-        name = '%s-%s%s%s.png' % (sid, step, ('-b' + beat) if beat else '', '-light' if theme == 'light' else '')
+        name = '%s-%s%s%s%s%s-%s.png' % (sid, step, ('-b' + beat) if beat else '', '-light' if theme == 'light' else '',
+                                         '-pending' if pending else '', ('-' + opn.replace(',', '+')) if opn else '', size)
         out = os.path.join(ROOT, 'tools', 'shots', name)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     exe = next((b for b in BROWSERS if os.path.exists(b)), None)
-    url = 'file:///' + os.path.join(ROOT, 'index.html').replace('\\', '/') + '?smoke&shot=%s&theme=%s' % (spec, theme) + ('&pending' if pending else '') + ('&open=' + opn if opn else '')
+    if sid == 'references':      # the references page:  shot.py references [ref-number] --size 800x900 [--theme light]
+        base = 'file:///' + os.path.join(ROOT, 'references.html').replace('\\', '/')
+        url = base + '?theme=%s' % theme + ('#ref-' + step if len(args) > 1 else '')
+    else:
+        url = 'file:///' + os.path.join(ROOT, 'index.html').replace('\\', '/') + '?smoke&shot=%s&theme=%s' % (spec, theme) + ('&pending' if pending else '') + ('&open=' + opn if opn else '') + ''.join('&' + x for x in os.environ.get('SHOT_FLAGS', '').split(',') if x)
     prof = os.path.join(os.environ.get('TEMP', ROOT), 'atlas-shot-%d' % os.getpid())
     cmd = [exe, '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--mute-audio', '--hide-scrollbars',
            '--user-data-dir=' + prof, '--allow-file-access-from-files', '--virtual-time-budget=30000',
@@ -42,3 +50,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

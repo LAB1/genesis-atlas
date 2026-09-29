@@ -18,6 +18,8 @@
   /* spread (LeastAllocated) placement, arrival order a..h, ties to the lowest node index: row, first column.
    * a,b take nodes 0,1; every later pod goes to whichever of nodes 2,3 has more free GPUs -> free = 4,4,4,4,0,0 */
   var SPREAD = { a: [0, 0], b: [1, 0], c: [2, 0], d: [3, 0], e: [2, 2], f: [3, 2], g: [2, 3], h: [3, 3] };
+  /* pack (MostAllocated) placement of the same arrivals: nodes 0 and 1 fill up, nodes 2 and 3 stay whole */
+  var PACK = { a: [0, 0], b: [0, 4], c: [1, 0], d: [1, 2], e: [1, 4], f: [1, 5], g: [1, 6], h: [1, 7] };
   /* on-screen box of a piece including any transform applied later */
   function liveBox(p) {
     var tf = p._tf || { x: 0, y: 0 }, b = p.box;
@@ -80,10 +82,11 @@
     id: 'scheduler',
     refs: [
       'Ghodsi et al., <i>Dominant Resource Fairness: Fair Allocation of Multiple Resource Types</i>, NSDI 2011',
-      'Verma et al., <i>Large-scale cluster management at Google with Borg</i>, EuroSys 2015',
+      'Mahajan et al., <i>Themis: Fair and Efficient GPU Cluster Scheduling</i>, NSDI 2020; Narayanan et al., <i>Heterogeneity-Aware Cluster Scheduling Policies for Deep Learning Workloads</i> (Gavel), OSDI 2020; Qiao et al., <i>Pollux: Co-adaptive Cluster Scheduling for Goodput-Optimized Deep Learning</i>, OSDI 2021',
       'Jeon et al., <i>Analysis of Large-Scale Multi-Tenant GPU Clusters for DNN Training Workloads</i> (Philly), USENIX ATC 2019',
       'Weng et al., <i>MLaaS in the Wild: Workload Analysis and Scheduling in Large-Scale Heterogeneous GPU Clusters</i>, NSDI 2022',
-      'Kubernetes SIG Scheduling, <i>Kueue</i> (ClusterQueue, cohorts, Topology-Aware Scheduling) and <i>Volcano</i> PodGroup docs, 2025',
+      'Kubernetes SIG Scheduling, <i>Kueue</i> documentation (ClusterQueue, cohorts, Topology-Aware Scheduling), 2025',
+      'Volcano project, <i>Volcano</i> PodGroup documentation, 2025',
       'NVIDIA, <i>Multi-Instance GPU User Guide</i> and <i>Multi-Process Service</i> documentation (H100 / Blackwell), 2024–2025',
       'Daly, <i>A higher order estimate of the optimum checkpoint interval for restart dumps</i>, FGCS 2006',
       'Fu et al., <i>ServerlessLLM: Low-Latency Serverless Inference for Large Language Models</i>, OSDI 2024'
@@ -117,8 +120,9 @@
           {
             say: 'A fine tuning job has already backfilled the idle nodes of rack B, using sixteen GPUs that nobody else wanted a moment ago.',
             card: { tag: 'TRADE-OFF', title: 'Backfill recovers the troughs', body: 'Preemptible training keeps utilisation high, on the understanding that it is evicted the moment latency-critical work arrives.' },
-            deep: '<div class="note"><b>Backfill</b>: preemptible training soaks up idle GPUs so utilisation stays high, on the understanding that it will be evicted when latency-critical work arrives. Multi-tenant trace studies (Microsoft Philly, Alibaba PAI) show large amounts of allocated-but-idle and queued-while-free GPU time; interactive pools must be provisioned for peak, so backfill is the cheapest way to recover the troughs.</div>' +
-              '<p>The panel shows the class policy as a Kueue ClusterQueue: a nominal quota per class, a cohort to borrow idle quota from, and a preemption rule.</p>'
+            deep: '<div class="note"><b>Backfill</b>: preemptible training soaks up idle GPUs so utilisation stays high, on the understanding that it will be evicted when latency-critical work arrives. Multi-tenant trace studies (Microsoft Philly, Alibaba PAI) report low GPU utilisation and long queueing delays, in part because locality and fragmentation constraints leave GPUs idle while jobs wait; interactive pools must be provisioned for peak, so backfill is the cheapest way to recover the troughs.</div>' +
+              '<p>The panel shows the class policy as a Kueue ClusterQueue: a nominal quota per class, a cohort to borrow idle quota from, and a preemption rule.</p>' +
+              '<details><summary>Go deeper</summary><p>Not to be confused with classic backfilling in batch schedulers such as Slurm, where a lower-priority job may start early only if that does not delay the expected start of higher-priority jobs (EASY backfilling protects only the job at the head of the queue). Both use idle capacity, but the guarantee differs: backfilling promises <i>non-delay</i> to the jobs ahead in the queue, while borrowing in a cohort promises <i>reclaim by eviction</i> to the lender, which is why the borrower must be preemptible and should checkpoint.</p></details>'
           },
           {
             say: 'One scheduler has to work across eight orders of magnitude of time, from a millisecond routing decision to a day long training run. So scheduling is hierarchical: quota admission first, then pod placement, then batching inside each engine.',
@@ -127,7 +131,7 @@
               more: '<p>1 day is 86,400 s and 1 ms is 10⁻³ s, a ratio of about 8.6×10⁷. No single algorithm serves both ends, which is why each layer has its own cadence and its own state.</p>'
             },
             deep: '<p>Time scales span eight decades, from sub-ms routing to day-long training, so scheduling is <b>hierarchical</b>: quota admission (Kueue) → pod placement (kube-scheduler / Volcano plugins) → per-GPU batching inside the engine.</p>' +
-              '<p>Each layer runs at its own cadence: a kube-scheduler cycle takes ~10–100 ms per pod, Kueue admits per Workload in seconds, and an engine reschedules every decode iteration (~20 ms). Long jobs need rare decisions with a lot of context (topology, priority, checkpoint age); short requests need microsecond decisions with almost none.</p>'
+              '<p>Each layer runs at its own cadence: a kube-scheduler decision typically takes tens of milliseconds per pod once binding is included (an order-of-magnitude figure), Kueue admits per Workload in seconds, and an engine reschedules every decode iteration (~20 ms). Long jobs need rare decisions with a lot of context (topology, priority, checkpoint age); short requests need microsecond decisions with almost none.</p>'
           }
         ],
         run: function (ctx) {
@@ -190,7 +194,7 @@
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: training backfills rack B, class policy as a Kueue queue */
-            var cq = ctx.code({ x: 1140, y: 330, w: 420, title: 'kueue · ClusterQueue', lang: 'text', size: 12, color: 'red', lines: [
+            var cq = ctx.code({ x: 1140, y: 330, w: 420, title: 'kueue · ClusterQueue (abridged)', lang: 'text', size: 12, color: 'red', lines: [
               'kind: ClusterQueue   # one per class', 'name: video-batch', 'cohort: studio-gpus  # borrow idle quota', 'resourceGroups:',
               '- nvidia.com/gpu: nominal 64, borrow ≤ 32', 'preemption:', '  withinClusterQueue: LowerPriority'] });
             swap(ctx, S, 'rightG', cq);
@@ -201,6 +205,7 @@
             /* beat 4: eight decades of time */
             var b = ctx.group();
             panelTitle(ctx, b, 80, 612, 'ONE SCHEDULER, EIGHT DECADES OF TIME');
+            ctx.text(80, 640, 'hierarchy:  quota admission (Kueue, seconds)  →  pod placement (kube-scheduler, 10–100 ms)  →  batching (engine, ~20 ms)', { size: 11, color: 'dim', font: 'mono', parent: b });
             function xOf(s) { return 160 + (Math.log(s) / Math.LN10 + 3) * 162.5; }
             ctx.line(160, 740, 1460, 740, { color: 'faint', sw: 1.5, parent: b });
             [[0.001, '1 ms'], [0.01, '10 ms'], [0.1, '100 ms'], [1, '1 s'], [10, '10 s'], [60, '1 min'], [600, '10 min'], [3600, '1 h'], [86400, '1 day']].forEach(function (t) {
@@ -239,7 +244,7 @@
             say: 'Dominant resource fairness looks at each tenant\'s largest share of any resource, its dominant share, and always serves the tenant whose dominant share is smallest.',
             card: {
               tag: 'HOW IT WORKS', title: 'Serve the smallest dominant share', body: 'Compute each tenant\'s share of every resource, keep the largest, and give the next task to whoever has the smallest.',
-              more: '<p>DRF is <b>strategy-proof</b> (lying about demand never helps), <b>envy-free</b>, <b>Pareto-efficient</b> and satisfies <b>sharing incentive</b> (no tenant does worse than a static 1/n partition). Ghodsi et al. showed no other policy with these properties does better.</p>'
+              more: '<p>DRF is <b>strategy-proof</b> (lying about demand never helps), <b>envy-free</b>, <b>Pareto-efficient</b> and satisfies <b>sharing incentive</b> (no tenant does worse than a static 1/n partition). The price is that it is not resource-monotonic: adding capacity can, oddly, leave a tenant with fewer tasks.</p>'
             },
             deep: '<p>For tenant i with usage u<sub>i,r</sub> of resource r and capacity C<sub>r</sub>:</p>' +
               '<div class="eq">s<sub>i</sub> = max<sub>r</sub> u<sub>i,r</sub> / C<sub>r</sub><br>next task → argmin<sub>i</sub> s<sub>i</sub> &nbsp;(weighted: s<sub>i</sub>/w<sub>i</sub>)</div>' +
@@ -262,12 +267,14 @@
             say: 'In Kubernetes this becomes Kueue. Each cluster queue has a nominal quota, cohorts lend idle quota between queues, and preemption reclaims it when the lender needs it back.',
             card: { tag: 'STATE OF THE ART', title: 'Cohorts lend idle quota', body: 'Borrowing and lending limits, fair-sharing weights and reclaim by preemption turn DRF-style fairness into cluster policy.' },
             deep: '<p>In Kubernetes: Kueue <code>ClusterQueue</code> nominal quotas per flavor (H100, B200…), <b>cohorts</b> that lend idle quota, <code>borrowingLimit</code> and <code>lendingLimit</code>, and fair-sharing weights; preemption reclaims borrowed quota when the lender needs it back.</p>' +
-              '<p>The dominant-share idea generalises to hierarchies of queues: a queue\'s share is its usage divided by its weight, and admission favours the queue with the lowest weighted share. It also gives the multi-tenant guarantee that a tenant\'s <i>nominal</i> quota is always available to it.</p>'
+              '<p>The dominant-share idea generalises to hierarchies of queues: a queue\'s share is its usage divided by its weight, and admission favours the queue with the lowest weighted share. It also gives the multi-tenant guarantee that a tenant\'s <i>nominal</i> quota is always available to it.</p>' +
+              '<details><summary>Go deeper</summary><p>DRF equalises <i>resource shares</i>, but deep-learning users care about <i>finish time</i>. Themis (NSDI 2020) equalises finish-time fairness ρ = T<sub>shared</sub> / T<sub>alone</sub> with a partial-allocation auction. Gavel (OSDI 2020) writes many policies, fair-share and finish-time ones included, as optimisation problems over a job-by-GPU-type throughput matrix, which matters on heterogeneous fleets. Pollux (OSDI 2021) also re-tunes each job\'s batch size and GPU count to maximise cluster-wide goodput.</p></details>'
           }
         ],
         run: function (ctx) {
           var S = ctx.state;
           var X0 = 560, WB = 520;
+          ctx.fade([S.lanesG, S.gridG, S.piecesG, S.tableG, S.rightG], 0.3, 500);   /* the fleet recedes while fair share is explained */
           var b = ctx.group();
           panelTitle(ctx, b, 80, 612, 'DOMINANT RESOURCE FAIRNESS · progressive filling');
           lines(ctx, b, 80, 642, ['cluster  ⟨48 GPU, 672 vCPU⟩'], { lh: 22 });
@@ -360,7 +367,7 @@
           },
           {
             say: 'Sixteen GPUs are free, yet no single node has eight free, so the next video shot cannot start.',
-            card: { tag: 'NUMBERS', title: 'Free, but unusable', stat: { v: '16 → 0', l: 'GPUs free, against nodes with eight free: every gap is a fragment of four' } },
+            card: { tag: 'NUMBERS', title: 'Free, but unusable', stat: { v: '16 vs 0', l: 'GPUs free versus nodes with eight free in one place: every gap is a fragment of four' } },
             deep: '<p>After spread placement the free GPUs per node are 4, 4, 4, 4, 0, 0. The sum is 16, but ⌊free<sub>n</sub>/8⌋ = 0 on every node, so not a single 8-GPU gang fits. The gang needs all eight GPUs on <b>one</b> NVLink domain, so the histogram\'s dashed line at 8 is the only number that matters.</p>'
           },
           {
@@ -373,11 +380,22 @@
               '<div class="eq">F<sub>k</sub> = 1 − (Σ<sub>n</sub> k·⌊free<sub>n</sub>/k⌋) / Σ<sub>n</sub> free<sub>n</sub></div>' +
               '<p>Here F<sub>8</sub> = 100%: every free GPU is useless to an 8-GPU gang. MostAllocated, with the same arrival order, would have packed all 16 replica GPUs onto nodes 0–1, leaving nodes 2 and 3 whole. Bin-packing is NP-hard in general; production schedulers use greedy best-fit with pool separation (LLM pool vs gang pool) and periodic defragmentation.</p>' +
               '<div class="note">Heterogeneity makes it worse: packing must respect GPU type, NVLink domain and NUMA/NIC affinity simultaneously (multi-dimensional bin-packing).</div>'
+          },
+          {
+            say: 'Try it yourself. Click pack to place the same eight replicas with best fit, and watch two whole nodes stay free while the fragmentation number drops to zero. Click spread to go back.',
+            card: { tag: 'TRY IT', title: 'Flip spread to pack', body: 'Click <b>pack</b>: the same eight replicas now fill nodes 0 and 1, nodes 2 and 3 stay whole, and an eight GPU gang fits. Click <b>spread</b> to undo it.' },
+            deep: '<table><tr><th></th><th>spread</th><th>pack</th></tr>' +
+              '<tr><td>free per node</td><td>4 4 4 4 0 0</td><td>0 0 8 8 0 0</td></tr>' +
+              '<tr><td>8-GPU gangs that fit</td><td>0</td><td>2</td></tr>' +
+              '<tr><td>F<sub>8</sub></td><td>100%</td><td>0%</td></tr>' +
+              '<tr><td>lost if node-0 dies</td><td>1 TP4 replica</td><td>both TP4 replicas</td></tr></table>' +
+              '<p>Packing is not free: it concentrates replicas of one service on one node, so a single node failure removes all of them. Production clusters therefore pack <i>across</i> services but keep <code>topologySpreadConstraints</code> or pod anti-affinity <i>within</i> a service, and confine aggressive packing to the pool that hosts many small pods.</p>'
           }
         ],
         run: function (ctx) {
           var S = ctx.state;
           S.pLLM = {};
+          ctx.fade([S.lanesG, S.gridG, S.piecesG, S.tableG, S.rightG], 1, 500);   /* undo the recess of the fair-share step */
           var b = ctx.group();
           panelTitle(ctx, b, 80, 612, 'PLACING THE LLM REPLICAS');
           lines(ctx, b, 900, 660, ['LeastAllocated (default) spreads:', '  good for failure isolation,', '  fatal for gangs.', '', 'MostAllocated / best-fit packs:', '  small jobs fill partial nodes,', '  whole nodes stay free for gangs.'], { lh: 22 });
@@ -397,12 +415,13 @@
             /* beat 2: sixteen GPUs free, but no node has eight */
             var free = [4, 4, 4, 4, 0, 0];
             S.hist = ctx.group({ parent: b });
+            S.freeTxt = [];
             S.freeBars = free.map(function (f, i) {
               var x = 160 + i * 110;
               ctx.rect(x, 650, 64, 200, { rx: 4, fill: ctx.alpha('white', 0.03), parent: S.hist });
               var bar = ctx.rect(x, 850 - f * 25, 64, f * 25, { rx: 4, fill: ctx.alpha('red', 0.45), stroke: 'red', sw: 1, parent: S.hist });
               ctx.text(x + 32, 862, 'node-' + i, { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: S.hist });
-              ctx.text(x + 32, 838 - f * 25, String(f), { size: 13, color: 'white', anchor: 'middle', font: 'mono', parent: S.hist });
+              S.freeTxt.push(ctx.text(x + 32, 838 - f * 25, String(f), { size: 13, color: 'white', anchor: 'middle', font: 'mono', parent: S.hist }));
               return bar;
             });
             ctx.line(140, 650, 800, 650, { color: 'lime', sw: 1.6, dash: '6 5', parent: S.hist });
@@ -411,9 +430,10 @@
             ctx.reveal(S.hist, { from: 'up', dist: 14, dur: 500 });
             S.fragG = ctx.group();
             panelTitle(ctx, S.fragG, 1150, 345, 'FRAGMENTATION');
+            S.fragVals = [];
             [['free GPUs', '16', 'text'], ['largest block on one node', '4', 'amber'], ['8-GPU gang fits?', 'NO', 'red']].forEach(function (q, i) {
               ctx.text(1150, 380 + i * 34, q[0], { size: 12, color: 'dim', font: 'mono', parent: S.fragG });
-              ctx.text(1555, 380 + i * 34, q[1], { size: 18, color: q[2], font: 'mono', weight: 700, anchor: 'end', parent: S.fragG });
+              S.fragVals.push(ctx.text(1555, 380 + i * 34, q[1], { size: 18, color: q[2], font: 'mono', weight: 700, anchor: 'end', parent: S.fragG }));
             });
             swap(ctx, S, 'rightG', S.fragG);
             ctx.hud('16 GPUs free · 0 nodes with 8 free');
@@ -424,8 +444,61 @@
             /* beat 3: fragmentation as a number */
             ctx.text(1150, 380 + 3 * 34, 'F8 (useless free GPUs)', { size: 12, color: 'dim', font: 'mono', parent: S.fragG });
             var f8 = ctx.text(1555, 380 + 3 * 34, '100%', { size: 18, color: 'red', font: 'mono', weight: 700, anchor: 'end', parent: S.fragG });
+            S.f8 = f8;
             ctx.reveal([f8], { from: 'scale' });
             return ctx.pulse(f8, { color: 'red', dur: 700, times: 2 });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4 (TRY IT): re-place the same eight replicas with spread or pack */
+            var g = ctx.group();
+            S.tryG = g;
+            ctx.text(1150, 522, 'TRY IT · re-place the same 8 replicas', { size: 11, color: 'dim', font: 'mono', parent: g });
+            S.fitG = ctx.group({ opacity: 0 });
+            [2, 3].forEach(function (r) {
+              ctx.rect(GX - 5, rowY(r) - 4, 8 * P + 5, CELL + 8, { rx: 8, stroke: 'lime', sw: 2, dash: '7 4', parent: S.fitG, glow: true });
+            });
+            S.blast = ctx.label(880, rowY(5) + 58, 'trade-off: node-0 down takes both TP4 replicas', { color: 'red', size: 11, opacity: 0 });
+            S.placeMode = 'spread';
+            S.setPlace = function (mode, animate) {
+              var target = mode === 'pack' ? PACK : SPREAD, ps = [], pk = mode === 'pack';
+              LLM_JOBS.forEach(function (j, i) {
+                var from = SPREAD[j.id], to = target[j.id], p = S.pLLM[j.id];
+                var dx = cellX(to[1]) - cellX(from[1]), dy = rowY(to[0]) - rowY(from[0]);
+                if (animate) ps.push(ctx.transform(p, { x: dx, y: dy }, 700, 'inOut', i * 60));
+                else ctx.place(p, dx, dy);
+              });
+              var free = pk ? [0, 0, 8, 8, 0, 0] : [4, 4, 4, 4, 0, 0];
+              S.freeBars.forEach(function (bar, i) {
+                var f = free[i], y1 = 850 - f * 25, h1 = f * 25;
+                if (animate) ps.push(ctx.animate(bar, { y: [parseFloat(bar.getAttribute('y')), y1], height: [parseFloat(bar.getAttribute('height')), h1] }, 600, 'out'));
+                else { bar.setAttribute('y', y1); bar.setAttribute('height', h1); }
+                S.freeTxt[i].textContent = String(f);
+                S.freeTxt[i].setAttribute('y', f >= 8 ? y1 + 18 : 838 - f * 25);
+              });
+              S.fragVals[1].textContent = pk ? '8' : '4';
+              S.fragVals[1].setAttribute('fill', ctx.color(pk ? 'lime' : 'amber'));
+              S.fragVals[2].textContent = pk ? 'YES' : 'NO';
+              S.fragVals[2].setAttribute('fill', ctx.color(pk ? 'lime' : 'red'));
+              S.f8.textContent = pk ? '0%' : '100%';
+              S.f8.setAttribute('fill', ctx.color(pk ? 'lime' : 'red'));
+              ctx.hud(pk ? '16 GPUs free · 2 nodes with 8 free' : '16 GPUs free · 0 nodes with 8 free');
+              ps.push(ctx.fade(S.fitG, pk ? 1 : 0, 400));
+              ps.push(ctx.fade(S.blast, pk ? 1 : 0, 400));
+              S.modeChips.forEach(function (c) { c.el.setAttribute('opacity', c.k === mode ? 1 : 0.45); });
+              S.placeMode = mode;
+              S.placeBusy = true;
+              return Promise.all(ps).then(function () { S.placeBusy = false; });
+            };
+            S.modeChips = [['spread', 'amber', 1212], ['pack', 'lime', 1312]].map(function (c) {
+              var l = ctx.label(c[2], 554, c[0], { color: c[1], size: 12, w: 84, parent: g });
+              l.style.cursor = 'pointer';
+              l.addEventListener('click', function () { if (!ctx.dead && !S.placeBusy && S.placeMode !== c[0]) S.setPlace(c[0], true); });
+              return { el: l, k: c[0] };
+            });
+            S.modeChips.forEach(function (c) { c.el.setAttribute('opacity', c.k === 'spread' ? 1 : 0.45); });
+            ctx.reveal(g, { dur: 400 });
+            return ctx.wait(800).then(function () { return S.setPlace('pack', true); }).then(function () { return ctx.wait(1600); }).then(function () {
+              return S.setPlace('spread', true);
+            });
           });
         }
       },
@@ -436,7 +509,8 @@
           {
             say: 'Suppose we scheduled video pods one at a time anyway. Three shots each grab part of what they need: six GPUs, five, and five.',
             card: { tag: 'PITFALL', title: 'Partial allocation is pure waste', body: 'A sequence-parallel job cannot start until all eight ranks exist, so GPUs held by an incomplete gang do nothing.' },
-            deep: '<p>Distributed jobs (NCCL collectives, Ulysses all-to-all) cannot make progress until <b>every</b> rank is up, because the first collective blocks on the slowest member. A default per-pod scheduler binds pods independently, so three shots can each grab a piece of the 16 free GPUs and none gets all eight.</p>'
+            deep: '<p>Distributed jobs (NCCL collectives, Ulysses all-to-all) cannot make progress until <b>every</b> rank is up, because the first collective blocks on the slowest member. A default per-pod scheduler binds pods independently, so three shots can each grab a piece of the 16 free GPUs and none gets all eight.</p>' +
+              '<p>The cost is more than delay. With F free GPUs and gangs of size g, a gang scheduler admits ⌊F/g⌋ jobs (here ⌊16/8⌋ = 2), while independent per-pod binding can spread all F GPUs over three jobs and admit <b>none</b>: 16 GPUs allocated, 0 running.</p>'
           },
           {
             say: 'None can start, and none will let go. That is a deadlock: a cycle in the wait for graph.',
@@ -449,20 +523,24 @@
             card: { tag: 'HOW IT WORKS', title: 'All or nothing, atomically', body: 'Volcano\'s PodGroup and Kueue\'s Workload reserve the whole gang at once, so a partial hold can never form.' },
             deep: '<ul><li><b>Volcano</b>: <code>PodGroup.minMember = 8</code>; the gang plugin only binds when all 8 pods fit.</li>' +
               '<li><b>Kueue</b>: quota is reserved for the whole <code>Workload</code> at admission; <code>waitForPodsReady</code> evicts and requeues it if all pods are not running within a timeout (breaks physical-placement deadlocks).</li>' +
-              '<li><b>Coscheduling</b> plugin (scheduler-plugins) and Slurm allocate the same way.</li></ul>'
+              '<li><b>Coscheduling</b> plugin (scheduler-plugins) and Slurm allocate the same way.</li>' +
+              '<li>Recent Kubernetes releases also add native gang scheduling to kube-scheduler (a PodGroup with a gang policy); it is still beta and off by default, so Kueue and Volcano remain the usual route.</li></ul>'
           },
           {
             say: 'Combined with repacking the small LLM replicas, two whole nodes open up, and shots one and two start immediately.',
             card: { tag: 'NUMBERS', title: 'Repack, then admit', stat: { v: '2', u: 'gangs', l: 'fit after repacking: free GPUs per node went from 4 4 4 4 0 0 to 0 0 8 8 0 0' } },
-            deep: '<p><b>Defragmentation</b>: the descheduler drains stateless LLM replicas (they re-register with the router in seconds) and best-fit packs them, turning scattered free GPUs into whole free nodes:</p>' +
+            deep: '<p><b>Defragmentation</b>: the descheduler evicts the small replicas one at a time, behind a PodDisruptionBudget so their siblings keep serving, and the scheduler re-places them best-fit, turning scattered free GPUs into whole free nodes:</p>' +
               '<pre>before: 4 4 4 4 0 0  → no gang fits\nafter:  0 0 8 8 0 0  → 2 gangs fit</pre>' +
               '<p>(free GPUs on nodes 0–5, before and after the repack).</p>' +
-              '<div class="note">Cost of the repack: a few seconds of lost capacity on 6 small replicas (TP2 ×2, four 1-GPU models) vs. two 95 s shots starting now instead of waiting for natural churn.</div>'
+              '<div class="note">Cost of the repack: every moved replica is down for its restart time (seconds from a warm node-local weight cache, a minute or more from a cold pull) and loses its KV cache. Moving six small replicas is cheap next to two 95 s shots starting now instead of waiting for natural churn; moving a large TP8 replica would not be.</div>'
           }
         ],
         run: function (ctx) {
           var S = ctx.state;
+          /* leave the try-it toggle of the previous step: always continue from the spread layout */
+          if (S.setPlace && S.placeMode !== 'spread') S.setPlace('spread', false);
           ctx.hud('');
+          ctx.remove(S.tryG, 300); ctx.remove(S.fitG, 300); ctx.remove(S.blast, 300);
           /* naive per-pod placement -> partial gangs */
           S.partial = ctx.group();
           var parts = [[1, [[0, 4], [0, 5], [0, 6], [0, 7], [1, 4], [1, 5]]], [2, [[2, 4], [2, 5], [2, 6], [2, 7], [1, 6]]], [3, [[3, 4], [3, 5], [3, 6], [3, 7], [1, 7]]]];
@@ -482,20 +560,21 @@
           return Promise.all(pcs).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: the wait-for graph and the deadlock */
             var b = ctx.group();
-            panelTitle(ctx, b, 80, 612, 'WAIT-FOR GRAPH without gang scheduling');
+            S.wfTitle = panelTitle(ctx, b, 80, 612, 'WAIT-FOR GRAPH without gang scheduling');
+            S.wfG = ctx.group({ parent: b });
             var nodes = [[260, 680, 'shot1', 'holds 6/8'], [460, 810, 'shot2', 'holds 5/8'], [160, 810, 'shot3', 'holds 5/8']];
             nodes.forEach(function (n) {
-              ctx.rect(n[0] - 55, n[1] - 22, 110, 44, { rx: 8, fill: ctx.alpha('lime', 0.1), stroke: 'lime', sw: 1.3, parent: b });
-              ctx.text(n[0], n[1] - 7, n[2], { size: 13, color: 'white', anchor: 'middle', font: 'mono', weight: 600, parent: b });
-              ctx.text(n[0], n[1] + 10, n[3], { size: 11, color: 'lime', anchor: 'middle', font: 'mono', parent: b });
+              ctx.rect(n[0] - 55, n[1] - 22, 110, 44, { rx: 8, fill: ctx.alpha('lime', 0.1), stroke: 'lime', sw: 1.3, parent: S.wfG });
+              ctx.text(n[0], n[1] - 7, n[2], { size: 13, color: 'white', anchor: 'middle', font: 'mono', weight: 600, parent: S.wfG });
+              ctx.text(n[0], n[1] + 10, n[3], { size: 11, color: 'lime', anchor: 'middle', font: 'mono', parent: S.wfG });
             });
             S.wf = [
-              ctx.path('M315,690 Q430,700 450,786', { stroke: 'red', sw: 1.8, arrow: true, parent: b }),
-              ctx.path('M405,818 L217,818', { stroke: 'red', sw: 1.8, arrow: true, parent: b }),
-              ctx.path('M150,786 Q150,700 203,686', { stroke: 'red', sw: 1.8, arrow: true, parent: b })
+              ctx.path('M315,690 Q430,700 450,786', { stroke: 'red', sw: 1.8, arrow: true, parent: S.wfG }),
+              ctx.path('M405,818 L217,818', { stroke: 'red', sw: 1.8, arrow: true, parent: S.wfG }),
+              ctx.path('M150,786 Q150,700 203,686', { stroke: 'red', sw: 1.8, arrow: true, parent: S.wfG })
             ];
-            ctx.text(310, 762, 'waits for', { size: 11, color: 'red', anchor: 'middle', font: 'mono', parent: b });
-            var cyc = ctx.text(545, 700, 'cycle ⇒ DEADLOCK', { size: 14, color: 'red', font: 'mono', weight: 700, parent: b });
+            ctx.text(310, 762, 'waits for', { size: 11, color: 'red', anchor: 'middle', font: 'mono', parent: S.wfG });
+            var cyc = ctx.text(545, 700, 'cycle ⇒ DEADLOCK', { size: 14, color: 'red', font: 'mono', weight: 700, parent: S.wfG });
             swap(ctx, S, 'botG', b);
             S.dl = ctx.label(880, 497, 'DEADLOCK · 16 GPUs held, 0 running', { color: 'red', size: 12, parent: S.partial });
             ctx.fade(S.held, 0, 300);
@@ -508,6 +587,8 @@
               'kind: PodGroup', 'name: shot-3', 'spec:', '  minMember: 8        # all-or-nothing', '  queue: video-batch', '  minResources: {nvidia.com/gpu: 8}',
               '# + topology: 1 NVLink domain'] });
             swap(ctx, S, 'rightG', pg);
+            ctx.fade(S.wfG, 0.25, 500);
+            S.wfTitle.textContent = 'WAIT-FOR GRAPH · cycle broken by gang admission';
             lines(ctx, S.botG, 800, 650, ['Fix = gang admission:', '1. reserve 8 GPUs atomically, else hold 0', '2. roll back partial pods (s1 s2 s3)', '3. descheduler repacks stateless LLM replicas', '4. admit shot1 → node-2, shot2 → node-3', '5. shot3 waits in queue holding nothing'], { lh: 24 });
             return ctx.wait(700).then(function () { return ctx.fadeOut(S.partial, 500, true); });
           }).then(function () { return ctx.beat(3); }).then(function () {
@@ -532,12 +613,13 @@
             card: { tag: 'KEY IDEA', title: 'All-to-all at every layer', body: 'Each of the 40 layers issues four all-to-all exchanges among the eight GPUs, so a gang lives or dies by its interconnect.' },
             deep: '<p>DeepSpeed-Ulysses all-to-all volume per layer, per GPU, for the Wan-14B shot (N ≈ 75.6k tokens, d = 5120, p = 8, BF16; q, k, v in and o out):</p>' +
               '<div class="eq">V ≈ 4 · (N/p) · d · 2 B · (p−1)/p ≈ 4 · 9450 · 5120 · 2 · 7/8 ≈ 339 MB</div>' +
-              '<p>Every layer of every forward pass repeats it: 40 layers × 80 forwards per shot (40 steps × 2 CFG branches) is 3,200 exchanges of 339 MB per GPU. Whether that costs seconds or tens of seconds depends entirely on which wires carry it.</p>'
+              '<p>Every layer of every forward pass repeats it: 40 layers × 100 forwards per shot (50 steps × 2 CFG branches) is 4,000 layer-passes, each moving 339 MB per GPU, about 1.4 TB per GPU per shot. Whether that costs seconds or tens of seconds depends entirely on which wires carry it. The numbers on this page use H100 nodes (450 GB/s per direction); on B200 nodes with XDR the fast leg and the cross-rack leg both double, so the ratio stays about 9 to 1.</p>'
           },
           {
             say: 'Inside one server, NVLink moves four hundred fifty gigabytes per second per GPU in each direction. That is the speed those collectives were designed for.',
             card: { tag: 'NUMBERS', title: 'NVLink is the fast lane', stat: { v: '450 GB/s', l: 'per GPU per direction inside an H100 node; PCIe Gen5 gives 64 and InfiniBand NDR 50' } },
-            deep: '<p>Per-GPU bandwidth, one direction: NVLink 5 (B200) 900 GB/s, NVLink 4 (H100) 450 GB/s, PCIe Gen5 x16 ~64 GB/s, InfiniBand NDR 400 Gb/s = 50 GB/s. An H100 node behind NVSwitch sustains 450 GB/s between <i>any</i> two GPUs simultaneously, which is what an all-to-all needs.</p>'
+            deep: '<p>Per-GPU bandwidth, one direction: NVLink 5 (B200) 900 GB/s, NVLink 4 (H100) 450 GB/s, PCIe Gen5 x16 ~64 GB/s, InfiniBand NDR 400 Gb/s = 50 GB/s. An H100 node behind NVSwitch sustains 450 GB/s between <i>any</i> two GPUs simultaneously, which is what an all-to-all needs.</p>' +
+              '<p>The number to compare is the one-way rate, because an all-to-all sends and receives at once. NVLink SHARP (NVLS) can reduce inside the switch and speed up all-reduce, but an all-to-all has nothing to reduce, so it runs at plain link rate.</p>'
           },
           {
             say: 'Split the gang four plus four across racks, and four of every seven peers are remote. Most of the traffic then crosses InfiniBand at fifty gigabytes per second, through a spine switch.',
@@ -548,12 +630,13 @@
             deep: '<p>Topology-aware schedulers encode levels as node labels (NVLink domain / rack / leaf / spine block). A two-level fat tree connects every leaf to every spine; spines never talk to each other, so two nodes under different leaves cross <b>three</b> switches (leaf, spine, leaf), while two nodes under the same leaf cross only one.</p>'
           },
           {
-            say: 'Communication time per forward pass grows from about thirty milliseconds to a hundred fifty five. Over a whole shot that is two point four seconds against twelve seconds of pure waiting.',
-            card: { tag: 'NUMBERS', title: 'Five times the communication', stat: { v: '2.4 s → 12 s', l: 'pure all-to-all time per shot when the gang moves from one NVLink domain to a 4 + 4 split' } },
-            deep: '<table><tr><th>Placement</th><th>per forward (40 layers)</th><th>per shot (80 fwd)</th></tr>' +
-              '<tr><td>8 GPUs, one NVLink4 domain (450 GB/s/dir)</td><td>≈ 30 ms</td><td>≈ 2.4 s</td></tr>' +
-              '<tr><td>4 + 4 across racks (4/7 of bytes ≈ 194 MB over 50 GB/s IB)</td><td>≈ 155 ms</td><td>≈ 12 s</td></tr></table>' +
-              '<p>Twelve seconds is roughly 12% of a ~95 s shot, which is the throughput a badly placed gang silently gives up, and all of it is invisible in GPU utilisation counters because the GPUs are busy waiting.</p>'
+            say: 'Communication time per forward pass grows from about thirty milliseconds to a hundred fifty five. Over a whole shot that is three seconds against sixteen seconds of pure waiting.',
+            card: { tag: 'NUMBERS', title: 'Five times the communication', stat: { v: '3 s → 16 s', l: 'pure all-to-all time per shot when the gang moves from one NVLink domain to a 4 + 4 split' } },
+            deep: '<p>Pure all-to-all time, 40 layers per forward pass and 100 forward passes per shot:</p>' +
+              '<table><tr><th>Placement</th><th>per fwd</th><th>per shot</th></tr>' +
+              '<tr><td>8 GPUs, one NVLink4 domain (450 GB/s per direction)</td><td>≈ 30 ms</td><td>≈ 3.0 s</td></tr>' +
+              '<tr><td>4 + 4 across racks (4/7 of the bytes, ≈ 194 MB, over 50 GB/s IB)</td><td>≈ 155 ms</td><td>≈ 15.5 s</td></tr></table>' +
+              '<p>If none of it overlaps with compute, the extra 12.5 s is roughly 13% of a ~95 s shot, which is the throughput a badly placed gang silently gives up, and all of it is invisible in GPU utilisation counters because the GPUs are busy waiting.</p>'
           },
           {
             say: 'Topology aware placement therefore keeps every gang inside one NVLink domain, and keeps multi node jobs under a single leaf switch.',
@@ -631,8 +714,8 @@
               bar._w = q[1] / 155 * 380;
               return bar;
             });
-            ctx.text(900, 772, '× 80 forwards per shot (40 steps × CFG 2):', { size: 11, color: 'dim', font: 'mono', parent: g });
-            var tot = ctx.text(900, 796, '2.4 s vs 12 s of pure communication', { size: 13, color: 'white', font: 'mono', weight: 600, parent: g });
+            ctx.text(900, 772, '× 100 forwards per shot (50 steps × CFG 2):', { size: 11, color: 'dim', font: 'mono', parent: g });
+            var tot = ctx.text(900, 796, '3.0 s vs 15.5 s of pure communication', { size: 13, color: 'white', font: 'mono', weight: 600, parent: g });
             tmBars.forEach(function (bar) { bar.setAttribute('width', 0); });
             tot.setAttribute('opacity', 0);
             return Promise.all(tmBars.map(function (bar, i) { return ctx.animate(bar, { width: [0, bar._w] }, 800, 'out', 300 + i * 500); })).then(function () {
@@ -661,14 +744,14 @@
           },
           {
             say: 'The scheduler picks the cheapest victim: the fine tuning job, which is preemptible, checkpointable and the lowest priority in the fleet.',
-            card: { tag: 'HOW IT WORKS', title: 'Cheapest victim first', body: 'Lowest priority first, then least work lost since its last checkpoint, then fewest pods. PodDisruptionBudgets are respected.' },
-            deep: '<p>Victim selection: lowest priority first, then least work lost since last checkpoint, then fewest pods (minimise disruption; respect PodDisruptionBudgets).</p>' +
+            card: { tag: 'HOW IT WORKS', title: 'Cheapest victim first', body: 'Lowest priority first, then the least work lost (newest admitted, or freshest checkpoint if the scheduler knows it), then fewest pods. PodDisruptionBudgets are respected.' },
+            deep: '<p>Victim selection: lowest priority first, then least work lost, then fewest pods (minimise disruption; respect PodDisruptionBudgets). Kueue\'s default proxy for lost work is admission time, newest first; a checkpoint-aware scheduler can use the real number:</p>' +
               '<div class="eq">cost(v) = rank<sub>priority</sub>(v), then (t − t<sub>ckpt</sub>) · GPUs(v), then pods(v)</div>' +
               '<p>Only the fine-tuning job qualifies: both LLM pools are interactive and the other shots are the same priority as the promoted ones.</p>'
           },
           {
             say: 'It gets a termination signal, writes an asynchronous checkpoint to local NVMe within its grace period, and releases sixteen GPUs.',
-            card: { tag: 'NUMBERS', title: 'A checkpoint in seconds', stat: { v: '≈ 3.4 s', l: 'to write 84 GB per node to local NVMe at 25 GB/s; the 168 GB checkpoint is sharded over 16 GPUs' } },
+            card: { tag: 'NUMBERS', title: 'A checkpoint in seconds', stat: { v: '≈ 3.4 s', l: 'to write 84 GB per node to local NVMe at an assumed 25 GB/s; the 168 GB checkpoint is sharded over 16 GPUs' } },
             deep: '<p>Checkpoint size for a full fine-tune with Adam (mixed precision). Training holds 16 B/param in HBM (2 BF16 weights + 2 grads + 4 FP32 master + 8 Adam m,v), but gradients are recomputed and need not be saved:</p>' +
               '<div class="eq">bytes<sub>ckpt</sub> ≈ P · (4 master + 8 Adam m,v) = 12 P → 14B params ≈ 168 GB</div>' +
               '<p>Sharded over 16 GPUs (FSDP / DCP sharded state dict) that is 10.5 GB per GPU, 84 GB per node; to local NVMe RAID at ~25 GB/s ≈ 3.4 s, then uploaded to object storage in the background. LoRA-only checkpoints are megabytes.</p>'
@@ -689,13 +772,14 @@
           ctx.fadeOut(S.topoG, 400, true);
           /* beat 0: shots three and four are promoted */
           var urgent = ctx.label(330, 258, '▲ promoted: interactive-video', { color: 'magenta', size: 11, parent: S.lanesG });
+          S.urgent = urgent;
           return Promise.all([ctx.reveal(urgent, { from: 'scale' }), ctx.pulse(S.vLane, { color: 'magenta', dur: 700, times: 2 })]).then(function () {
             return ctx.beat(1);
           }).then(function () {
             /* beat 1: the cheapest victim */
             var rg = ctx.group();
             panelTitle(ctx, rg, 1150, 345, 'VICTIM SELECTION');
-            lines(ctx, rg, 1150, 378, ['1. lowest priority first', '2. least work since ckpt', '3. fewest pods', '   respect PodDisruptionBudgets', '', 'candidate: ft-16', '  priority low · preempt yes'], { lh: 22 });
+            lines(ctx, rg, 1150, 378, ['1. lowest priority first', '2. least work lost (newest)', '3. fewest pods', '   respect PodDisruptionBudgets', '', 'candidate: ft-16', '  priority low · preempt yes'], { lh: 22 });
             swap(ctx, S, 'rightG', rg);
             S.hlVictim = ctx.highlight(S.pTrain, { color: 'red', pad: 6 });
             return ctx.pulse(S.pTrain, { color: 'red', dur: 500, times: 2 });
@@ -763,7 +847,7 @@
           {
             say: 'But a cold node is slow: provisioning, pulling a large container image, downloading forty gigabytes of weights, compiling kernels and capturing CUDA graphs can take five minutes.',
             card: { tag: 'NUMBERS', title: 'A cold start takes minutes', stat: { v: '≈ 5', u: 'min', l: 'provision 3 min + image 1 min + weights 40 s + init 45 s for one video worker (illustrative)' } },
-            deep: '<p>Cold-start anatomy (illustrative, 14B DiT + 11B text encoder):</p>' +
+            deep: '<p>Cold-start anatomy (illustrative, 14B DiT + an ~11 GB umT5-XXL text encoder):</p>' +
               '<table><tr><th>Phase</th><th>Cold</th><th>Mitigation</th></tr>' +
               '<tr><td>Provision node</td><td>2–10 min</td><td>warm pool / standby nodes</td></tr>' +
               '<tr><td>Container image (10–20 GB)</td><td>~1 min</td><td>pre-pulled images, lazy pull (SOCI, stargz)</td></tr>' +
@@ -788,6 +872,7 @@
         ],
         run: function (ctx) {
           var S = ctx.state;
+          ctx.fadeOut(S.urgent, 400, true);   /* the promotion label belongs to the preemption step */
           /* beat 0: backlog -> +1 node */
           var rg = ctx.group();
           panelTitle(ctx, rg, 1150, 345, 'AUTOSCALER');
@@ -872,18 +957,19 @@
           },
           {
             say: 'Multi instance GPU carves one H100 into up to seven hardware isolated slices, each with its own compute, cache and ten gigabytes of memory.',
-            card: { tag: 'NUMBERS', title: 'Seven hardware slices', stat: { v: '7 × 10 GB', l: 'MIG 1g.10gb slices on an 80 GB H100: 16 of 132 SMs each, with private L2 and memory paths' } },
+            card: { tag: 'NUMBERS', title: 'Seven hardware slices', stat: { v: '7 × 10 GB', l: 'MIG 1g.10gb slices on an 80 GB H100: one seventh of the SMs each, with private L2 and memory paths' } },
             deep: '<table><tr><th>Mode</th><th>Sharing and isolation</th><th>QoS</th></tr>' +
               '<tr><td>MIG</td><td>spatial, hardware partitions; own HBM slice, L2, copy engines</td><td>deterministic</td></tr>' +
-              '<tr><td>MPS</td><td>spatial, concurrent kernels; memory limits only, no fault isolation</td><td>active-thread % caps</td></tr>' +
+              '<tr><td>MPS</td><td>spatial, concurrent kernels; separate address spaces and optional memory limits, but a fatal fault reaches every client</td><td>active-thread % caps</td></tr>' +
               '<tr><td>Time-slicing</td><td>temporal, context switch; no memory isolation</td><td>noisy neighbours</td></tr></table>' +
-              '<p>Granularity on an H100 80 GB: MIG up to 7 × 1g.10gb (16 of 132 SMs each), MPS up to 48 clients, time-slicing any number.</p>'
+              '<p>Granularity on an H100 80 GB: MIG up to 7 × 1g.10gb (one seventh of the SMs each), MPS up to about 60 client contexts per device in NVIDIA\'s current documentation, time-slicing any number of replicas.</p>'
           },
           {
             say: 'Packing the four small models into one partitioned GPU frees three whole GPUs for bigger work.',
             card: { tag: 'NUMBERS', title: 'Three GPUs come back', stat: { v: '3', u: 'GPUs', l: 'returned to the pool: 4 models × 1 GPU become 1 GPU with 4 MIG slices and 3 spare' } },
             deep: '<p>Kubernetes exposes MIG slices as distinct resources (<code>nvidia.com/mig-1g.10gb</code>) via the GPU Operator; DRA allows dynamic partitioning per claim.</p>' +
-              '<div class="note">Here: 4 small models × 1 GPU → 1 GPU with 4 MIG slices (3 spare slices) ⇒ 3 GPUs returned to the pool, enough for another TP2 replica plus headroom.</div>'
+              '<div class="note">Here: 4 small models × 1 GPU → 1 GPU with 4 MIG slices (3 spare slices) ⇒ 3 GPUs returned to the pool, enough for another TP2 replica plus headroom.</div>' +
+              '<details><summary>Go deeper</summary><p>On an H100 80 GB the MIG profiles are 1g.10gb (up to 7 per GPU), 1g.20gb (4), 2g.20gb (3), 3g.40gb (2), 4g.40gb (1) and 7g.80gb (1), and placements must respect fixed slice boundaries, so a 3g.40gb cannot start on just any free slice. Repartitioning needs an idle GPU, which is why MIG suits stable pools of small tenants rather than per-request sharing. For a model above 10 GB, or one that bursts to a whole GPU, MPS or time-slicing with memory limits is the alternative.</p></details>'
           },
           {
             say: 'That is the scheduler\'s job in one sentence: the right shape, in the right place, at the right time.',
@@ -915,7 +1001,7 @@
               ctx.text(x + 64.5, 662, 'slice ' + i, { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: g });
               var sms = [];
               for (var q = 0; q < 16; q++) sms.push(ctx.rect(x + 16 + (q % 4) * 25, 676 + Math.floor(q / 4) * 18, 20, 13, { rx: 2, fill: ctx.alpha('white', 0.06), parent: g }));
-              ctx.text(x + 64.5, 757, '16 of 132 SMs', { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: g });
+              ctx.text(x + 64.5, 757, '1/7 of the SMs', { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: g });
               var hbmBar = ctx.rect(x + 14, 772, 101, 16, { rx: 3, fill: ctx.alpha('white', 0.05), stroke: ctx.alpha('teal', 0.7), sw: 1, parent: g });
               ctx.text(x + 64.5, 780.5, '10 GB HBM', { size: 11, color: 'teal', anchor: 'middle', font: 'mono', parent: g });
               S.sliceParts.push({ box: box, sms: sms, hbm: hbmBar, x: x });

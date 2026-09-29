@@ -63,13 +63,16 @@
     refs: [
       'Shazeer et al., <i>Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer</i>, ICLR 2017',
       'Lepikhin et al., <i>GShard: Scaling Giant Models with Conditional Computation and Automatic Sharding</i>, ICLR 2021',
-      'Fedus, Zoph, Shazeer, <i>Switch Transformers</i>, JMLR 2022; Zoph et al., <i>ST-MoE: Designing Stable and Transferable Sparse Expert Models</i>, 2022',
+      'Fedus, Zoph &amp; Shazeer, <i>Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity</i>, JMLR 2022',
+      'Zoph et al., <i>ST-MoE: Designing Stable and Transferable Sparse Expert Models</i>, 2022',
       'Jiang et al., <i>Mixtral of Experts</i>, 2024',
-      'Dai et al., <i>DeepSeekMoE: Towards Ultimate Expert Specialization</i>, ACL 2024; DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Dai et al., <i>DeepSeekMoE: Towards Ultimate Expert Specialization</i>, ACL 2024',
       'Wang et al., <i>Auxiliary-Loss-Free Load Balancing Strategy for Mixture-of-Experts</i>, 2024',
       'Gale et al., <i>MegaBlocks: Efficient Sparse Training with Mixture-of-Experts</i>, MLSys 2023',
-      'Qwen Team, <i>Qwen3 Technical Report</i>, 2025; Kimi Team, <i>Kimi K2: Open Agentic Intelligence</i>, 2025',
-      'Krajewski et al., <i>Scaling Laws for Fine-Grained Mixture of Experts</i>, ICML 2024'
+      'Kimi Team, <i>Kimi K2: Open Agentic Intelligence</i>, 2025',
+      'Qwen Team, <i>Qwen3 Technical Report</i>, 2025',
+      'Ludziejewski et al., <i>Scaling Laws for Fine-Grained Mixture of Experts</i>, ICML 2024'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -92,7 +95,7 @@
           {
             say: 'The model can then store far more knowledge than it spends per token, because only the chosen experts run and their gated outputs are summed.',
             card: { tag: 'HOW IT WORKS', title: 'Only chosen experts run', body: 'Here experts 3 and 6 receive the token. Their outputs are scaled by gates 0.62 and 0.38 and added together.' },
-            deep: '<p>Training and inference FLOPs scale with <b>active</b> parameters (≈ 2N<sub>active</sub> per token forward), while quality at a fixed compute budget improves with <b>total</b> parameters (Fedus et al.; the fine-grained MoE scaling laws of Krajewski et al.).</p>' +
+            deep: '<p>Training and inference FLOPs scale with <b>active</b> parameters (≈ 2N<sub>active</sub> per token forward), while quality at a fixed compute budget improves with <b>total</b> parameters (Fedus et al.; the fine-grained MoE scaling laws of Ludziejewski et al.).</p>' +
               '<p>Intuition: capacity to <i>store</i> knowledge grows with the number of experts, but the cost of <i>using</i> it per token grows only with k.</p>'
           },
           {
@@ -514,7 +517,7 @@
             say: 'Here a batch of sixty four tokens piles onto two experts while the others starve for work.',
             card: { tag: 'NUMBERS', title: 'One expert takes half', stat: { v: '30 / 64', l: 'tokens land on expert 1 alone; the ideal load is 8 per expert' } },
             deep: '<pre>expert  E1 E2 E3 E4 E5 E6 E7 E8\ntokens  30  4 18  2  3  1  5  1</pre>' +
-              '<p>64 tokens, top-1 for clarity, mean load 8. Two experts take 48 of 64 tokens; three experts see one to three tokens. Token counts are illustrative.</p>'
+              '<p>64 tokens, top-1 for clarity, mean load 8. Two experts take 48 of 64 tokens; four experts see only one to three tokens each. Token counts are illustrative.</p>'
           },
           {
             say: 'Under expert parallelism the busiest GPU sets the pace for everyone, and overloaded experts start dropping tokens.',
@@ -672,13 +675,13 @@
               '<li>Balanced loads mean <b>no token dropping</b>, in training or in inference.</li></ul>'
           },
           {
-            say: 'The gradients stay clean, and DeepSeek reports better quality than auxiliary loss balancing at the same level of balance.',
+            say: 'The gradients stay clean, and the authors of the method report both better quality and better load balance than auxiliary loss training.',
             card: { tag: 'TRADE-OFF', title: 'Two ways to balance', body: 'Aux loss is soft but its gradient hurts quality when α is large. The bias tracks the load without touching the loss.' },
             deep: '<table><tr><th></th><th>aux loss</th><th>aux-loss-free</th></tr>' +
               '<tr><td>gradient into router</td><td>yes: α·E·Σ f<sub>i</sub>P<sub>i</sub></td><td>no: bias via sign rule</td></tr>' +
               '<tr><td>quality impact</td><td>hurts if α large</td><td>no interference gradient</td></tr>' +
               '<tr><td>dropping</td><td>capacity + drops</td><td>none</td></tr></table>' +
-              '<p>Result reported by Wang et al. and used in DeepSeek-V3: better quality than aux-loss balancing at equal balance. Qwen3 takes a different route, computing its balance loss over the global batch rather than each micro-batch, so that experts may specialise within a sequence; the shared aim is balance without distorting the training signal.</p>'
+              '<p>Result reported by Wang et al. on models up to 3 B parameters trained on 200 B tokens: better performance and better load balance than aux-loss balancing; DeepSeek-V3 then adopted the method at 671 B scale. Qwen3 takes a different route, computing its balance loss over the global batch rather than each micro-batch, so that experts may specialise within a sequence; the shared aim is balance without distorting the training signal.</p>'
           }
         ],
         run: function (ctx) {
@@ -813,7 +816,7 @@
             say: 'Dropless systems use grouped matrix multiplies to avoid dropping entirely, and analyses of Mixtral show that routing follows syntax and token type more than topic.',
             card: { tag: 'STATE OF THE ART', title: 'Dropless grouped GEMMs', body: 'Sort tokens by expert and run variable-size GEMMs (MegaBlocks). No capacity, no padding, no dropped tokens.' },
             deep: '<ul><li><b>Dropless MoE</b>: sort tokens by expert and run a <b>grouped GEMM</b> over variable-size groups (MegaBlocks block-sparse kernels; cuBLAS/CUTLASS grouped GEMM). DeepSeek-V3 drops no tokens. The cost is dynamic shapes and load-dependent latency.</li>' +
-              '<li><b>Specialisation</b>: Mixtral’s analysis found routing tracks syntax and token type (code indentation, punctuation, specific words) more than topic, and consecutive tokens often reuse the same expert; fine-grained and shared experts yield sharper, less redundant experts.</li></ul>'
+              '<li><b>Specialisation</b>: Mixtral’s analysis found no obvious topic specialisation but some syntactic structure (for example the Python keyword <code>self</code>), and consecutive tokens often reuse the same expert; DeepSeekMoE argues that fine-grained and shared experts give sharper, less redundant experts.</li></ul>'
           }
         ],
         run: function (ctx) {
@@ -885,7 +888,7 @@
           R.lines[4].setAttribute('opacity', 0);
           var B1 = textCard(ctx, g, 60, 640, 720, 220, 'violet', 'EXPERT SPECIALISATION', [
             'Mixtral: routing tracks token type & syntax',
-            '  (indentation, punctuation) more than topic',
+            '  (e.g. Python self) more than topic',
             'consecutive tokens often reuse one expert',
             'fine-grained + shared → sharper experts'
           ], { lh: 34, top: 58 });
@@ -1031,8 +1034,8 @@
           },
           {
             say: 'This communication is huge, so production systems split the batch into micro batches and overlap one batch\'s all to all with another batch\'s computation, hiding most of the network time.',
-            card: { tag: 'NUMBERS', title: 'Comms with few SMs', stat: { v: '20 / 132', u: 'SMs', l: 'DeepEP drives NVLink and InfiniBand with 20 SMs, leaving the rest for GEMMs' } },
-            deep: '<ul><li>Custom all-to-all kernels (open-sourced as <b>DeepEP</b>) use only <b>20 of 132 SMs</b> to saturate IB and NVLink, leaving the rest for GEMMs.</li>' +
+            card: { tag: 'NUMBERS', title: 'Comms with few SMs', stat: { v: '20 / 132', u: 'SMs', l: 'DeepSeek-V3\'s custom all-to-all kernels (open-sourced as DeepEP) need only 20 SMs to saturate NVLink and InfiniBand' } },
+            deep: '<ul><li>DeepSeek-V3’s custom all-to-all kernels (open-sourced as <b>DeepEP</b>) need only <b>20 of 132 SMs</b> to saturate IB and NVLink, leaving the rest for GEMMs.</li>' +
               '<li><b>Overlap</b>: DualPipe (training) interleaves forward and backward chunks of two micro-batches so attention/MLP compute hides dispatch/combine; inference overlaps two micro-batches the same way.</li></ul>' +
               '<p>Schematic timeline: 16 units serially, 10 units when the network is hidden behind compute.</p>'
           }
@@ -1078,7 +1081,7 @@
             ' FP8 dispatch, BF16 combine',
             ' NVLink 160 vs IB 50 GB/s',
             ' ≤ 4 nodes per token',
-            ' DeepEP: 20 SMs for comms'
+            ' comms kernels: 20 SMs'
           ], { size: 14, lh: 34, top: 58 });
           hide(R);
 

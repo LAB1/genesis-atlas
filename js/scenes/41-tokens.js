@@ -90,12 +90,12 @@
     refs: [
       'Sennrich, Haddow &amp; Birch, <i>Neural Machine Translation of Rare Words with Subword Units</i> (BPE), ACL 2016',
       'Radford et al., <i>Language Models are Unsupervised Multitask Learners</i> (GPT-2 byte-level BPE), 2019',
-      'Kudo &amp; Richardson, <i>SentencePiece</i>, EMNLP 2018; OpenAI <i>tiktoken</i> (cl100k_base, o200k_base); Singh &amp; Strouse, <i>Tokenization counts: the impact of tokenization on arithmetic in frontier LLMs</i>, 2024; Pagnoni et al., <i>Byte Latent Transformer: Patches Scale Better Than Tokens</i>, 2024',
+      'Kudo &amp; Richardson, <i>SentencePiece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing</i>, EMNLP 2018; OpenAI <i>tiktoken</i> (cl100k_base, o200k_base); Singh &amp; Strouse, <i>Tokenization counts: the impact of tokenization on arithmetic in frontier LLMs</i>, 2024; Pagnoni et al., <i>Byte Latent Transformer: Patches Scale Better Than Tokens</i>, 2024',
       'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
-      'Mikolov et al., <i>Linguistic Regularities in Continuous Space Word Representations</i>, NAACL 2013; Park et al., <i>The Linear Representation Hypothesis</i>, ICML 2024',
+      'Mikolov et al., <i>Linguistic Regularities in Continuous Space Word Representations</i>, NAACL 2013; Park et al., <i>The Linear Representation Hypothesis and the Geometry of Large Language Models</i>, ICML 2024',
       'Elhage et al., <i>Toy Models of Superposition</i>, Transformer Circuits 2022',
       'Press &amp; Wolf, <i>Using the Output Embedding to Improve Language Models</i> (weight tying), EACL 2017',
-      'Rumbelow &amp; Watkins, <i>SolidGoldMagikarp</i> (glitch tokens), 2023; Land &amp; Bartolo, <i>Fishing for Magikarp</i>, EMNLP 2024'
+      'Rumbelow &amp; Watkins, <i>SolidGoldMagikarp (plus, prompt generation)</i> (glitch tokens), LessWrong 2023; Land &amp; Bartolo, <i>Fishing for Magikarp: Automatically Detecting Under-trained Tokens in Large Language Models</i>, EMNLP 2024'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -123,19 +123,19 @@
               '<p class="muted">Token boundaries shown for the Llama-3-style tokenizer are illustrative.</p>'
           },
           {
-            say: 'Why not stop at bytes? Sequences would be over four times longer, and attention cost grows with the square of length, about eighteen times more for our prompt. Whole words fail differently: the vocabulary explodes, and crash-lands would still be out of vocabulary.',
-            card: { tag: 'TRADE-OFF', title: 'Bytes long, words huge', body: 'Bytes never fail but make T 4× longer and attention 18× dearer. Words are short but need a million-entry, brittle table.' },
+            say: 'Why not stop at bytes? Sequences would be over four times longer, and attention cost grows with the square of length, about nineteen times more for our prompt. Whole words fail differently: the vocabulary explodes, and crash-lands would still be out of vocabulary.',
+            card: { tag: 'TRADE-OFF', title: 'Bytes long, words huge', body: 'Bytes never fail but make T over 4× longer and attention 19× dearer. Words are short but need a million-entry, brittle table.' },
             deep: '<table><tr><th>Unit</th><th>|V|</th><th>T for our prompt</th><th>Problem</th></tr>' +
               '<tr><td>bytes</td><td>256</td><td>145</td><td>T² attention, weak units</td></tr>' +
               '<tr><td>words</td><td>&gt;10<sup>6</sup></td><td>25</td><td>OOV, huge softmax</td></tr>' +
-              '<tr><td>byte-level BPE</td><td>32k–256k</td><td>≈ 34</td><td>tokenization artifacts</td></tr></table>' +
-              '<div class="eq">cost(attention) ∝ T², &nbsp; (145 / 34)² ≈ 18× more attention FLOPs for raw bytes</div>' +
+              '<tr><td>byte-level BPE</td><td>32k–256k</td><td>≈ 33</td><td>tokenization artifacts</td></tr></table>' +
+              '<div class="eq">cost(attention) ∝ T², &nbsp; (145 / 33)² ≈ 19× more attention FLOPs for raw bytes</div>' +
               '<p>Raw bytes also make each embedding a weak semantic unit, pushing related information further apart in the sequence.</p>'
           },
           {
-            say: 'Byte level BPE sits in between. Frequent chunks become single tokens, and anything unseen still falls back to bytes. Our prompt takes about thirty four tokens, at a vocabulary of one hundred twenty eight thousand entries.',
+            say: 'Byte level BPE sits in between. Frequent chunks become single tokens, and anything unseen still falls back to bytes. Our prompt takes about thirty three tokens, at a vocabulary of one hundred twenty eight thousand entries.',
             card: { tag: 'KEY IDEA', title: 'The middle path', body: 'Learned merges keep sequences short; the byte fallback guarantees nothing is ever out of vocabulary.' },
-            deep: '<p>With a 128k vocabulary, English prose compresses to ≈ 4 bytes (≈ 0.75 words) per token, or ≈ 1.3 tokens per word. CJK characters are 3 UTF-8 bytes each; a vocabulary with enough CJK merges maps most common characters to one token.</p>' +
+            deep: '<p>With a 128k vocabulary, English prose compresses to ≈ 4 bytes (≈ 0.75 words) per token, or ≈ 1.3 tokens per word; Meta reports 3.94 characters per token for Llama 3 against 3.17 for Llama 2. Our 145-byte prompt gives 33 tokens with the cl100k_base vocabulary that Llama 3 extends, so expect a similar count. CJK characters are 3 UTF-8 bytes each; a vocabulary with enough CJK merges maps most common characters to one token.</p>' +
               '<p>Design space: the vocabulary size V trades sequence length T against embedding size V·d and softmax cost. Alternatives: SentencePiece Unigram LM, and tokenizer-free byte models such as the Byte Latent Transformer with entropy-based patches.</p>' +
               '<details><summary>Go deeper</summary><p>Because V changes T, per-token loss and perplexity are not comparable across tokenizers. Compare models in bits per byte:</p>' +
               '<div class="eq">BPB = T · L<sub>nats/token</sub> / (N<sub>bytes</sub> · ln 2)</div>' +
@@ -196,7 +196,7 @@
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: why not raw bytes, why not whole words */
             S.why = ctx.group();
-            var words = FULL.split(' ').length, nb = FULL.length, nt = 34;
+            var words = FULL.split(' ').length, nb = FULL.length, nt = 33;
             var opts = [
               ['BYTES / CHARACTERS', 'teal', nb, '|V| = 256 \u00b7 never out-of-vocab', 'units carry little meaning'],
               ['WHOLE WORDS', 'cyan', words, '|V| > 1,000,000 \u00b7 "crash-lands" OOV', 'huge embedding + softmax'],
@@ -255,7 +255,7 @@
           {
             say: 'Digits are split into groups of at most three, so nineteen twenty becomes one nine two, then zero. Numbers get a regular structure instead of arbitrary merged digit strings.',
             card: { tag: 'NUMBERS', title: 'Digit groups', stat: { v: '≤ 3', u: 'digits', l: 'per pre-token: 1920 becomes 192 and 0' } },
-            deep: '<ul><li><b>Digits in groups of ≤ 3</b> (<code>\\p{N}{1,3}</code>): <code>1920</code> → <code>192</code>,<code>0</code>. More regular number handling than arbitrary merged digit strings; some models go further and split every digit (Llama 1/2, Gemma, DeepSeek).</li>' +
+            deep: '<ul><li><b>Digits in groups of ≤ 3</b> (<code>\\p{N}{1,3}</code>): <code>1920</code> → <code>192</code>,<code>0</code>. More regular number handling than arbitrary merged digit strings; some models go further and split every digit (Llama 1/2, Gemma, Qwen).</li>' +
               '<li>Grouping direction matters for arithmetic: left-to-right chunking misaligns place values, and right-to-left grouping measurably helps frontier models on addition (Singh &amp; Strouse 2024).</li></ul>'
           },
           {
@@ -342,12 +342,12 @@
           {
             say: 'How is the vocabulary learned? Byte pair encoding is a greedy compression algorithm. Take a toy corpus, split it into single symbols, and count every adjacent pair, weighted by how often each word occurs.',
             card: { tag: 'KEY IDEA', title: 'Greedy compression', body: 'Repeatedly replace the most frequent adjacent pair with a new symbol. Frequent chunks earn short codes.' },
-            deep: '<p>Toy corpus (Sennrich et al.): <code>low×5, lower×2, newest×6, widest×3</code>. Every word starts as a sequence of single symbols; pair counts are weighted by word frequency.</p>' +
+            deep: '<p>Toy corpus (a common variant of the example in Sennrich et al., whose Figure 1 uses low, lowest, newer, wider): <code>low×5, lower×2, newest×6, widest×3</code>. Every word starts as a sequence of single symbols (the original paper’s end-of-word marker is omitted here); pair counts are weighted by word frequency.</p>' +
               '<p>Initial top pairs: <code>e s</code> (6 in newest + 3 in widest = 9), <code>s t</code> (9), <code>l o</code> (7), <code>o w</code> (7), <code>w e</code> (8). Ties are broken by first occurrence, so <code>e s</code> wins.</p>'
           },
           {
             say: 'Merge the most frequent pair into a new symbol, and repeat. Here e and s occur together nine times, in newest and widest, so they become the first merge rule.',
-            card: { tag: 'NUMBERS', title: 'The top pair wins', more: '<p>Recounting all pairs each round costs O(N) over the corpus, so V merges cost O(V·N). Real implementations keep an index from each pair to the words that contain it and a max-heap of counts, and update only the affected words after each merge, which is close to O(N log V) in practice.</p>', stat: { v: '9', u: 'times', l: 'e s occurs 6 times in newest and 3 in widest: the top pair' } },
+            card: { tag: 'NUMBERS', title: 'The top pair wins', more: '<p>Recounting all pairs each round costs O(N) over the corpus, so V merges cost O(V·N). Real implementations keep an index from each pair to the words that contain it and a max-heap of counts, and update only the affected words after each merge, so a merge no longer touches the whole corpus.</p>', stat: { v: '9', u: 'times', l: 'e s occurs 6 times in newest and 3 in widest: the top pair' } },
             deep: '<pre>vocab  = 256 byte symbols\nmerges = []\nwhile len(vocab) &lt; V:\n  counts = Σ_w freq(w)·pairs(w)\n  a, b = argmax(counts)\n  merges.append((a, b))  # rank\n  replace a,b → ab everywhere\n  vocab.add(ab)</pre>' +
               '<p>The rank of a merge is its position in this list; it is what encoding will use later to decide which merge to apply first.</p>'
           },
@@ -355,7 +355,7 @@
             say: 'Repeat. Now es and t always occur together, so they merge into est. Then l and o merge, and lo and w merge, so the whole word low becomes a single symbol.',
             card: { tag: 'HOW IT WORKS', title: 'Merges build on merges', body: 'Later rules reuse earlier ones: e s, then es t, then est. Rank order is the order learned.' },
             deep: '<p>Merges 2–4: <code>es t</code> (9), <code>l o</code> (7), <code>lo w</code> (7). After merge 1 the pair <code>es t</code> has count 9 (6 + 3), so <b>est</b> becomes a symbol; <code>low</code> becomes a single symbol after rules 3 and 4.</p>' +
-              '<ul><li>Real training: pre-tokenized text, pair counts over unique pre-tokens × frequency, incremental count updates with a priority queue: O(N log N) instead of recounting.</li></ul>'
+              '<ul><li>Real training: pre-tokenized text, pair counts over unique pre-tokens × frequency, incremental count updates with a priority queue instead of recounting the whole corpus each round.</li></ul>'
           },
           {
             say: 'Next n and e merge, then ne and w give new. Each rule is stored with its rank, and that ordered list of merges is the tokenizer.',
@@ -365,7 +365,7 @@
           },
           {
             say: 'A production tokenizer runs this loop for over a hundred thousand merges on a large sample of the training corpus, until the vocabulary reaches its target size.',
-            card: { tag: 'NUMBERS', title: 'Production scale', more: '<p>Vocabulary arithmetic for Llama 3: 128,000 base tokens (256 raw bytes plus 127,744 learned merges, built on the 100k tiktoken vocabulary with 28k multilingual additions) and 256 reserved special tokens make 128,256. Priority-queue BPE training over a large sample takes hours to days on CPU; SentencePiece and HF tokenizers use the same idea.</p>', stat: { v: '128k', u: 'tokens', l: 'Llama 3: 256 bytes + 127,744 merges, plus 256 special tokens' } },
+            card: { tag: 'NUMBERS', title: 'Production scale', more: '<p>Vocabulary arithmetic for Llama 3: 128,000 base tokens (256 raw bytes plus 127,744 learned merges, built on the 100k tiktoken vocabulary with 28k multilingual additions) and 256 reserved special tokens make 128,256. Trainers keep pair-count indexes and priority queues so that a large sample stays tractable; SentencePiece and HF tokenizers use the same idea.</p>', stat: { v: '128k', u: 'tokens', l: 'Llama 3: 256 bytes + 127,744 merges, plus 256 special tokens' } },
             deep: '<ul><li>Vocabulary size is a hyper-parameter: 32k (Llama 2) → 128,256 (Llama 3) → 200k (o200k) → 262k (Gemma 3). Bigger V shortens sequences but costs V·d embedding parameters and a bigger softmax.</li>' +
               '<li>The training sample matters: a tokenizer trained on mostly English gives non-English users longer sequences (and higher API bills), and tokens that were frequent in tokenizer training but rare in model training become undertrained "glitch" tokens.</li>' +
               '<li>Alternatives: <b>Unigram LM</b> (SentencePiece), tokenizer-free byte models (e.g. Byte Latent Transformer with entropy-based patches).</li></ul>'
@@ -465,7 +465,7 @@
             /* beat 4: production scale */
             ctx.reveal(S.scaleTxt, { from: 'up', dur: 500 });
             ctx.pulse(code.lineEls[1], { color: 'cyan', times: 2, dur: 500 });
-            return ctx.counter(S.vocabTxt, 6, 127744, 1600, function (v) { return 'vocab = 256 bytes + ' + Math.round(v).toLocaleString('en-US') + ' merges'; });
+            return ctx.counter(S.vocabTxt, 6, 127744, 1600, function (v) { return 'production vocab = 256 bytes + ' + Math.round(v).toLocaleString('en-US') + ' merges'; });
           });
         }
       },
@@ -489,17 +489,17 @@
             say: 'Now try it yourself. Click a word chip to encode it with the same six merges. Slowest reuses low and est, newer builds new and then stops because e r was never learned, and widest keeps w, i and d apart.',
             card: { tag: 'TRY IT', title: 'Encode your own word', body: 'Click lowest, newer, slowest or widest. The same six rules apply: familiar pieces merge, unfamiliar letters stay apart.' },
             deep: '<p>Encoding depends only on the word and the merge table, and it is local: shared pieces recur across words (<code>low</code> in lowest and slowest, <code>est</code> in lowest, slowest and widest). That reuse gives the model sub-word units it has seen many times.</p>' +
-              '<ul><li><code>newer</code> ends as <code>new</code> · <code>e</code> · <code>r</code>: the pair <code>e r</code> occurred only twice in the toy corpus and never made the top six.</li>' +
+              '<ul><li><code>newer</code> ends as <code>new</code> · <code>e</code> · <code>r</code>: the pair <code>e r</code> occurred only twice in the toy corpus, so it never earned one of the six merges.</li>' +
               '<li><code>widest</code> keeps <code>w</code> · <code>i</code> · <code>d</code> apart: those pairs occurred three times each, below every learned rule.</li></ul>' +
               '<p class="muted">Production tokenizers run the same procedure with over 100,000 merges, so a frequent word is one token and a rare word a handful of pieces.</p>'
           },
           {
             say: 'The real tokenizer does exactly this on our prompt line: twelve tokens for nine words. Each token then maps to an integer id, the only thing the model ever sees.',
             card: { tag: 'NUMBERS', title: 'Tokens per word', stat: { v: '1.33', l: 'tokens per word on this line: 12 tokens for 9 words at a 128k vocabulary' } },
-            deep: '<p>Production encoders (tiktoken in Rust, HF tokenizers) cache pre-token results; throughput is a few MB/s per core, negligible next to the model.</p>' +
+            deep: '<p>Production encoders (tiktoken in Rust, HF tokenizers) cache pre-token results; throughput is on the order of 10 MB/s per core, negligible next to the model.</p>' +
               '<ul><li><b>Rates</b>: ≈ 1.3 tokens per English word at 128k; Meta reports Llama 3\'s tokenizer yields up to 15% fewer tokens than Llama 2\'s.</li>' +
               '<li>The ids are the only thing the model ever sees: the same words with a different tokenizer give an entirely different id sequence.</li></ul>' +
-              '<p class="muted">ids for <code>A</code>, <code>-</code>, <code> on</code>, <code> a</code>, <code>.</code> match cl100k/Llama 3; the others are illustrative.</p>'
+              '<p class="muted">the ids are the cl100k_base ids of these twelve tokens (checked against the tiktoken vocabulary); Llama 3 builds on the same 100k tiktoken tokens, so common English tokens like these should carry the same ids.</p>'
           },
           {
             say: 'Vocabulary size is a trade-off: a bigger table shortens sequences, but costs embedding parameters and leaves rare tokens undertrained. And because the model sees ids, not letters, counting the r letters in strawberry is genuinely hard.',
@@ -566,16 +566,17 @@
             return hi;
           });
           S.pickWord = function (w) {
+            if (!S.chipsReady) return Promise.resolve();
             S.chips.forEach(function (c, i) { c.firstChild.setAttribute('fill', ctx.alpha('lime', WORDS[i] === w ? 0.45 : 0.12)); });
             S.cmpHi.forEach(function (h, i) { h.setAttribute('fill', ctx.alpha('lime', WORDS[i] === w ? 0.16 : 0)); });
             return S.encWord(w, 'anim');
           };
-          var code = ctx.code({ x: 800, y: 180, w: 740, lang: 'py', size: 13, color: 'amber', parent: S.enc, title: 'python   (ids partly illustrative, see panel)', typing: true, lines: [
+          var code = ctx.code({ x: 800, y: 180, w: 740, lang: 'py', size: 13, color: 'amber', parent: S.enc, title: 'python   (cl100k_base ids, see panel)', typing: true, lines: [
             '>>> ids = tok.encode("A fox astronaut crash-lands on a glowing ice moon.")',
             '>>> len(ids)          # 9 words -> 12 tokens (1.33 per word)',
             '12',
             '>>> ids',
-            '[32, 39935, 47733, 10121, 12, 7520, 389, 264, 49592, 10054, 18266, 13]',
+            '[32, 39935, 47733, 10121, 12, 8329, 389, 264, 49592, 10054, 18266, 13]',
             '>>> [tok.decode([i]) for i in ids[:4]]',
             "['A', ' fox', ' astronaut', ' crash']"
           ] });
@@ -599,6 +600,7 @@
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: try other words: the chips appear and one example plays */
             ctx.reveal([S.chipG, S.cmp], { from: 'up', dur: 400 });
+            S.chipsReady = true;
             return ctx.wait(500).then(function () { return S.pickWord('slowest'); });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: the real tokenizer on the prompt line */
@@ -638,7 +640,7 @@
             card: { tag: 'NUMBERS', title: 'The stop signal', stat: { v: '128009', l: 'the id of the end-of-turn token: when the model samples it, generation stops' } },
             deep: nolig('<ul><li>Generation stops when the model emits <code>&lt;|eot_id|&gt;</code> (128009): a <i>learned</i> stop signal, not a length rule.</li>' +
               '<li>Tool calls: Llama 3.1 emits a JSON function call (or <code>&lt;|python_tag|&gt;</code> … <code>&lt;|eom_id|&gt;</code> for built-in tools); results return in an <code>ipython</code> role. Other families use <code>&lt;tool_call&gt;</code> tags or structured content blocks.</li>' +
-              '<li>Template mismatches (a missing newline, a wrong role header) measurably degrade instruction following, which is why serving stacks apply the template shipped in the tokenizer config instead of hand-writing prompts, and why fine-tuning data must use the identical format.</li></ul>')
+              '<li>Template mismatches (a missing newline, a wrong role header) can degrade instruction following, which is why serving stacks apply the template shipped in the tokenizer config instead of hand-writing prompts, and why fine-tuning data must use the identical format.</li></ul>')
           },
           {
             say: 'These ids are reserved, and a careful serving stack encodes user and tool text so that it can never produce them. Then a pasted document cannot forge a role switch. That is one line of defence against prompt injection, not a complete one.',
@@ -688,6 +690,7 @@
             });
             return t;
           });
+          S.stopLbl = ctx.label(1520, 456, 'sampled: generation stops', { color: 'lime', size: 12, anchor: 'end', parent: c1, opacity: 0 });
           /* vocabulary sizes (beat 4) */
           var c3 = card(ctx, S.sp, 60, 510, 1480, 360, 'amber', 'VOCABULARY SIZES (n_vocab)');
           c3.setAttribute('opacity', 0);
@@ -699,31 +702,61 @@
             ctx.text(436 + 960 * v[1] / 262144 + 8, y, v[2] || v[1].toLocaleString('en-US'), { size: 12, font: 'mono', color: 'amber', parent: c3 });
             return [b, 960 * v[1] / 262144];
           });
-          /* security note (beat 3) */
-          S.secG = ctx.group({ parent: S.sp, opacity: 0 });
-          ctx.icon('shield', 646, 455, 22, 'pink', { parent: S.secG });
-          ctx.label(670, 455, 'careful stack: user text with a literal <|eot_id|> is encoded as plain text, no role switch', { color: 'pink', size: 12, anchor: 'start', parent: S.secG });
+          /* the same turn as token ids (beats 1 to 3): special tokens are single reserved ids inside an ordinary stream */
+          S.stripG = ctx.group({ parent: S.sp, opacity: 0 });
+          card(ctx, S.stripG, 60, 510, 1480, 360, 'cyan', 'THE SAME TURN AS TOKEN IDS   special tokens are single reserved ids');
+          function tchip(parent, x, y, s, col) {
+            var g = ctx.group({ parent: parent }), w = Math.max(32, s.length * 8.6 + 18);
+            ctx.rect(x, y - 15, w, 30, { rx: 6, fill: ctx.alpha(col, 0.16), stroke: col, sw: 1.2, parent: g });
+            var t = ctx.text(x + w / 2, y + 0.5, s, { size: 12, font: 'code', anchor: 'middle', color: 'white', parent: g });
+            t.style.fontVariantLigatures = 'none';
+            g.w = w;
+            return g;
+          }
+          var seq = [['128000', 'begin', 1], ['128006', 'header', 1], ['system', '', 0], ['128007', '/header', 1], ['⏎⏎', '', 0], ['You', '', 0], [' are', '', 0], [' the', '', 0], [' Director', '', 0], [' agent', '', 0], ['.', '', 0], [' Tools', '', 0], [':', '', 0], [' render', '', 0], ['_shot', '', 0], [',', '', 0], [' search', '', 0], ['_assets', '', 0], ['.', '', 0], ['128009', 'end of turn', 1]];
+          var sx = 90, sy = 590;
+          seq.forEach(function (q) {
+            var chipG = tchip(S.stripG, sx, sy, q[0].replace(/^ /, '·'), q[2] ? 'magenta' : 'cyan');
+            if (q[1]) ctx.text(sx + chipG.w / 2, sy + 30, q[1], { size: 11, font: 'mono', color: 'magenta', anchor: 'middle', parent: S.stripG });
+            sx += chipG.w + 7;
+          });
+          ctx.text(90, 668, 'magenta = reserved special id (128000 and up), never produced by ordinary text   ·   cyan = ordinary text token   ·   text splits are illustrative, special ids are real', { size: 11, font: 'mono', color: 'dim', parent: S.stripG });
+          /* what happens to a forged special token inside user text (beat 3) */
+          S.forgeG = ctx.group({ parent: S.stripG, opacity: 0 });
+          ctx.icon('shield', 100, 700, 22, 'pink', { parent: S.forgeG });
+          var ft = ctx.text(122, 726, 'user text containing the literal string  <|eot_id|>  becomes ordinary tokens:', { size: 13, font: 'code', color: 'text', parent: S.forgeG });
+          ft.style.fontVariantLigatures = 'none';
+          var fx = 90;
+          ['<|', 'e', 'ot', '_id', '|>'].forEach(function (s) {
+            var cg = tchip(S.forgeG, fx, 780, s, 'cyan');
+            fx += cg.w + 7;
+          });
+          ctx.text(fx + 14, 780, '5 ordinary text tokens, ids below 128,000: no role switch, the turn cannot be closed early', { size: 13, font: 'mono', color: 'lime', parent: S.forgeG });
+          ctx.text(90, 836, 'that closes the syntactic hole only: a page saying "ignore previous instructions" is still fluent text', { size: 11, font: 'mono', color: 'dim', parent: S.forgeG });
           /* beat 0: the reserved ids */
           return ctx.reveal(S.sp, { from: 'up' }).then(function () {
             return ctx.reveal(S.idRows, { from: 'left', stagger: 90, dur: 300 });
           }).then(function () { return ctx.beat(1); }).then(function () {
-            /* beat 1: the chat template */
+            /* beat 1: the chat template, and the same turn as ids below it */
             ctx.reveal(c1, { from: 'up', dur: 400 });
+            ctx.reveal(S.stripG, { from: 'up', dur: 500, delay: 600 });
             var chain = ctx.wait(400);
             S.tplLines.forEach(function (t) { chain = chain.then(function () { return ctx.reveal(t, { from: 'left', dur: 300 }); }); });
             return chain;
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: end of turn is a learned stop signal */
             var h = ctx.highlight(S.idRows[5], { color: 'lime', pad: 6, parent: S.sp });
+            ctx.reveal(S.stopLbl, { from: 'up', dur: 400 });
             return ctx.pulse(S.idRows[5], { color: 'lime', times: 2, dur: 600 }).then(function () {
               return ctx.pulse(S.tplLines[5], { color: 'lime', dur: 700 });
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: reserved ids cannot be forged by user text */
-            return ctx.reveal(S.secG, { from: 'up', dur: 500 }).then(function () { return ctx.pulse(S.secG, { color: 'pink', dur: 700 }); });
+            return ctx.reveal(S.forgeG, { from: 'up', dur: 500 }).then(function () { return ctx.pulse(S.forgeG, { color: 'pink', dur: 700 }); });
           }).then(function () { return ctx.beat(4); }).then(function () {
-            /* beat 4: vocabulary sizes */
-            ctx.reveal(c3, { from: 'up', dur: 500 });
+            /* beat 4: vocabulary sizes (the id strip makes way) */
+            ctx.fadeOut(S.stripG, 350, true);
+            ctx.reveal(c3, { from: 'up', dur: 500, delay: 200 });
             return ctx.wait(400).then(function () {
               return Promise.all(S.vBars.map(function (b, i) { return ctx.animate(b[0], { width: [0, b[1]] }, 600, 'out', i * 90); }));
             });
@@ -738,7 +771,7 @@
             say: 'Now ids become vectors. Formally, the id is a one hot vector of length one hundred twenty eight thousand, multiplied by the embedding matrix.',
             card: { tag: 'KEY IDEA', title: 'A one-hot times a table', body: 'One hot vector of length V times the matrix E: a single 1 selects a single row of E.' },
             deep: '<div class="eq">e = onehot(id)ᵀ E = E[id, :] &nbsp;&nbsp; E ∈ ℝ<sup>V×d</sup></div>' +
-              '<p>Only 18 of the 128,256 rows and 16 of the 8,192 columns fit on the stage; the highlighted row is token <code>·fox</code> (id 39935, illustrative). The matrix is learned: at initialisation its rows are near-random, and training moves them so that useful neighbours form.</p>'
+              '<p>Only 18 of the 128,256 rows and 16 of the 8,192 columns fit on the stage; the highlighted row is token <code>·fox</code> (id 39935 in cl100k_base). The matrix is learned: at initialisation its rows are near-random, and training moves them so that useful neighbours form.</p>'
           },
           {
             say: 'The product simply selects one row. So the implementation is a gather: copy sixteen kilobytes for each token, with no multiplication at all.',
@@ -855,6 +888,13 @@
               '<li>Input embeddings are only layer 0: meaning is refined along the residual stream; contextual vectors for "moon" after "ice" differ from "moon" after "honey".</li></ul>'
           },
           {
+            say: 'Now click any dot to see its cosine similarity to every other word. Neighbours in the same cluster score close to one, while words from other clusters score far lower, even negative.',
+            card: { tag: 'TRY IT', title: 'Click a word', body: 'The readout lists the two closest words and the least similar one. Try ice, then rocket: close friends inside a cluster, strangers outside it.' },
+            deep: '<p>Every dot is a token, and the readout is cos(u, v) against the other nine on this 2-D map. In a real model you would run the same ranking over all 128,256 rows of E; nearest-neighbour lookups like this are how embedding models, retrieval indexes and interpretability tools find related items.</p>' +
+              '<div class="eq">nearest(q) = arg max<sub>i</sub> E<sub>i</sub>·q / (‖E<sub>i</sub>‖ ‖q‖)</div>' +
+              '<p class="muted">Cosines here come from the illustrative 2-D positions. In a real embedding matrix unrelated words are rarely negative: anisotropy pushes typical cosines above zero, so compare with the average, not with zero.</p>'
+          },
+          {
             say: 'Directions encode features. The classic example is king minus man plus woman landing near queen: the same gender offset is reused in different places.',
             card: { tag: 'HOW IT WORKS', title: 'Offsets are reusable', more: '<p>Why a parallelogram: if v(woman) − v(man) ≈ v(queen) − v(king) ≈ g, a shared "gender" direction, then the four points span a parallelogram and v(queen) ≈ v(king) + g. The analogy test returns the vector nearest to that point by cosine, excluding the three query words.</p>', body: 'The vector from man to woman is roughly the vector from king to queen: one direction, many uses.' },
             deep: '<p><b>Analogies</b>: <code>v(king) − v(man) + v(woman) ≈ v(queen)</code> holds approximately in word2vec-style spaces (nearest neighbour excluding the inputs; Mikolov et al. 2013).</p>' +
@@ -888,8 +928,11 @@
           var dots = Object.keys(pts).map(function (k) {
             var p = pts[k], g = ctx.group({ parent: S.geo, opacity: 0 });
             ctx.circle(O.x + p[0], O.y + p[1], 6, { fill: p[2], parent: g, glow: true });
+            ctx.circle(O.x + p[0], O.y + p[1], 17, { fill: 'rgba(255,255,255,0.001)', parent: g });
             ctx.text(O.x + p[0] + 10, O.y + p[1] - 10, k, { size: 13, font: 'mono', color: p[2], parent: g });
             S.pt[k] = { x: O.x + p[0], y: O.y + p[1] };
+            g.style.cursor = 'pointer';
+            g.addEventListener('click', function (ev) { ev.stopPropagation(); S.selWord(k); });
             return g;
           });
           /* cosine arcs from fox (beat 1) */
@@ -916,13 +959,31 @@
           ctx.text(600, 800, 'king − man + woman ≈ queen', { size: 13, font: 'mono', weight: 700, color: 'pink', parent: S.ana });
           ctx.text(600, 822, 'same "gender" offset, reused', { size: 11, font: 'mono', color: 'dim', parent: S.ana });
 
-          var ca = card(ctx, S.geo, 1000, 180, 540, 200, 'amber', 'SIMILARITY = ANGLE');
+          var ca = card(ctx, S.geo, 1000, 180, 540, 214, 'amber', 'SIMILARITY = ANGLE');
           ca.setAttribute('opacity', 0);
-          ctx.para(1020, 232, ['cos(u,v) = u·v / (|u| |v|)', '', 'similar usage → similar direction', 'clusters: animals · space · cold'], { size: 14, font: 'code', color: 'text', lh: 30, parent: ca });
+          ctx.para(1020, 232, ['cos(u,v) = u·v / (|u| |v|)', 'similar usage → similar direction', 'clusters: animals · space · cold'], { size: 14, font: 'code', color: 'text', lh: 30, parent: ca });
           keepWS(ca);
-          var cb = card(ctx, S.geo, 1000, 400, 540, 470, 'amber', 'DIRECTIONS = FEATURES');
+          /* click-to-select readout (beat 2): ring, vector and a ranked cosine list */
+          S.selRing = ctx.circle(0, 0, 10, { stroke: 'white', sw: 2, parent: S.geo, glow: true, opacity: 0 });
+          S.selVec = ctx.path('M' + O.x + ',' + O.y + ' L' + O.x + ',' + O.y, { stroke: 'white', sw: 1.6, dash: '4 4', arrow: true, parent: S.geo, opacity: 0 });
+          S.selT1 = ctx.text(1020, 340, 'click a dot on the map', { size: 13, font: 'code', color: 'white', parent: ca, opacity: 0 });
+          S.selT2 = ctx.text(1020, 366, '', { size: 12, font: 'code', color: 'dim', parent: ca, opacity: 0 });
+          S.selWord = function (k) {
+            if (!S.selReady) return;
+            var others = Object.keys(pts).filter(function (q) { return q !== k; }).map(function (q) { return [q, cosv(S.pt[k], S.pt[q])]; });
+            others.sort(function (a, b) { return b[1] - a[1]; });
+            /* the selected word and its two nearest neighbours stay bright, everything else dims */
+            var keep = [k, others[0][0], others[1][0]];
+            Object.keys(pts).forEach(function (q, i) { dots[i].setAttribute('opacity', keep.indexOf(q) >= 0 ? 1 : 0.35); });
+            S.selRing.setAttribute('cx', S.pt[k].x); S.selRing.setAttribute('cy', S.pt[k].y); S.selRing.setAttribute('opacity', 1);
+            S.selVec.setAttribute('d', 'M' + O.x + ',' + O.y + ' L' + S.pt[k].x + ',' + S.pt[k].y); S.selVec.setAttribute('opacity', 1);
+            function f(o) { return o[0] + ' ' + (o[1] < -0.005 ? '−' : '') + Math.abs(o[1]).toFixed(2); }
+            S.selT1.textContent = 'cos(' + k + ', ·):  ' + others.slice(0, 2).map(f).join('  ') + '  …';
+            S.selT2.textContent = 'least similar:  ' + f(others[others.length - 1]);
+          };
+          var cb = card(ctx, S.geo, 1000, 414, 540, 456, 'amber', 'DIRECTIONS = FEATURES');
           cb.setAttribute('opacity', 0);
-          ctx.para(1020, 452, ['linear representation hypothesis:', ' concept c ↔ direction r_c', ' probe:  sign(r_c · h)', ' steer:  h ← h + α r_c', '', 'in d = 8,192 dims, random vectors', 'have |cos| ≈ 1/√d ≈ 0.011', '→ room for many near-orthogonal', '  directions (see superposition)'], { size: 14, font: 'code', color: 'text', lh: 30, parent: cb });
+          ctx.para(1020, 464, ['linear representation hypothesis:', ' concept c ↔ direction r_c', ' probe:  sign(r_c · h)', ' steer:  h ← h + α r_c', '', 'in d = 8,192 dims, random vectors', 'have |cos| ≈ 1/√d ≈ 0.011', '→ room for many near-orthogonal', '  directions (see superposition)'], { size: 14, font: 'code', color: 'text', lh: 30, parent: cb });
           keepWS(cb);
           /* beat 0: the map and its clusters */
           return ctx.reveal(S.geo, { from: 'fade' }).then(function () {
@@ -933,14 +994,25 @@
             ctx.reveal(ca, { from: 'up', dur: 500 });
             return ctx.reveal([vf, vw, vm], { from: 'draw', stagger: 200 });
           }).then(function () { return ctx.beat(2); }).then(function () {
-            /* beat 2: the king, queen analogy */
+            /* beat 2: click any word: ranked cosines. Two example clicks, ending on ice */
+            ctx.reveal([S.selT1, S.selT2], { dur: 300 });
+            S.selReady = true;
+            S.selWord('rocket');
+            return ctx.wait(1100).then(function () {
+              S.selWord('ice');
+              return ctx.pulse(S.selRing, { color: 'white', times: 2, dur: 600 });
+            });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: the king, queen analogy (the selection dims are cleared first) */
+            ctx.fade(dots, 1, 300);
+            ctx.fade([S.selRing, S.selVec], 0, 300);
             S.ana.setAttribute('opacity', 1);
             ctx.reveal(S.ana, {});
             return ctx.reveal([S.a1, S.a2], { from: 'draw', stagger: 500, dur: 700 }).then(function () {
               return ctx.camera(720, 700, 1.7, 900);
             }).then(function () { return ctx.wait(1000); }).then(function () { return ctx.camera(null, null, null, 800); });
-          }).then(function () { return ctx.beat(3); }).then(function () {
-            /* beat 3: directions are features */
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: directions are features */
             ctx.reveal(cb, { from: 'up', dur: 500 });
             return ctx.wait(500).then(function () { return ctx.pulse(cb, { color: 'amber', dur: 700 }); });
           });
@@ -954,7 +1026,7 @@
             say: 'Now the sequence itself. It is not only text. The director sees the system prompt and tools, then the request, then hundreds of tokens for each style sketch, then the voice memo as audio tokens.',
             card: { tag: 'KEY IDEA', title: 'One sequence, many modes', body: 'Text, sketches and audio share a single sequence: about three thousand positions for this request.' },
             deep: '<div class="eq">X = [E[text ids] ; P<sub>img</sub>(ViT(sketch)) ; P<sub>aud</sub>(Enc(memo)) ; …] ∈ ℝ<sup>T×d</sup></div>' +
-              '<p>The bar is drawn to scale: system prompt and tool schemas ≈ 1,200 tokens, the request 34, three sketches 3 × 256, the 42 s memo ≈ 1,050, and the running text ≈ 60, for T ≈ 3,112 positions. Real agent contexts are several times longer once history accumulates.</p>'
+              '<p>The bar is drawn to scale: system prompt and tool schemas ≈ 1,200 tokens, the request 33, three sketches 3 × 256, the 42 s memo ≈ 1,050, and the running text ≈ 60, for T ≈ 3,111 positions. Real agent contexts are several times longer once history accumulates.</p>'
           },
           {
             say: 'Each modality has its own encoder and a small projector into the same width as the text embeddings. After that point, the transformer cannot tell where a row came from, except through learned content and positions.',
@@ -965,7 +1037,7 @@
           },
           {
             say: 'The cost adds up quickly. A sketch becomes two hundred fifty six tokens and the forty two second memo about one thousand fifty, so more than half of all positions in this request are not text.',
-            card: { tag: 'NUMBERS', title: 'Pixels and sound cost', stat: { v: '58%', u: 'not text', l: '1,818 of 3,112 positions come from sketches and the voice memo' } },
+            card: { tag: 'NUMBERS', title: 'Pixels and sound cost', stat: { v: '58%', u: 'not text', l: '1,818 of 3,111 positions come from sketches and the voice memo' } },
             deep: '<ul><li><b>Images</b>: a 448×448 sketch → 32×32 patches → <b>256 tokens</b> after 2×2 merging; higher resolutions or native-resolution packing cost proportionally more.</li>' +
               '<li><b>Audio</b>: 25 tokens/s, so the 42 s memo ≈ <b>1,050 tokens</b>.</li></ul>' +
               '<p>Attention over these positions scales with T², so token compression (pooling, Q-Former-style resamplers, pruning of redundant frames) is a first-class design lever in multimodal models.</p>'
@@ -982,7 +1054,7 @@
           ctx.fadeOut(S.geo, 400, true);
           S.mm = ctx.group();
           ctx.text(60, 186, 'THE DIRECTOR\'S INPUT SEQUENCE   one matrix X ∈ ℝ^(T×d)', { size: 16, font: 'display', weight: 700, color: 'violet', parent: S.mm });
-          var segs = [['system + tools', 1200, 'amber'], ['prompt', 34, 'cyan'], ['sketch 1', 256, 'violet'], ['sketch 2', 256, 'violet'], ['sketch 3', 256, 'violet'], ['voice memo 42 s', 1050, 'orange'], ['text', 60, 'cyan']];
+          var segs = [['system + tools', 1200, 'amber'], ['prompt', 33, 'cyan'], ['sketch 1', 256, 'violet'], ['sketch 2', 256, 'violet'], ['sketch 3', 256, 'violet'], ['voice memo 42 s', 1050, 'orange'], ['text', 60, 'cyan']];
           var tot = segs.reduce(function (a, s) { return a + s[1]; }, 0);
           var x = 60, W = 1480;
           S.segEls = segs.map(function (s, i) {

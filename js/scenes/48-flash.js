@@ -70,12 +70,13 @@
   Atlas.register({
     id: 'flash-attention',
     refs: [
-      'Dao, Fu, Ermon, Rudra, Ré, <i>FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness</i>, NeurIPS 2022',
+      'Dao et al., <i>FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness</i>, NeurIPS 2022',
       'Dao, <i>FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning</i>, ICLR 2024',
       'Shah, Bikshandi, Zhang, Thakkar, Ramani, Dao, <i>FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-precision</i>, NeurIPS 2024',
       'Dao, Haziza, Massa, Sizov, <i>Flash-Decoding for long-context inference</i>, PyTorch / Stanford CRFM blog, 2023',
       'Milakov &amp; Gimelshein, <i>Online normalizer calculation for softmax</i>, 2018; Rabe &amp; Staats, <i>Self-attention Does Not Need O(n²) Memory</i>, 2021',
-      'NVIDIA, <i>H100 Tensor Core GPU Architecture</i> whitepaper, 2022; NVIDIA, <i>Blackwell Architecture Technical Brief</i>, 2024',
+      'NVIDIA, <i>NVIDIA H100 Tensor Core GPU Architecture</i> whitepaper, 2022',
+      'NVIDIA, <i>NVIDIA Blackwell Architecture Technical Brief</i>, 2024',
       'Zadouri, Hoehnerbach, Shah, Liu, Thakkar, Dao, <i>FlashAttention-4: Algorithm and Kernel Pipelining Co-Design for Asymmetric Hardware Scaling</i>, MLSys 2026 (arXiv 2603.05451)',
       'Zhang et al., <i>SageAttention: Accurate 8-Bit Attention for Plug-and-play Inference Acceleration</i>, ICLR 2025'
     ],
@@ -103,8 +104,8 @@
             say: 'Each of its one hundred thirty two streaming multiprocessors has a small on chip scratchpad, about two hundred twenty eight kilobytes, that is roughly ten times faster in aggregate.',
             card: { tag: 'KEY IDEA', title: 'A ladder of memories', body: 'Registers, shared memory, L2, HBM: each step down is bigger and slower. Fast tiers hold KBs, the slow tier holds GBs.' },
             deep: '<table><tr><th>Level</th><th>Size (H100 SXM5)</th><th>Bandwidth</th></tr>' +
-              '<tr><td>Registers</td><td>256 KB / SM (33.8 MB total)</td><td>feeds tensor cores every cycle</td></tr>' +
-              '<tr><td>SMEM / L1</td><td>228 KB / SM (≤ 227 KB as shared memory)</td><td>128 B/clk/SM ≈ 30 TB/s aggregate</td></tr>' +
+              '<tr><td>Registers</td><td>256 KB / SM (≈ 33 MB total)</td><td>feeds tensor cores every cycle</td></tr>' +
+              '<tr><td>SMEM / L1</td><td>256 KB array / SM, up to 228 KB as shared memory (≤ 227 KB per block)</td><td>128 B/clk/SM ≈ 30 TB/s aggregate</td></tr>' +
               '<tr><td>L2</td><td>50 MB</td><td>shared by all 132 SMs</td></tr>' +
               '<tr><td>HBM3</td><td>80 GB (5 stacks)</td><td>3.35 TB/s</td></tr></table>' +
               '<p>A kernel that keeps its working set in shared memory and registers sees ≈ 9× the bandwidth of one that goes to HBM, at about 1/2,700 of the capacity (≈ 30 MB of shared memory against 80 GB).</p>'
@@ -250,7 +251,7 @@
               '<p>Even when a compiler fuses mask, scale and softmax into one pass (XLA, <code>torch.compile</code>), it must still read S and write P, because softmax needs the whole row before it can normalise.</p>'
           },
           {
-            say: 'The value multiply reads them again. That is forty six gigabytes of traffic for one head in one layer, at least thirteen milliseconds, while the actual math needs only three.',
+            say: 'The value multiply reads the probabilities once more. That is forty six gigabytes of traffic for one head in one layer, at least thirteen milliseconds, while the actual math needs only three.',
             card: { tag: 'NUMBERS', title: '4.6 times slower than math', stat: { v: '13.6', u: 'ms', l: 'HBM time for 45.7 GB at 3.35 TB/s, versus 3.0 ms of tensor-core math' }, more: '<p>Time model: HBM time = bytes / bandwidth = 45.7 GB / 3.35 TB/s = 13.6 ms; tensor-core time = FLOPs / peak = 2.93 TFLOP / 989 TFLOP/s = 3.0 ms. A kernel is as slow as its slower resource, so the naive kernel runs at 3.0 / 13.6 = 22% of tensor-core peak at best. Real kernels overlap the two only partially, so 13.6 ms is a lower bound.</p>' },
             deep: '<div class="eq">HBM traffic ≥ 4·n²·2 B = 45.7 GB → ≥ 13.6 ms at 3.35 TB/s</div>' +
               '<div class="eq">FLOPs = 4·n²·d = 2.93 TFLOP → 3.0 ms at 989 TFLOP/s</div>' +
@@ -259,7 +260,7 @@
           {
             say: 'The GPU spends most of its time waiting on memory, and a forty head, forty layer model repeats this sixteen hundred times for every denoising step.',
             card: { tag: 'WHY IT MATTERS', title: 'Sixteen hundred repeats', body: '40 heads × 40 layers = 1,600 head-layers per denoising step. Removing the n × n round trips is the whole game.' },
-            deep: '<p>Per denoising step of a 40-layer, 40-head DiT (Wan-2.1-14B class) the naive kernel would spend 1,600 × 13.6 ms ≈ 22 s in attention IO alone, per step, per sample, before any of the other 20–50 steps. That is the cost FlashAttention removes.</p>' +
+            deep: '<p>Per denoising step of a 40-layer, 40-head DiT (Wan-2.1-14B class) the naive kernel would spend 1,600 × 13.6 ms ≈ 22 s in attention IO alone on one GPU for every forward pass, and a shot needs dozens of them (50 denoising steps, each with two CFG passes, in our trailer). That is the cost FlashAttention removes.</p>' +
               '<p>Kernel fusion of surrounding ops cannot help: as long as softmax needs the full row, S must exist somewhere off-chip. The fix has to change the <i>algorithm</i>, not just the schedule.</p>'
           }
         ],
@@ -383,8 +384,8 @@
         title: 'Tiling',
         beats: [
           {
-            say: 'FlashAttention never builds the full matrix. It cuts queries into blocks of one hundred twenty eight rows, and each thread block loads one query block into shared memory.',
-            card: { tag: 'KEY IDEA', title: 'Cut Q into blocks', body: 'One thread block owns 128 query rows. It loads its Q block once into shared memory and keeps it there for the whole loop.' },
+            say: 'FlashAttention never builds the full matrix. It cuts queries into blocks, here of one hundred twenty eight rows, and each thread block loads one query block into shared memory.',
+            card: { tag: 'KEY IDEA', title: 'Cut Q into blocks', body: 'In this walkthrough one thread block owns 128 query rows. It loads its Q block once into shared memory and keeps it there for the whole loop.' },
             deep: '<pre># one CTA per Q block\nfor i in parallel(n / Br):\n  load Q_i                 # -> SMEM\n  m = -inf; l = 0; O = 0   # registers\n  for j in range(n / Bc):\n    ...</pre>' +
               '<p>The grid has one CTA (thread block) per query block, ⌈n/B<sub>r</sub>⌉ of them per head. Q<sub>i</sub> is B<sub>r</sub> × d = 128 × 128 BF16 = 32 KB, loaded once. The running statistics m and ℓ and the output accumulator O live in registers and never leave the chip until the very end.</p>'
           },
@@ -402,7 +403,7 @@
               '<p class="muted">Loop order shown is FA2’s (Q outer, K/V inner). FA1’s Algorithm 1 had K/V outer and Q inner, so O<sub>i</sub>, m<sub>i</sub>, ℓ<sub>i</sub> were re-read and re-written in HBM on every inner step; the IO bound was the same, the constant factor worse.</p>'
           },
           {
-            say: 'The big n by n matrix exists only virtually, one tile at a time, so it never touches HBM at all. The whole working set fits in about one hundred sixty kilobytes.',
+            say: 'The big n by n matrix exists only virtually, one tile at a time, so it never touches HBM at all. With these tile sizes the whole working set fits in about one hundred sixty kilobytes.',
             card: { tag: 'NUMBERS', title: 'A tile budget', stat: { v: '160', u: 'KB', l: 'working set per thread block, within 227 KB of shared memory per SM' }, more: '<p>Per CTA (B<sub>r</sub> = B<sub>c</sub> = d = 128, BF16): Q<sub>i</sub> = 128 · 128 · 2 B = 32 KB; K<sub>j</sub> and V<sub>j</sub> tiles of 32 KB each, double-buffered, take 128 KB; the total is 160 KB against 227 KB of usable shared memory, leaving room for one CTA per SM. The 128 × 128 FP32 score tile (64 KB) and the O accumulator (64 KB) live in the 256 KB register file, spread over the warps.</p>' },
             deep: '<p>SRAM budget (d = 128, BF16, B<sub>r</sub> = B<sub>c</sub> = 128): Q<sub>i</sub> 32 KB + two pipeline stages of K<sub>j</sub>, V<sub>j</sub> 128 KB ≈ 160 KB ≤ 227 KB of shared memory; S and O accumulate in FP32 registers.</p>' +
               '<p>K and V are re-streamed once per Q block, but thousands of CTAs read the same blocks at about the same time, so most of that traffic is served by the 50 MB L2 rather than HBM. Memory footprint drops from O(n²) to O(n).</p>'
@@ -646,7 +647,8 @@
           });
           for (var b = 0; b < 4; b++) ctx.text(bx(b * 4) + 80, 404, 'block ' + (b + 1), { size: 12, font: 'mono', color: 'cyan', anchor: 'middle', parent: top });
           S.mLine = ctx.line(90, Y0, 90, Y0, { color: 'amber', sw: 2, dash: '6 4', parent: top });
-          S.mLbl = ctx.text(96, Y0, '', { size: 13, font: 'mono', weight: 700, color: 'amber', parent: top });
+          /* the running maximum is read off a fixed spot in the card header, so it never collides with bar labels */
+          S.mLbl = ctx.text(836, 198, '', { size: 13, font: 'mono', weight: 700, color: 'amber', anchor: 'end', parent: top });
           S.win = ctx.rect(bx(0) - 6, 224, 4 * 42 + 2, 168, { rx: 8, stroke: 'cyan', sw: 1.6, dash: '5 4', parent: top });
           hide(top);
 
@@ -721,8 +723,7 @@
             for (var q = 0; q < upto; q++) xr = Math.max(xr, bx(st[q].b * 4 + 3) + 36);
             S.mLine.setAttribute('y1', y); S.mLine.setAttribute('y2', y);
             S.mLine.setAttribute('x2', xr);
-            S.mLbl.setAttribute('y', y - 12);
-            S.mLbl.textContent = 'm = ' + m.toFixed(2);
+            S.mLbl.textContent = 'running max m = ' + m.toFixed(2) + ' (dashed)';
           }
           function setP(m, upto) {
             SCORES.forEach(function (s, k) {
@@ -834,8 +835,8 @@
           },
           {
             say: 'Because the traffic is gone, the kernel becomes compute bound: from about fourteen milliseconds to roughly four or five on Hopper, with the forward math unchanged.',
-            card: { tag: 'NUMBERS', title: 'Compute-bound at last', stat: { v: '≈ 4–5', u: 'ms', l: 'FlashAttention-3 at up to 740 TFLOP/s, versus at least 13.6 ms for the naive kernel' } },
-            deep: '<p>Forward FLOPs are identical (exact attention): 4n²d = 2.93 TFLOP per head. At FA3’s headline 740 TFLOP/s that is 4.0 ms, at a more conservative 600 TFLOP/s 4.9 ms, against ≥ 13.6 ms IO-bound. The kernel’s arithmetic intensity is ≈ B<sub>r</sub> FLOP per byte of K, V streamed (≈ 128), and L2 reuse across the thousands of concurrent CTAs that read the same K, V blocks lifts the effective HBM intensity far higher: compute-bound.</p>' +
+            card: { tag: 'NUMBERS', title: 'Compute-bound at last', stat: { v: '≈ 4–5', u: 'ms', l: 'FlashAttention-3 at roughly 650 TFLOP/s (head dim 128), versus at least 13.6 ms for the naive kernel' } },
+            deep: '<p>Forward FLOPs are identical (exact attention): 4n²d = 2.93 TFLOP per head. At roughly 650 TFLOP/s, what FA3 reports for head dimension 128 on long sequences, that is 4.5 ms; at its 740 TFLOP/s headline (a head-dimension-256 result) it would be 4.0 ms, at a more conservative 600 TFLOP/s 4.9 ms, against ≥ 13.6 ms IO-bound. The kernel’s arithmetic intensity is ≈ B<sub>r</sub> FLOP per byte of K, V streamed (≈ 128), and L2 reuse across the thousands of concurrent CTAs that read the same K, V blocks lifts the effective HBM intensity far higher: compute-bound.</p>' +
               '<p class="muted">Times shown are estimates from bandwidth and FA3-class throughput.</p>'
           },
           {
@@ -873,7 +874,7 @@
             [256, 'naive', 'S + P = 22.9 GB', lg(22900), 'red', Lm],
             [300, 'Flash', 'L = 0.3 MB', lg(0.3), 'lime', Lm],
             [414, 'naive', '≥ 13.6 ms (HBM-bound)', 13.6 / 14 * WW, 'red', Lt],
-            [458, 'FA3', '≈ 4–5 ms (up to 740 TFLOP/s)', 4.5 / 14 * WW, 'lime', Lt]
+            [458, 'FA3', '≈ 4–5 ms (~650 TFLOP/s)', 4.5 / 14 * WW, 'lime', Lt]
           ];
           S.lBars = rows.map(function (r) {
             ctx.text(X - 12, r[0] + 14, r[1], { size: 13, font: 'mono', weight: 700, color: r[4], anchor: 'end', parent: r[5] });
@@ -1122,7 +1123,7 @@
           {
             say: 'The result is up to about seven hundred forty teraflops in BF16, three quarters of peak, and close to one point two petaflops in FP8, one and a half to two times faster than FlashAttention two.',
             card: { tag: 'NUMBERS', title: 'Three quarters of peak', stat: { v: '740', u: 'TFLOP/s', l: 'best FA3 forward in BF16 on H100 (≈75% of peak); close to 1.2 PFLOP/s in FP8' } },
-            deep: '<p>Result: up to ~740 TFLOP/s BF16 (≈75% of the 989 peak), close to 1.2 PFLOP/s FP8, and 1.5–2× over FA2 on H100. FlashAttention-2 reached only about 35% utilisation on the same hardware because it did not use TMA, WGMMA or the specialised pipeline.</p>' +
+            deep: '<p>Result: up to ~740 TFLOP/s BF16 (≈75% of the 989 peak, reached at head dimension 256; about 650 at head dimension 128), close to 1.2 PFLOP/s FP8, and 1.5–2× over FA2 on H100. FlashAttention-2 reached only about 35% utilisation on the same hardware because it did not use TMA, WGMMA or the specialised pipeline.</p>' +
               '<p class="muted">Throughput bars are the reported forward-pass numbers at long sequence lengths; smaller sequences are lower.</p>'
           }
         ],
@@ -1272,7 +1273,7 @@
         title: 'Blackwell & decoding',
         beats: [
           {
-            say: 'Two more chapters. Decoding has the opposite problem: one query per sequence, so there are too few thread blocks to fill the GPU.',
+            say: 'Decoding has the opposite problem. With just one query per sequence there are too few thread blocks to fill the GPU, so most processors sit idle while one walks the whole cache.',
             card: { tag: 'PITFALL', title: 'Decode starves the GPU', body: 'One query row per sequence leaves no query-block dimension to parallelise: with batch 1 and 8 KV heads, only 8 blocks exist for 132 SMs.' },
             deep: '<p><b>Flash-Decoding</b> problem: decode has 1 query row per sequence, so there is no Q-block dimension to parallelise. With batch 1 and 8 KV heads (GQA query groups packed into one CTA, as FA3 and FlashInfer do) only 8 CTAs exist for 132 SMs, and each must walk a cache of up to 128k tokens alone.</p>' +
               '<p>The naive schedule keeps one SM busy per KV head for the whole 12.8 ms cache sweep while the other 124 SMs and most of the HBM bandwidth go unused.</p>'
@@ -1288,7 +1289,7 @@
             say: 'And on Blackwell, FlashAttention four keeps accumulators in the new tensor memory, emulates some exponentials with polynomials, and skips rescaling when the maximum barely moves.',
             card: { tag: 'STATE OF THE ART', title: 'FA4 on Blackwell', stat: { v: '1,613', u: 'TFLOP/s', l: 'best reported BF16 forward on B200: about 71% of dense peak' } },
             deep: '<p><b>Blackwell (B200/GB200)</b>: 5th-gen tensor cores (<code>tcgen05.mma</code>) write accumulators to <b>Tensor Memory</b> (TMEM, 256 KB per SM) instead of registers, and pairs of CTAs can cooperate on one MMA. FlashAttention-4 (CuTe-DSL) exploits this with deeper async pipelines, <b>software exp2</b> via polynomial approximation on FMA units to relieve the MUFU, and <b>lazy rescaling</b>: O is rescaled only when the running max rises past a threshold, since the final division by ℓ is exact either way.</p>' +
-              '<p>Reported up to 1,613 TFLOP/s BF16 forward on B200 (≈71% of the ~2.25 PFLOP/s dense peak), ~1.3× over cuDNN 9.13 and ~2.7× over Triton; the backward pass uses TMEM and 2-CTA MMA to cut shared-memory traffic and atomics.</p>'
+              '<p>Reported up to 1,613 TFLOP/s BF16 forward on B200 (≈71% of the ~2.25 PFLOP/s dense peak), up to 1.3× over cuDNN 9.13 and 2.7× over Triton; the backward pass uses TMEM and 2-CTA MMA to cut shared-memory traffic and atomics.</p>'
           },
           {
             say: 'Same math, re-derived for every new memory hierarchy. For video transformers, eight bit variants and sparse spatiotemporal attention build on the same tiled kernel.',

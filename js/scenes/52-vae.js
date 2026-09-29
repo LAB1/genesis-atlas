@@ -45,9 +45,9 @@
       'Rombach et al., <i>High-Resolution Image Synthesis with Latent Diffusion Models</i>, CVPR 2022',
       'Zhang et al., <i>The Unreasonable Effectiveness of Deep Features as a Perceptual Metric (LPIPS)</i>, CVPR 2018',
       'Yu et al., <i>Language Model Beats Diffusion — Tokenizer is Key to Visual Generation (MAGVIT-v2)</i>, ICLR 2024',
-      'Yang et al., <i>CogVideoX: Text-to-Video Diffusion Models with an Expert Transformer</i>, ICLR 2025',
+      'Yang et al., <i>CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer</i>, ICLR 2025',
       'Kong et al., <i>HunyuanVideo: A Systematic Framework for Large Video Generative Models</i>, arXiv 2412.03603, 2024',
-      'Wan Team (Alibaba), <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
       'HaCohen et al., <i>LTX-Video: Realtime Video Latent Diffusion</i>, 2025',
       'Yao et al., <i>Reconstruction vs. Generation: Taming Optimization Dilemma in Latent Diffusion Models (VA-VAE)</i>, CVPR 2025',
       'Chen et al., <i>Deep Compression Autoencoder for Efficient High-Resolution Diffusion Models (DC-AE)</i>, ICLR 2025'
@@ -332,7 +332,7 @@
             card: { tag: 'WHY IT MATTERS', title: 'An image is a one-frame video', body: 'y₀ depends only on x₀, so E(image) equals the first latent frame of E(video). One VAE serves images, I2V and video.', more: '<p>Cost of a 3×3×3 conv from C to C channels: 2·27·C² FLOPs per output voxel, 0.5 MFLOP at C = 96. Stage 0 has 121 · 720 · 1280 = 111.5 M voxels, so one such layer is ≈ 5.5×10¹³ FLOPs, and the whole encoder plus decoder lands around 10¹⁵.</p>' },
             deep: '<ul><li><b>Images and videos share one latent space</b>: E(image) = first latent frame of E(video starting with that image). Enables joint image-video training (billions of images, far fewer good videos) and I2V conditioning by encoding just frame 0.</li>' +
               '<li><b>Streaming</b>: causality means a chunk can be encoded or decoded given only a small cache of the past, the basis of the next step.</li>' +
-              '<li>Lineage: MAGVIT-v2 causal 3D CNN tokenizer → CogVideoX, HunyuanVideo, Wan, Cosmos tokenizers.</li></ul>' +
+              '<li>Causal 3D tokenizers: MAGVIT-v2 (which pads k<sub>t</sub> − 1 frames in front, so the first frame is independent) and, in the same spirit, the video VAEs of CogVideoX, HunyuanVideo and Wan.</li></ul>' +
               '<div class="note">Cost: a 3×3×3 conv from C to C channels costs 2·27·C² FLOPs per output voxel, 0.5 MFLOP at C = 96; stage 0 has 111.5 M voxels, so one such layer costs ≈ 5.5×10¹³ FLOPs.</div>'
           }
         ],
@@ -635,20 +635,20 @@
             say: 'A perceptual LPIPS loss compares deep network features instead of pixels, and restores texture that the pixel loss smooths away.',
             card: { tag: 'HOW IT WORKS', title: 'LPIPS restores texture', body: 'Distance between normalised VGG or AlexNet activations, calibrated on human similarity judgements, applied per frame.' },
             deep: '<ul><li><b>LPIPS</b>: distance between normalised VGG/AlexNet activations (per frame), with layer weights calibrated on human two-alternative-forced-choice judgements (Zhang et al., 2018). It penalises differences a viewer notices, such as texture, rather than differences in exact pixel values.</li></ul>' +
-              '<p>Video VAEs typically apply it to random frames of the clip rather than to every frame, which keeps memory in check.</p>'
+              '<p>Video VAEs often apply it to a subset of the clip’s frames rather than to every frame, which keeps memory in check.</p>'
           },
           {
             say: 'A tiny KL term keeps the latent smooth and bounded, so it is well behaved as input to the diffusion model. The weight is so small that the VAE is almost a plain autoencoder.',
             card: { tag: 'NUMBERS', title: 'A very weak KL term', stat: { v: '10⁻⁶', u: 'KL weight', l: 'typical λ_kl: the VAE is almost an autoencoder; the term only bounds and smooths the latent' }, more: '<p>Per latent element KL(q(z | x) ‖ N(0, I)) = ½ (μ² + σ² − 1 − log σ²). With λ<sub>kl</sub> ≈ 10⁻⁶ this is a soft penalty on latent magnitude and variance, not a real prior: the latent stays far from N(0, I), which is why it is normalised per channel before diffusion.</p>' },
-            deep: '<ul><li><b>KL</b>: λ<sub>kl</sub> ≈ 10⁻⁶. Its role is to keep latents bounded and smooth, not to match a prior; latents are then scaled or normalised (per-channel mean/std) before diffusion.</li></ul>' +
+            deep: '<ul><li><b>KL</b>: λ<sub>kl</sub> ≈ 10⁻⁶ (HunyuanVideo: 10⁻⁶ next to L1 weight 1 and LPIPS weight 0.1; Wan-VAE: 3×10⁻⁶ next to L1 and LPIPS weights of 3). Its role is to keep latents bounded and smooth, not to match a prior; latents are then scaled or normalised (per-channel mean/std) before diffusion.</li></ul>' +
               '<p>A large KL weight would force the posterior toward N(0, I) and destroy detail (posterior collapse); a zero weight leaves latents with arbitrary scale and sharp irregularities that the DiT struggles to model.</p>'
           },
           {
             say: 'And a three dimensional patch discriminator, switched on later in training, pushes the decoder toward crisp, realistic detail and stable motion.',
-            card: { tag: 'HOW IT WORKS', title: 'A 3D PatchGAN sharpens motion', body: 'A spatiotemporal discriminator, enabled after reconstructions stabilise, removes blur and flicker with a hinge loss and adaptive weight.' },
-            deep: '<ul><li><b>GAN</b>: 3D (spatiotemporal) PatchGAN or StyleGAN-style discriminator with hinge loss; enabled after reconstructions stabilise. Removes blur and temporal flicker. The weight is often set adaptively, λ<sub>adv</sub> = ‖∇<sub>L</sub>L<sub>rec</sub>‖ / (‖∇<sub>L</sub>L<sub>GAN</sub>‖ + δ) at the decoder’s last layer L (Esser et al., 2021).</li></ul>' +
-              '<p>The exact mix varies by model: GAN terms are standard in MAGVIT-v2-style and CogVideoX-style tokenizers, and not every open video VAE reports one.</p>' +
-              '<p>Training recipe: images first (low res), then short low-res videos, then long high-res clips; image and video batches mixed throughout thanks to causality. Reported reconstruction for 4×8×8×16 video VAEs is typically in the low-to-mid 30s dB PSNR at 720p.</p>' +
+            card: { tag: 'HOW IT WORKS', title: 'A 3D PatchGAN sharpens motion', body: 'A spatiotemporal discriminator, usually switched on after reconstructions stabilise, removes blur and flicker. Its weight is fixed (HunyuanVideo: 0.05) or adaptive (VQGAN).' },
+            deep: '<ul><li><b>GAN</b>: a 3D (spatiotemporal) PatchGAN-style discriminator, usually enabled after reconstructions stabilise. Removes blur and temporal flicker. The weight is either fixed (HunyuanVideo: 0.05) or set adaptively, λ<sub>adv</sub> = ‖∇<sub>L</sub>L<sub>rec</sub>‖ / (‖∇<sub>L</sub>L<sub>GAN</sub>‖ + δ) at the decoder’s last layer L (VQGAN, Esser et al., 2021).</li></ul>' +
+              '<p>The exact mix varies: Wan-VAE adds a 3D-discriminator GAN term in a later fine-tuning stage, HunyuanVideo and CogVideoX use one too, and LTX-Video uses a reconstruction-GAN whose discriminator sees original and reconstruction together.</p>' +
+              '<p>Recipe: HunyuanVideo uses a curriculum from short low-resolution clips to long high-resolution ones, mixing video and image data 4:1. Reconstruction is typically in the low-to-mid 30s dB PSNR: HunyuanVideo reports 33.1 dB (ImageNet 256²) and 35.4 dB (MCL-JCV, 33 × 360 × 640) against 31.7 and 33.2 dB for CogVideoX-1.5.</p>' +
               '<div class="note">Thumbnails on the right are illustrative renderings of each failure mode, not model outputs.</div>'
           }
         ],
@@ -724,10 +724,10 @@
         beats: [
           {
             say: 'How much should a VAE compress? The common choice, four by eight by eight with sixteen channels, gives our clip about one hundred eleven thousand tokens.',
-            card: { tag: 'NUMBERS', title: 'The common design', stat: { v: '48×', l: 'compression ratio t·h·w·3 / ch = 4·8·8·3 / 16 (Wan 2.1, HunyuanVideo, CogVideoX): 111,600 tokens per 5 s clip' } },
+            card: { tag: 'NUMBERS', title: 'The common design', stat: { v: '48×', l: 'ratio t·h·w·3 / ch = 4·8·8·3 / 16 (Wan 2.1, HunyuanVideo, CogVideoX); our 121-frame, 24 fps clip gives 111,600 tokens (Wan 2.1 native: 75,600)' } },
             deep: '<table><tr><th>VAE (t×h×w, channels)</th><th>ratio</th><th>tokens (5 s)</th></tr>' +
-              '<tr><td>Wan 2.1 / Hunyuan / CogVideoX: 4×8×8, 16 ch</td><td>48×</td><td>111,600 (p 1×2×2, 720p)</td></tr></table>' +
-              '<p>ratio = (t·h·w·3)/ch. This is the incumbent: three families converged on it, so most open DiTs, LoRAs and control adapters assume its latent grid and 16 channels.</p>' +
+              '<tr><td>Wan 2.1 / Hunyuan / CogVideoX: 4×8×8, 16 ch</td><td>48×</td><td>111,600 (p 1×2×2, 720p, 121 frames at 24 fps)</td></tr></table>' +
+              '<p>ratio = (t·h·w·3)/ch. This is the incumbent: three families converged on it, so most open DiTs, LoRAs and control adapters assume its latent grid and 16 channels. The 111,600 tokens belong to the atlas clip of 121 frames at 24 fps; Wan 2.1’s own native setting is 81 frames at 16 fps, which the same VAE turns into 75,600 tokens.</p>' +
               '<p>The 16 channels are inherited from image models: SD3’s ablation raised the latent from 4 to 16 channels at 8× spatial compression and found better reconstruction, and better generation once the transformer was large enough to use the extra capacity.</p>'
           },
           {
@@ -750,7 +750,7 @@
             card: { tag: 'STATE OF THE ART', title: 'Make the latent easier to generate', body: 'VA-VAE and REPA-style alignment to vision-foundation features; LTX’s decoder also runs the last denoising step; DC-AE adds residual shortcuts.' },
             deep: '<ul><li>align latents with vision-foundation features (VA-VAE / REPA-style losses);</li>' +
               '<li>let the decoder finish the job: LTX’s decoder also performs the last denoising step, recovering detail lost by aggressive compression;</li>' +
-              '<li>deep-compression AEs with residual shortcuts (DC-AE: 32–64× spatial for images).</li></ul>' +
+              '<li>deep-compression AEs with residual shortcuts (DC-AE: up to 128× spatial for images).</li></ul>' +
               '<p>None of these is free: alignment needs an extra frozen encoder during VAE training, and a decoder that also denoises is a heavier decoder to run.</p>'
           }
         ],
@@ -761,7 +761,7 @@
           ctx.hud('111,600 → 27,280 → 14,080 tokens');
           var cx = [80, 420, 530, 600, 690, 1010];
           var rows = [
-            ['Wan 2.1 · Hunyuan · CogVideoX', '4×8×8', '16', '48×', 111600, '1×', 'lime'],
+            ['Wan 2.1-style · our 121 frames', '4×8×8', '16', '48×', 111600, '1×', 'lime'],
             ['Wan 2.2 (TI2V-5B)', '4×16×16', '48', '64×', 27280, '≈ 1/16', 'cyan'],
             ['LTX-Video', '8×32×32', '128', '192×', 14080, '≈ 1/60', 'violet']
           ];
@@ -828,9 +828,9 @@
           },
           {
             say: 'It runs once per clip and costs a small fraction of the generation FLOPs, but it sets the memory peak, and its quality ceiling is the ceiling of the whole video model.',
-            card: { tag: 'WHY IT MATTERS', title: 'A tiny FLOP share, the memory peak', body: 'Decode is ≈ 9 × 10¹⁴ FLOPs against 1.3 × 10¹⁸ for the DiT: about 0.1%. But it sets peak memory and the quality ceiling.' },
+            card: { tag: 'WHY IT MATTERS', title: 'A tiny FLOP share, the memory peak', body: 'Decode is ≈ 9 × 10¹⁴ FLOPs against 1.3 × 10¹⁸ for the DiT: about 0.07%. But it sets peak memory and the quality ceiling.' },
             deep: '<table><tr><th>Summary</th><th>Value</th></tr>' +
-              '<tr><td>FLOPs share</td><td>decode ≈ 9×10¹⁴ vs DiT 1.3×10¹⁸: ≈ 0.1% of a 50-step, CFG clip, but the memory peak</td></tr>' +
+              '<tr><td>FLOPs share</td><td>decode ≈ 9×10¹⁴ vs DiT 1.3×10¹⁸: ≈ 0.07% of a 50-step, CFG clip, but the memory peak</td></tr>' +
               '<tr><td>memory tricks</td><td>chunked causal cache (time), overlapped tiles (space)</td></tr></table>' +
               '<div class="note">Serving: decode on the same GPUs right after the last denoising step (tiles spread across devices), or hand the latent to a separate decode pool so the DiT GPUs start the next job: a classic pipeline split in video-serving stacks.</div>'
           },
@@ -890,7 +890,7 @@
             ]).then(function () { return ctx.pulse(S.out, { color: 'lime', dur: 700 }); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 3: cost versus role */
-            var pg = ctx.para(1345, 610, ['runs once per clip', '~0.1% of FLOPs', 'but the memory peak', 'and the quality ceiling'], { size: 13, font: 'mono', color: 'text', lh: 24, parent: wb });
+            var pg = ctx.para(1345, 610, ['runs once per clip', '<0.1% of FLOPs', 'but the memory peak', 'and the quality ceiling'], { size: 13, font: 'mono', color: 'text', lh: 24, parent: wb });
             var sh = ctx.group({ parent: wb });
             ctx.text(1345, 728, 'FLOPs per clip, to scale', { size: 12, font: 'mono', color: 'dim', parent: sh });
             ctx.text(1345, 756, 'DiT', { size: 12, font: 'mono', color: 'lime', parent: sh });

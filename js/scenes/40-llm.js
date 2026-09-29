@@ -79,6 +79,8 @@
     var c = chip(ctx, S.seqG, tok, 'amber');
     var tx = S.seqX, ty = ROWY;
     S.seqX += c.w + 5;
+    S.seqN = (S.seqN || CONTEXT.length) + 1;
+    S.seqLabel.textContent = 'CONTEXT  ·  director agent  ·  ' + S.seqN + ' tokens (' + (S.seqN - CONTEXT.length) + ' sampled)';
     if (ctx.instant) { ctx.place(c, tx, ty); return Promise.resolve(); }
     var L = S.loop.getTotalLength(), w = c.w;
     var p0 = S.loop.getPointAtLength(0);
@@ -108,14 +110,19 @@
   Atlas.register({
     id: 'llm',
     refs: [
-      'Vaswani et al., <i>Attention Is All You Need</i>, NeurIPS 2017; Press &amp; Wolf, <i>Using the Output Embedding to Improve Language Models</i> (weight tying), EACL 2017',
-      'Kaplan et al., <i>Scaling Laws for Neural Language Models</i>, 2020; Hoffmann et al., <i>Training Compute-Optimal Large Language Models</i> (Chinchilla), NeurIPS 2022',
+      'Vaswani et al., <i>Attention Is All You Need</i>, NeurIPS 2017',
+      'Kaplan et al., <i>Scaling Laws for Neural Language Models</i>, 2020',
+      'Hoffmann et al., <i>Training Compute-Optimal Large Language Models</i> (Chinchilla), NeurIPS 2022',
       'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
-      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024; Kimi Team, <i>Kimi K2: Open Agentic Intelligence</i>, 2025',
-      'Ainslie et al., <i>GQA: Training Generalized Multi-Query Transformer Models</i>, EMNLP 2023',
-      'Kwon et al., <i>Efficient Memory Management for LLM Serving with PagedAttention</i>, SOSP 2023',
-      'Pope et al., <i>Efficiently Scaling Transformer Inference</i>, MLSys 2023; Williams et al., <i>Roofline</i>, CACM 2009',
-      'nostalgebraist, <i>interpreting GPT: the logit lens</i>, 2020; Belrose et al., <i>Eliciting Latent Predictions from Transformers with the Tuned Lens</i>, 2023; Elhage et al., <i>A Mathematical Framework for Transformer Circuits</i>, 2021'
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Kimi Team, <i>Kimi K2: Open Agentic Intelligence</i>, 2025',
+      'Ainslie et al., <i>GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints</i>, EMNLP 2023',
+      'Kwon et al., <i>Efficient Memory Management for Large Language Model Serving with PagedAttention</i>, SOSP 2023',
+      'Pope et al., <i>Efficiently Scaling Transformer Inference</i>, MLSys 2023',
+      'Williams, Waterman &amp; Patterson, <i>Roofline: An Insightful Visual Performance Model for Multicore Architectures</i>, CACM 2009',
+      'Elhage et al., <i>A Mathematical Framework for Transformer Circuits</i>, Transformer Circuits 2021',
+      'Press &amp; Wolf, <i>Using the Output Embedding to Improve Language Models</i> (weight tying), EACL 2017',
+      'nostalgebraist, <i>interpreting GPT: the logit lens</i>, 2020; Belrose et al., <i>Eliciting Latent Predictions from Transformers with the Tuned Lens</i>, 2023'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -243,9 +250,9 @@
           {
             say: 'Open the box. First the tokenizer turns text into integer ids using byte level byte pair encoding: common words become one token, rare words split into pieces.',
             card: { tag: 'KEY IDEA', title: 'Text becomes integers', body: 'Sixteen chunks of text become sixteen integer ids. The model never sees letters, only numbers.' },
-            deep: '<p>The tokenizer is a deterministic, invertible map from a byte string to a list of integer ids in <code>[0, V)</code>. It runs on the CPU before any GPU work, at roughly 1–10 MB/s per core, which is negligible next to the model.</p>' +
+            deep: '<p>The tokenizer is a deterministic, invertible map from a byte string to a list of integer ids in <code>[0, V)</code>. It runs on the CPU before any GPU work, at roughly 10 MB/s per core in optimised libraries such as tiktoken, which is negligible next to the model.</p>' +
               '<ul><li>Byte-level BPE (GPT-2, Llama 3, Qwen): frequent byte sequences are merged into tokens; anything unseen falls back to raw bytes.</li>' +
-              '<li>English prose ≈ 4 bytes (0.75 words) per token at V = 128k; code and non-Latin scripts cost more tokens per character.</li></ul>' +
+              '<li>English prose ≈ 4 bytes (about 0.75 words) per token at V = 128k; Meta reports 3.94 characters per token for Llama 3 against 3.17 for Llama 2. Code and non-Latin scripts cost more tokens per character.</li></ul>' +
               '<p class="muted">Token boundaries here are illustrative; the Tokenization chamber takes them apart.</p>'
           },
           {
@@ -558,7 +565,7 @@
               });
             }, 'out');
           };
-          S.headChip.addEventListener('click', function (ev) { ev.stopPropagation(); S.setHead((S.head + 1) % 3, 500); });
+          S.headChip.addEventListener('click', function (ev) { ev.stopPropagation(); if (S.headReady) S.setHead((S.head + 1) % 3, 500); });
           S.attLines.forEach(function (l) { l.setAttribute('opacity', 0.1); });
           S.blockPanel = g;
           swapRowC(ctx, S, g);
@@ -580,6 +587,7 @@
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: the semantic head's weights */
             ctx.reveal(agc, { dur: 300 });
+            S.headReady = true;
             return S.setHead(0, 900).then(function () { return ctx.pulse(S.attn, { color: 'amber', dur: 600 }); });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: three heads, three jobs */
@@ -588,8 +596,6 @@
               return S.setHead(1, 600);
             }).then(function () { return ctx.wait(600); }).then(function () {
               return S.setHead(2, 600);
-            }).then(function () { return ctx.wait(600); }).then(function () {
-              return S.setHead(0, 600);
             });
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: the MLP sublayer and its share of the weights */
@@ -638,7 +644,7 @@
             say: 'Real systems also truncate the tail with top p or min p, and for tool calls a grammar masks illegal tokens before the softmax, so the output is guaranteed to parse. The sampler is the doorway to the decoding chamber.',
             card: { tag: 'STATE OF THE ART', title: 'Valid tool JSON, always', body: 'Grammar masks set illegal-token logits to −∞ each step, so output always parses against the schema.' },
             deep: '<ul><li><b>top-k / top-p (nucleus)</b>: truncate the tail to the smallest set with cumulative mass ≥ p; <b>min-p</b> scales the cut by the max probability.</li>' +
-              '<li>For tool calls, a grammar mask sets illegal-token logits to −∞ before softmax (constrained decoding). Engines such as XGrammar and llguidance precompile the grammar into a token-level automaton, so the mask costs tens of microseconds per token.</li></ul>' +
+              '<li>For tool calls, a grammar mask sets illegal-token logits to −∞ before softmax (constrained decoding). XGrammar prechecks most tokens ahead of time and overlaps grammar work with GPU execution, while llguidance computes masks on the fly at about 50 microseconds of CPU time per token for a 128k vocabulary, so the mask adds little to decode latency.</li></ul>' +
               '<p>The pink marker on the strip shows top-p 0.9 cutting the tail. Click the sampler to open the Decoding chamber.</p>'
           }
         ],
@@ -766,20 +772,20 @@
               '<p>KV cache per token (70B, GQA-8, BF16): 2 · 80 layers · 8 heads · 128 · 2 B = <b>320 KiB</b>. A 12k-token agent context therefore holds 3.7 GiB of cache. The chart is drawn per sequence, on 8×H100 with tensor parallelism 8 (one KV head per GPU).</p>'
           },
           {
-            say: 'Its giant matrix multiplies saturate the tensor cores, so prefill is compute bound. On eight H100 GPUs the whole turn takes about four tenths of a second until the first token.',
+            say: 'Its giant matrix multiplies saturate the tensor cores, so prefill is compute bound. On eight H100 GPUs the first token can arrive after about four tenths of a second.',
             card: { tag: 'NUMBERS', title: 'Time to first token', more: '<p>Total FLOPs = 2N·T + 2·L·T²·d<sub>attn</sub> = 1.69 + 0.19 PFLOP. Eight H100s deliver 8 × 989 TFLOP/s = 7.9 PFLOP/s at peak; at 60% MFU that is 4.75 PFLOP/s, so 1.88 / 4.75 ≈ 0.40 s.</p>', stat: { v: '≈ 0.4', u: 's', l: '12k-token prefill on 8×H100 at about 60% MFU: roughly 1.9 PFLOP' } },
             deep: '<p><b>Prefill</b> of this 12k-token turn: 2N·T + 2·L·T²·d ≈ 1.69 + 0.19 PFLOP ⇒ TTFT ≈ 0.4 s at ~60% MFU on 8×H100 (4.75 PFLOP/s effective). Treat that as a best case: at 40% MFU, or with all-reduce and scheduling overheads, 0.6 s or more is typical.</p>' +
               '<p>Its GEMMs reach ≈ 4k FLOP/byte once activation reads and writes are counted (the ≈ T rule holds only while T ≪ d), far above the H100 ridge, so the tensor cores are the bottleneck. The quadratic attention term is ~10% of the work at 12k tokens and equals the parameter FLOPs near 108k.</p>'
           },
           {
-            say: 'Decode then produces one token per pass, re-reading every weight and the whole cache from memory just to do a tiny amount of math. Eight hundred tokens of plan take about twelve seconds.',
+            say: 'Decode then produces one token per pass, re-reading every weight and the whole cache from memory just to do a tiny amount of math. Eight hundred tokens of plan take about twelve seconds at a typical fifteen milliseconds per token.',
             card: { tag: 'NUMBERS', title: 'Decode idles the chip', more: '<p>Batch-1 decode reads each BF16 weight (2 bytes) and uses it for one multiply-add (2 FLOP): 1 FLOP per byte. The H100 ridge is 989 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOP/byte, so utilisation is about 1/295 ≈ 0.3% of peak compute: the tensor cores wait on HBM.</p>', stat: { v: '0.3%', u: 'of peak', l: 'compute used at batch 1: about 1 FLOP per byte against a ridge of 295' } },
             deep: '<table><tr><th></th><th>Prefill</th><th>Decode</th></tr>' +
               '<tr><td>Tokens / pass</td><td>T (all prompt tokens)</td><td>1 per sequence</td></tr>' +
               '<tr><td>Math</td><td>GEMM [T×d]·[d×d′]</td><td>GEMV (GEMM with batch B)</td></tr>' +
               '<tr><td>Intensity</td><td>≈ T FLOP/byte (T ≪ d)</td><td>≈ B FLOP/byte</td></tr>' +
               '<tr><td>Metric</td><td>TTFT</td><td>TPOT / inter-token latency</td></tr></table>' +
-              '<p><b>Roofline</b> (H100 SXM): 989 TFLOP/s dense BF16 ÷ 3.35 TB/s HBM3 ⇒ ridge ≈ <b>295 FLOP/byte</b>. Decode at batch 1 sits at ≈ 1 FLOP/byte, 0.3% of peak compute. On 8 GPUs (TP=8), reading 141 GB of weights at 26.8 TB/s bounds a token at ≥ 5.3 ms.</p>'
+              '<p><b>Roofline</b> (H100 SXM): 989 TFLOP/s dense BF16 ÷ 3.35 TB/s HBM3 ⇒ ridge ≈ <b>295 FLOP/byte</b>. Decode at batch 1 sits at ≈ 1 FLOP/byte, 0.3% of peak compute. On 8 GPUs (TP=8), reading 141 GB of weights at 26.8 TB/s bounds a token at ≥ 5.3 ms. The 10–20 ms TPOT used here is an assumed typical figure for batch-1, 8-way tensor-parallel decoding: all-reduces and kernel overheads sit on top of that memory bound.</p>'
           },
           {
             say: 'So prefill is compute bound, and decode is memory bandwidth bound, unless you batch many users together. At batch thirty two the same weights serve thirty two sequences, and the point climbs the roofline.',
@@ -897,7 +903,7 @@
           {
             say: 'The MLPs hold most of the weights: about eighty percent, against seventeen percent for attention, and only three percent for the two embedding tables. Weights alone take one hundred forty one gigabytes in half precision.',
             card: { tag: 'NUMBERS', title: 'Most weights are MLP', more: '<p>Per block: attention 151 M (2d² for Q and O, 2·d·1,024 for K and V), MLP 705 M (3·d·28,672). Times 80: attention 12.1 B, MLP 56.4 B. Embedding plus unembedding: 2 × 128,256 × 8,192 = 2.1 B. Sum 70.6 B, of which the MLP is 79.9%.</p>', stat: { v: '80%', u: 'are MLP', l: '56.4 B of 70.6 B are feed-forward; attention 12.1 B, embeddings 2.1 B' } },
-            deep: '<div class="eq">attn/block = 2d² + 2·d·(8·128) = 151 M &nbsp; mlp/block = 3·d·d<sub>ff</sub> = 705 M</div>' +
+            deep: '<div class="eq">attn / block = 2d² + 2·d·(8·128) = 151 M</div><div class="eq">mlp / block = 3·d·d<sub>ff</sub> = 705 M</div>' +
               '<p>80 × 856 M = 68.4 B, + embed 1.05 B + unembed 1.05 B ≈ <b>70.6 B</b>. Weights: 141 GB BF16, 71 GB FP8, ≈ 35–40 GB at 4-bit.</p>' +
               '<p>Compute: 2N ≈ 141 GFLOP per token, plus 4·L·d<sub>attn</sub> ≈ 2.6 MFLOP per token of context for attention.</p>'
           },
@@ -957,7 +963,7 @@
             var c2 = card(ctx, g, 820, 604, 720, 272, 'orange', 'TOTAL vs ACTIVE PARAMETERS PER TOKEN');
             S.c2 = c2;
             var models = [['Llama 3.1 70B', 70.6, 70.6], ['Llama 3.1 405B', 405, 405], ['Qwen3-235B-A22B', 235, 22], ['DeepSeek-V3', 671, 37], ['Kimi K2', 1040, 32]];
-            var sc = 440 / 1040;
+            var sc = 400 / 1040;
             S.mBars = [];
             S.addModel = function (i) {
               var m = models[i], y = 654 + i * 40, rg = ctx.group({ parent: c2 });
@@ -965,8 +971,8 @@
               var tot = ctx.rect(1010, y - 11, 0, 22, { rx: 3, fill: ctx.alpha('orange', 0.12), stroke: ctx.alpha('orange', 0.6), sw: 1, dash: m[1] > m[2] ? '3 3' : null, parent: rg });
               var act = ctx.rect(1010, y - 11, 0, 22, { rx: 3, fill: ctx.alpha('amber', 0.65), stroke: 'amber', sw: 1, parent: rg });
               var lab = m[1] === m[2] ? m[1] + 'B dense' : m[2] + 'B / ' + (m[1] >= 1000 ? (m[1] / 1000).toFixed(2) + 'T' : m[1] + 'B');
-              var lx = Math.max(m[1] * sc, 0) + 1016;
-              var lt = ctx.text(Math.min(lx, 1530), y, lab, { size: 11, font: 'mono', color: m[1] === m[2] ? 'amber' : 'orange', anchor: lx > 1400 ? 'end' : 'start', parent: rg, opacity: 0 });
+              var lx = Math.max(m[1] * sc, 0) + 1018;
+              var lt = ctx.text(lx, y, lab, { size: 11, font: 'mono', color: m[1] === m[2] ? 'amber' : 'orange', anchor: 'start', parent: rg, opacity: 0 });
               S.mBars[i] = [tot, act, m[1] * sc, m[2] * sc];
               return Promise.all([ctx.animate(tot, { width: [0, m[1] * sc] }, 700, 'out', 0), ctx.animate(act, { width: [0, m[2] * sc] }, 700, 'out', 300)]).then(function () { return ctx.reveal(lt, { dur: 300 }); });
             };
@@ -989,13 +995,13 @@
         beats: [
           {
             say: 'Finally, where do these weights come from? Pretraining on roughly fifteen trillion tokens of next token prediction costs about six times parameters times tokens floating point operations, several million GPU hours.',
-            card: { tag: 'NUMBERS', title: 'The price of pretraining', more: '<p>Forward pass 2N FLOPs per token, backward 4N (two GEMMs per layer), hence 6N per training token. For N = 70.6 B and D = 15 T: 6 × 70.6·10⁹ × 15·10¹² = 6.35·10²⁴ FLOP. At 400 TFLOP/s per H100 (about 40% MFU) that is 4.4 M GPU-hours; Meta reports about 7.0 M H100-hours for Llama 3.1 70B once restarts, lower utilisation and long-context stages are included.</p>', stat: { v: '6.4e24', u: 'FLOP', l: '6ND for 70B on 15T tokens: about 7 million H100-hours' } },
+            card: { tag: 'NUMBERS', title: 'The price of pretraining', more: '<p>Forward pass 2N FLOPs per token, backward 4N (two GEMMs per layer), hence 6N per training token. For N = 70.6 B and D = 15 T: 6 × 70.6·10⁹ × 15·10¹² = 6.35·10²⁴ FLOP. At 400 TFLOP/s per H100 (about 40% MFU, the rate Meta reports for its 405B run) that is 4.4 M GPU-hours. Meta’s model card lists about 7.0 M H100-hours for Llama 3.1 70B, which implies roughly 250 TFLOP/s per GPU on this 6ND estimate.</p>', stat: { v: '6.4e24', u: 'FLOP', l: '6ND for 70B on 15T tokens; Meta reports about 7 million H100-hours' } },
             deep: '<div class="eq">C<sub>train</sub> ≈ 6·N·D &nbsp;⇒&nbsp; 6 · 70.6·10⁹ · 15·10¹² ≈ 6.4·10²⁴ FLOP</div>' +
-              '<p>(forward 2N + backward 4N per token). Llama 3 405B used ≈ 3.8·10²⁵ FLOP on 15.6 T tokens with up to 16k H100s. Modern recipes <b>over-train</b> well past Chinchilla-optimal (D ≈ 20 N) because inference cost, not training cost, dominates lifetime spend.</p>' +
-              '<p>The curve is the Chinchilla parametric fit L(N,D) = E + A/N<sup>α</sup> + B/D<sup>β</sup> at N = 70.6 B: about 1.86 at 15 T tokens, against an irreducible E = 1.69.</p>' +
+              '<p>(forward 2N + backward 4N per token). Llama 3 405B used ≈ 3.8·10²⁵ FLOP on 15.6 T tokens with up to 16k H100s. Modern recipes <b>over-train</b> well past Chinchilla-optimal (D ≈ 20 N) because a smaller, longer-trained model is cheaper to serve, and serving cost can dominate lifetime spend.</p>' +
+              '<p>The curve is a Chinchilla-style parametric fit L(N,D) = E + A/N<sup>α</sup> + B/D<sup>β</sup> at N = 70.6 B, with the constants of the Besiroglu et al. replication (the same ones the training chamber uses): about 1.93 at 15 T tokens, against an irreducible E = 1.82.</p>' +
               '<details><summary>Go deeper</summary><p>Minimise L(N, D) = E + A/N<sup>α</sup> + B/D<sup>β</sup> subject to C = 6ND. The Lagrange condition is αA/N<sup>α</sup> = βB/D<sup>β</sup>, which gives</p>' +
-              '<div class="eq">N<sub>opt</sub> ∝ C<sup>β/(α+β)</sup> ≈ C<sup>0.45</sup>, &nbsp; D<sub>opt</sub> ∝ C<sup>α/(α+β)</sup> ≈ C<sup>0.55</sup></div>' +
-              '<p>with α = 0.34 and β = 0.28: parameters and tokens should grow almost in proportion, at about 20 tokens per parameter. Llama 3 70B trains on 15 T tokens, 213 tokens per parameter, more than ten times the Chinchilla ratio, on purpose.</p></details>' +
+              '<div class="eq">N<sub>opt</sub> ∝ C<sup>β/(α+β)</sup> ≈ C<sup>0.51</sup>, &nbsp; D<sub>opt</sub> ∝ C<sup>α/(α+β)</sup> ≈ C<sup>0.49</sup></div>' +
+              '<p>with α = 0.348 and β = 0.366 (the replication fit; the constants printed in the original paper, α = 0.34 and β = 0.28, fit its own data poorly, and the paper’s estimated exponents were 0.46 and 0.54): parameters and tokens should grow almost in proportion, at about 20 tokens per parameter. Llama 3 70B trains on 15 T tokens, about 210 tokens per parameter, more than ten times the Chinchilla ratio, on purpose.</p></details>' +
               '<ol><li><b>Pretrain</b>: cross-entropy on web, code, books, synthetic data.</li></ol>'
           },
           {
@@ -1030,12 +1036,12 @@
             return ctx.node({ x: 180 + i * 225, y: 700, w: 176, h: 64, title: stages[i][0], sub: stages[i][1], color: stages[i][2], titleSize: 15, subSize: 11, parent: g });
           }
           S.trainNodes = [stageNode(0)];
-          var flops = ctx.para(100, 790, ['6ND ≈ 6.4·10²⁴ FLOP for 70B × 15T tokens', '≈ 7M H100-hours (Llama 3.1 70B)'], { size: 12, font: 'mono', color: 'dim', lh: 22, parent: g });
-          /* Chinchilla parametric fit L(N,D) = E + A/N^a + B/D^b at N = 70.6B, D on a log axis */
-          var lossFn = function (lg) { return 1.69 + 406.4 / Math.pow(70.6e9, 0.34) + 410.7 / Math.pow(Math.pow(10, lg), 0.28); };
+          var flops = ctx.para(100, 790, ['6ND ≈ 6.4·10²⁴ FLOP for 70B × 15T tokens', 'reported ≈ 7M H100-hours (Llama 3.1 70B)'], { size: 12, font: 'mono', color: 'dim', lh: 22, parent: g });
+          /* Chinchilla-style parametric fit (Besiroglu et al. replication constants) L(N,D) = E + A/N^a + B/D^b at N = 70.6B, D on a log axis */
+          var lossFn = function (lg) { return 1.82 + 482.01 / Math.pow(70.6e9, 0.3478) + 2085.43 / Math.pow(Math.pow(10, lg), 0.3658); };
           var lp = ctx.group({ parent: g });
           S.lossPlot = ctx.plot(640, 786, 380, 66, lossFn, { xDomain: [10.5, 13.3], yDomain: [1.8, 2.35], color: 'lime', sw: 2, parent: lp, xLabel: 'tokens D (log) → 15T', yLabel: '' });
-          ctx.text(648, 778, 'loss L(N=70.6B, D) = E + A/N^α + B/D^β  (Chinchilla fit)', { size: 11, font: 'mono', color: 'lime', parent: lp });
+          ctx.text(648, 778, 'loss L(N=70.6B, D) = E + A/N^α + B/D^β  (replication fit)', { size: 11, font: 'mono', color: 'lime', parent: lp });
           var pEnd = S.lossPlot.toPx(Math.log10(15e12), lossFn(Math.log10(15e12)));
           var lDot = ctx.circle(pEnd.x, pEnd.y, 4, { fill: 'lime', parent: lp, glow: true });
           ctx.text(pEnd.x - 6, pEnd.y - 12, 'L ≈ ' + lossFn(Math.log10(15e12)).toFixed(2), { size: 11, font: 'mono', color: 'lime', anchor: 'end', parent: lp });

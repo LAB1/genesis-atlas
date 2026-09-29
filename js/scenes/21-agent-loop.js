@@ -139,11 +139,16 @@
     refs: [
       'Yao et al., <i>ReAct: Synergizing Reasoning and Acting in Language Models</i>, ICLR 2023',
       'Shinn et al., <i>Reflexion: Language Agents with Verbal Reinforcement Learning</i>, NeurIPS 2023',
-      'Wang et al., <i>Plan-and-Solve Prompting</i>, ACL 2023',
+      'Wang et al., <i>Plan-and-Solve Prompting: Improving Zero-Shot Chain-of-Thought Reasoning by Large Language Models</i>, ACL 2023',
       'Schick et al., <i>Toolformer: Language Models Can Teach Themselves to Use Tools</i>, NeurIPS 2023',
-      'Shao et al., <i>DeepSeekMath</i> (GRPO), 2024; DeepSeek-AI, <i>DeepSeek-R1</i>, Nature 2025; Yu et al., <i>DAPO</i>, 2025; Liu et al., <i>Understanding R1-Zero-Like Training</i> (Dr. GRPO), 2025',
-      'Liu et al., <i>Lost in the Middle: How Language Models Use Long Contexts</i>, TACL 2024; Hong et al., <i>Context Rot</i>, Chroma Research 2025',
-      'Anthropic, <i>Effective context engineering for AI agents</i>, 2025; <i>Extended thinking</i> &amp; <i>prompt caching</i> API docs',
+      'Shao et al., <i>DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models</i> (GRPO), 2024',
+      'DeepSeek-AI, <i>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning</i>, 2025',
+      'Yu et al., <i>DAPO: An Open-Source LLM Reinforcement Learning System at Scale</i>, 2025',
+      'Liu et al., <i>Understanding R1-Zero-Like Training: A Critical Perspective</i> (Dr. GRPO), 2025',
+      'Liu et al., <i>Lost in the Middle: How Language Models Use Long Contexts</i>, TACL 2024',
+      'Hong, Troynikov &amp; Huber, <i>Context Rot: How Increasing Input Tokens Impacts LLM Performance</i>, Chroma Research 2025',
+      'Anthropic, <i>Effective context engineering for AI agents</i>, 2025',
+      'Anthropic, <i>Claude API documentation: prompt caching, extended thinking, tool use, vision and context editing</i>, 2025–2026',
       'Packer et al., <i>MemGPT: Towards LLMs as Operating Systems</i>, 2023'
     ],
     setup: function (ctx) {
@@ -491,8 +496,8 @@
           },
           {
             say: 'Order matters, because the provider can cache the longest unchanged prefix. Later turns then read those first five and a half thousand tokens at a tenth of the price.',
-            card: { tag: 'NUMBERS', title: 'Cached reads are cheap', stat: { v: '0.1×', l: 'input price for reading a cached prefix; writing it once costs 1.25×' } },
-            deep: '<p><b>Prompt caching</b> keys on an exact prefix in the order tools → system → messages. With a breakpoint after the system prompt, later turns read that prefix at ≈ 0.1× the input price and skip its prefill; writing the cache costs ≈ 1.25× (5-minute TTL; a 1-hour TTL costs 2×).</p>' +
+            card: { tag: 'NUMBERS', title: 'Cached reads are cheap', stat: { v: '0.1×', l: 'input price for reading a cached prefix on most Claude models; a five-minute cache write costs 1.25×' } },
+            deep: '<p><b>Prompt caching</b> keys on an exact prefix in the order tools → system → messages. With a breakpoint after the system prompt, later turns read that prefix at ≈ 0.1× the input price (most models; a few newer ones are cheaper still) and skip its prefill; writing the cache costs ≈ 1.25× (5-minute TTL; a 1-hour TTL costs 2×).</p>' +
               '<p>Each cache hit also cuts time to first token, since the KV entries for the prefix are reused rather than recomputed. Cache reads refresh the TTL, so a busy agent keeps its prefix warm for free.</p>' +
               '<details><summary>Go deeper</summary><p>Break-even: over k requests an uncached prefix costs k units, a cached one costs 1.25 + 0.1·(k − 1). Setting 1.25 + 0.1(k − 1) &lt; k gives k &gt; 1.28, so caching already wins on the <i>second</i> use. The catch is the exact-prefix rule: one changed token near the front invalidates everything after it, and a cache write that is never read again is a 25% surcharge.</p></details>'
           }
@@ -599,11 +604,11 @@
           },
           {
             say: 'On the second turn it renders all six keyframes in parallel, in one assistant message, and the six results come back together.',
-            card: { tag: 'NUMBERS', title: 'Images are expensive observations', stat: { v: '10.2k', u: 'tokens', l: 'of tool results after turn two: six keyframes at about 1.6k tokens each' }, more: '<p>Image cost scales with pixels: tokens ≈ w·h / 750, so 1092 × 1092 is about 1,590 tokens and 512 × 512 only about 350. Downscaling a keyframe before returning it to the model, or returning a URI and letting the model ask for a thumbnail, cuts the observation cost by a factor of four.</p>' },
+            card: { tag: 'NUMBERS', title: 'Images are expensive observations', stat: { v: '9.7k', u: 'tokens', l: 'of tool results after turn two: six keyframes at about 1.5k tokens each' }, more: '<p>Image cost scales with pixels: Claude reads 28 × 28 pixel patches, so tokens = ceil(w / 28) · ceil(h / 28). A 1092 × 1092 keyframe costs 1,521 tokens and a 512 × 512 thumbnail only 361. Downscaling a keyframe before returning it to the model, or returning a URI and letting the model ask for a thumbnail, cuts the observation cost by roughly a factor of four.</p>' },
             deep: '<p>Parallel calls: several <code>tool_use</code> blocks in one turn; all results go back in the next user message, matched by <code>tool_use_id</code>. The turn takes as long as the slowest call:</p>' +
               '<div class="eq">latency per turn ≈ prefill + decode + max<sub>i</sub>(tool latency<sub>i</sub>)</div>' +
-              '<p>An image costs roughly (width × height) / 750 tokens, so a 1.2 megapixel keyframe (1092 × 1092) is about 1.6k tokens. Returning a URI plus a thumbnail instead of full images is the usual fix when the model only needs to reference the media.</p>' +
-              '<details><summary>Go deeper</summary><p>Message-shape rules are a common source of 400 errors: every <code>tool_use</code> in an assistant message needs a matching <code>tool_result</code> in the very next user message, all of them in that single message, and the <code>tool_result</code> blocks must come <i>before</i> any text in its content. Results may arrive in any order; the id, not the position, is what pairs them.</p></details>'
+              '<p>An image costs one token per 28 × 28 pixel patch, roughly (width × height) / 784, so a 1.2 megapixel keyframe (1092 × 1092) is about 1.5k tokens. Returning a URI plus a thumbnail instead of full images is the usual fix when the model only needs to reference the media.</p>' +
+              '<details><summary>Go deeper</summary><p>Message-shape rules are a common source of 400 errors: every <code>tool_use</code> in an assistant message needs a matching <code>tool_result</code> in the very next user message, all of them in that single message, and the <code>tool_result</code> blocks must come <i>before</i> any text in its content. The id, not the position, is what pairs a result with its call.</p></details>'
           },
           {
             say: 'On the third turn it composes the board and ends its turn. Three iterations, and the context grew with every observation.',
@@ -704,7 +709,7 @@
             }, { thinking: 350, asst: 700 }, function () {
               var g = row(ctx, S, 'tool_result', '6 images', null, 'tool_result ×6');
               for (var t = 0; t < 6; t++) thumb(ctx, g, 930 + t * 52, g.y - 13, 40 + t);
-            }, { results: 10200 }, 'tool_use');
+            }, { results: 9700 }, 'tool_use');
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: turn 3, the board is composed and the turn ends */
             return iter(3, function () {
@@ -740,8 +745,8 @@
           },
           {
             say: 'Modern reasoning models add extended thinking, a private scratchpad before answering. With interleaved thinking they also reason between tool calls, digesting each result before acting again.',
-            card: { tag: 'STATE OF THE ART', title: 'Interleaved thinking', body: 'Reasoning models think in signed blocks with a token budget, and now also after every tool result, so an observation is digested before the next action.' },
-            deep: '<ul><li><b>Extended thinking</b>: RL-trained long chains of thought in dedicated <code>thinking</code> blocks with a budget (for example <code>budget_tokens: 4000</code>). <b>Interleaved thinking</b> allows thinking after each <code>tool_result</code>. Thinking blocks must be returned unmodified within the tool loop (they carry a signature).</li></ul>' +
+            card: { tag: 'STATE OF THE ART', title: 'Interleaved thinking', body: 'Reasoning models think in signed blocks under a token budget or an effort setting, and also after every tool result, so an observation is digested before the next action.' },
+            deep: '<ul><li><b>Extended thinking</b>: RL-trained long chains of thought in dedicated <code>thinking</code> blocks with a budget (for example <code>budget_tokens: 4000</code>, minimum 1,024). <b>Interleaved thinking</b> allows thinking after each <code>tool_result</code>. Thinking blocks must be returned unmodified within the tool loop (they carry a signature). Newer Claude models replace the fixed budget with <i>adaptive thinking</i>, an effort setting that interleaves automatically; manual budgets are deprecated on the 4.6 models and rejected from 4.7 on.</li></ul>' +
               '<div class="eq">accuracy ≈ a + b · log(thinking tokens) over a wide range (reported for o1-style reasoning models)</div>' +
               '<p class="muted">Trade-off: thinking tokens are output tokens: billed at output price, they add decode latency and they consume the context budget.</p>'
           }
@@ -859,7 +864,7 @@
               var p = curve.getPointAtLength(L * e);
               dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y);
               S.iterTxt.textContent = String(Math.round(3 + 25 * e));
-              S.cb.results = 10200 + (131000 - 10200) * e;
+              S.cb.results = 9700 + (131000 - 9700) * e;
               S.cb.asst = 1900 + (12300 - 1900) * e;
               S.cb.thinking = 650 + (8000 - 650) * e;
               drawBar(ctx, S);
@@ -918,7 +923,7 @@
             var cD = card(ctx, R, 1140, 404, 420, 216, 'teal', 'External memory');
             ctx.para(1156, 454, ['NOTES.md / memory tool outside the window', 'write facts once, read just-in-time', 'survives compaction and restarts'], { size: 12, font: 'mono', color: 'text', lh: 19, parent: cD });
             ctx.icon('doc', 1180, 568, 40, 'teal', { parent: cD });
-            S.notes = ctx.code({ x: 1214, y: 526, w: 330, h: 84, title: 'NOTES.md', lang: 'text', size: 11, color: 'teal', typing: true, lines: ['- fox: orange fur, white visor (7c1e)', '- shot 3 v2 approved; seed 1234'], parent: cD });
+            S.notes = ctx.code({ x: 1214, y: 526, w: 330, h: 84, title: 'NOTES.md', lang: 'text', size: 11, color: 'teal', typing: true, lines: ['- fox: orange fur, white visor (7c1e)', '- shot 3 v2 approved; seed 77'], parent: cD });
             return ctx.reveal(cD, { from: 'up', dur: 500 }).then(function () {
               ctx.highlight(cD, { color: 'teal', pad: 4, parent: R });
               ctx.hud('19.5k / 200k after all four moves');
@@ -961,8 +966,8 @@
             say: 'Tool outputs are masked out of the loss, so the model learns to act and reason, not to predict the environment.',
             card: { tag: 'KEY IDEA', title: 'Mask what the model did not write', body: 'Gradient flows only through policy tokens. Tool results are environment text; training on them would teach the model to imitate the tools.' },
             deep: '<p>In agentic RL the sum over t covers only <b>policy tokens</b>; tool-result tokens are masked. This is the same idea as SFT loss masking (step 2), applied to the policy-gradient objective.</p>' +
-              '<ul><li>2025 variants: DAPO (decoupled clip-higher, dynamic sampling, token-level loss, no KL) and Dr. GRPO (drops the 1/|o<sub>i</sub>| and std normalisations, which bias toward long wrong answers).</li>' +
-              '<li>DeepSeek-R1 (Nature, 2025) showed that this recipe with rule-based rewards alone elicits long reasoning and self-correction, with no human-written chains of thought.</li></ul>'
+              '<ul><li>2025 variants: DAPO (decoupled clip-higher, dynamic sampling, token-level loss, no KL) and Dr. GRPO (drops the 1/|o<sub>i</sub>| length term, which lets long wrong answers go under-penalised, and the std normalisation, which over-weights very easy or very hard questions).</li>' +
+              '<li>DeepSeek-R1 (Nature, 2025) showed that GRPO with rule-based rewards alone (the R1-Zero run) elicits long reasoning and self-correction, with no human-labelled reasoning trajectories.</li></ul>'
           }
         ],
         run: function (ctx) {

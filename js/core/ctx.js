@@ -540,7 +540,7 @@
     }
     var col = colorOf(o.color || C.dim);
     var e = this.path(d, { stroke: col, sw: o.sw || 1.8, dash: o.dash || (o.flow ? '6 8' : null), arrow: o.arrow !== false, parent: o.parent, opacity: o.opacity });
-    e.len = e.getTotalLength ? e.getTotalLength() : 0;
+    e.len = safeLen(e);
     if (o.flow) {
       var self = this, off = 0;
       e._flow = this.loop(function (t, dt) { off -= dt * 40 * (o.flowSpeed || 1); e.setAttribute('stroke-dashoffset', off); });
@@ -566,7 +566,7 @@
   P.packet = function (pathEl, o) {
     o = o || {};
     var self = this;
-    var len = pathEl.len || (pathEl.getTotalLength ? pathEl.getTotalLength() : 0);
+    var len = pathEl.len || safeLen(pathEl);
     var col = colorOf(o.color || C.cyan);
     var g = this.group({ parent: o.parent || pathEl.parentNode });
     this.circle(0, 0, (o.r || 5) * 2.2, { fill: hexA(col, 0.18), parent: g });
@@ -575,7 +575,8 @@
     if (this.instant) { g.parentNode.removeChild(g); return Promise.resolve(); }
     var rev = !!o.reverse;
     return this.tween(o.dur || 1200, function (t) {
-      var p = pathEl.getPointAtLength(len * (rev ? 1 - t : t));
+      var p;
+      try { p = pathEl.getPointAtLength(len * (rev ? 1 - t : t)); } catch (err) { return; }   /* detached after teardown */
       g.setAttribute('transform', 'translate(' + p.x + ',' + p.y + ')');
     }, o.ease || 'inOut').then(function () {
       if (o.keep) return;
@@ -586,7 +587,7 @@
   /* continuous stream of packets along a path; returns handle {stop()} */
   P.stream = function (pathEl, o) {
     o = o || {};
-    var len = pathEl.len || pathEl.getTotalLength();
+    var len = pathEl.len || safeLen(pathEl);
     var n = o.count || 3, period = (o.period || 2000) / 1000;
     var col = colorOf(o.color || C.cyan);
     var g = this.group({ parent: o.parent || pathEl.parentNode });
@@ -596,7 +597,8 @@
     var h = this.loop(function (t) {
       for (var i = 0; i < n; i++) {
         var f = ((t * speed / period) + i / n) % 1;
-        var p = pathEl.getPointAtLength(len * (rev ? 1 - f : f));
+        var p;
+        try { p = pathEl.getPointAtLength(len * (rev ? 1 - f : f)); } catch (err) { return; }   /* detached after teardown */
         dots[i].setAttribute('cx', p.x); dots[i].setAttribute('cy', p.y);
         dots[i].setAttribute('opacity', Math.sin(f * Math.PI).toFixed(3));
       }
@@ -776,15 +778,19 @@
     target = parseFloat(target);
     el.setAttribute('data-op', target);
     if (from === 'draw' && el.getTotalLength) {
-      var L = el.getTotalLength();
-      var dash = el.getAttribute('stroke-dasharray');
-      el.setAttribute('stroke-dasharray', L + ' ' + L);
-      el.setAttribute('stroke-dashoffset', L);
-      el.setAttribute('opacity', target);
-      return this.tween(dur, function (t) { el.setAttribute('stroke-dashoffset', L * (1 - t)); }, o.ease || 'inOut', o.delay).then(function () {
-        if (dash) el.setAttribute('stroke-dasharray', dash); else el.removeAttribute('stroke-dasharray');
-        el.removeAttribute('stroke-dashoffset');
-      });
+      var L = -1;
+      try { L = el.getTotalLength(); } catch (err) { L = -1; }   /* throws on elements detached after a teardown */
+      if (L >= 0) {
+        var dash = el.getAttribute('stroke-dasharray');
+        el.setAttribute('stroke-dasharray', L + ' ' + L);
+        el.setAttribute('stroke-dashoffset', L);
+        el.setAttribute('opacity', target);
+        return this.tween(dur, function (t) { el.setAttribute('stroke-dashoffset', L * (1 - t)); }, o.ease || 'inOut', o.delay).then(function () {
+          if (dash) el.setAttribute('stroke-dasharray', dash); else el.removeAttribute('stroke-dasharray');
+          el.removeAttribute('stroke-dashoffset');
+        });
+      }
+      from = 'fade';
     }
     var dx = 0, dy = 0, s0 = 1, dist = o.dist || 24;
     if (from === 'up') dy = dist; else if (from === 'down') dy = -dist;
@@ -817,6 +823,9 @@
 
   function safeBBox(el) {
     try { var b = el.getBBox(); return { x: b.x, y: b.y, w: b.width, h: b.height }; } catch (e) { return { x: 0, y: 0, w: 0, h: 0 }; }
+  }
+  function safeLen(el) {
+    try { return el.getTotalLength ? el.getTotalLength() : 0; } catch (e) { return 0; }
   }
   P.bbox = safeBBox;
 
@@ -972,9 +981,16 @@
     var tip = document.createElementNS(NS, 'title');
     tip.textContent = 'Zoom into: ' + meta.title;
     el.appendChild(tip);
+    /* keyboard: a hotspot is a button (Tab to it, Enter / Space to zoom in); the mouse still clicks the whole element */
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    el.setAttribute('aria-label', 'Zoom into: ' + meta.title);
     el.addEventListener('click', function (ev) {
       ev.stopPropagation();
       eng.zoomInto(sceneId, bb, el);
+    });
+    el.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); eng.zoomInto(sceneId, bb, el); }
     });
     return el;
   };

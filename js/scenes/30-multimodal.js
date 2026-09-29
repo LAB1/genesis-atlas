@@ -53,10 +53,10 @@
     id: 'multimodal',
     refs: [
       'Radford et al., <i>Learning Transferable Visual Models From Natural Language Supervision (CLIP)</i>, ICML 2021',
-      'Alayrac et al., <i>Flamingo: a Visual Language Model for Few-Shot Learning</i>, NeurIPS 2022; Li et al., <i>BLIP-2</i>, ICML 2023',
-      'Liu et al., <i>Visual Instruction Tuning (LLaVA)</i>, NeurIPS 2023; <i>Improved Baselines (LLaVA-1.5)</i>, CVPR 2024',
-      'Wang et al., <i>Qwen2-VL</i>, 2024; Bai et al., <i>Qwen2.5-VL Technical Report</i>, 2025 (M-RoPE, dynamic resolution)',
-      'Chen et al., <i>InternVL: Scaling up Vision Foundation Models</i>, CVPR 2024; Zhu et al., <i>InternVL3</i>, 2025',
+      'Alayrac et al., <i>Flamingo: a Visual Language Model for Few-Shot Learning</i>, NeurIPS 2022; Li et al., <i>BLIP-2: Bootstrapping Language-Image Pre-training with Frozen Image Encoders and Large Language Models</i>, ICML 2023',
+      'Liu et al., <i>Visual Instruction Tuning (LLaVA)</i>, NeurIPS 2023; Liu et al., <i>Improved Baselines with Visual Instruction Tuning (LLaVA-1.5)</i>, CVPR 2024',
+      'Wang et al., <i>Qwen2-VL: Enhancing Vision-Language Model\'s Perception of the World at Any Resolution</i>, 2024; Bai et al., <i>Qwen2.5-VL Technical Report</i>, 2025 (M-RoPE, dynamic resolution)',
+      'Chen et al., <i>InternVL: Scaling up Vision Foundation Models and Aligning for Generic Visual-Linguistic Tasks</i>, CVPR 2024; Zhu et al., <i>InternVL3: Exploring Advanced Training and Test-Time Recipes for Open-Source Multimodal Models</i>, 2025',
       'Chameleon Team (Meta), <i>Chameleon: Mixed-Modal Early-Fusion Foundation Models</i>, 2024',
       'Radford et al., <i>Robust Speech Recognition via Large-Scale Weak Supervision (Whisper)</i>, ICML 2023',
       'Zhai et al., <i>Sigmoid Loss for Language Image Pre-Training (SigLIP)</i>, ICCV 2023; Tschannen et al., <i>SigLIP 2: Multilingual Vision-Language Encoders with Improved Semantic Understanding, Localization, and Dense Features</i>, 2025'
@@ -73,8 +73,8 @@
               '<table><tr><th>Input</th><th>Raw size</th></tr>' +
               '<tr><td>sketch 2048×1536 RGB</td><td>9.4 M values each</td></tr>' +
               '<tr><td>voice memo, 42 s, 48 kHz stereo</td><td>4.0 M samples</td></tr>' +
-              '<tr><td>prompt text</td><td>~60 BPE tokens</td></tr></table>' +
-              '<p>Three different signal types: a 2-D spatial grid, a 1-D pressure waveform sampled 48,000 times a second, and a discrete symbol sequence. No single off-the-shelf architecture ingests all three natively.</p>'
+              '<tr><td>prompt text + chat template</td><td>~60 BPE tokens</td></tr></table>' +
+              '<p>Three different signal types: a 2-D spatial grid, a 1-D pressure waveform sampled 48,000 times a second, and a discrete symbol sequence. A transformer cannot ingest all three raw signals directly: even omni-modal models put a modality-specific front end (an encoder or a tokenizer) in front of it.</p>'
           },
           {
             say: 'Later, the critic agent will also have to watch the rendered shots. Five seconds of video at twenty four frames per second is one hundred and twenty frames, a mountain of pixels.',
@@ -84,7 +84,7 @@
           },
           {
             say: 'A language model, however, reads nothing but a sequence of vectors. Text works because a tokenizer maps words to ids and a lookup table maps ids to vectors. Pixels and sound pressure have no such table.',
-            card: { tag: 'KEY IDEA', title: 'The LLM only reads embeddings', body: 'Its input is a matrix of N token embeddings, each 3584 wide in a 7B-class model. Everything else must be translated into that space.' },
+            card: { tag: 'KEY IDEA', title: 'The LLM only reads embeddings', body: 'Its input is a matrix of N token embeddings, each 3584 wide in Qwen2.5-7B, our reference model. Everything else must be translated into that space.' },
             deep: '<p>A decoder LLM consumes exactly one thing: a matrix <code>X ∈ ℝ<sup>N×d</sup></code> of token embeddings, here <code>d = 3584</code> (Qwen2.5-7B class: 28 layers, 28 query heads, 4 KV heads).</p>' +
               '<div class="eq">X = E[ids],&nbsp; E ∈ ℝ<sup>V×d</sup>,&nbsp; V ≈ 152 k &nbsp;⇒&nbsp; |E| = 152,064 · 3584 ≈ 0.55 B params</div>' +
               '<p>For text the table <code>E</code> is learned during pre-training. For pixels and waveforms there is no discrete vocabulary to index, so we need a learned <i>function</i> that produces the rows of <code>X</code> instead.</p>'
@@ -123,7 +123,7 @@
           var gt = ctx.group({ parent: S.raw });
           ctx.rect(54, 618, 192, 38, { rx: 4, fill: '#061520', stroke: 'cyan', sw: 1.2, parent: gt });
           ctx.text(150, 637, '"...a fox astronaut crash-"', { size: 11, font: 'mono', color: 'cyan', anchor: 'middle', parent: gt });
-          cap(ctx, gt, 150, 672, 'prompt · ~60 tokens');
+          cap(ctx, gt, 150, 672, 'prompt + template · ~60 ids');
           S.rows = { img: gi, vid: gv, aud: ga, txt: gt };
           S.ghost = ctx.group({ parent: S.raw });
           ctx.rect(54, 370, 192, 50, { rx: 4, stroke: ctx.alpha('lime', 0.55), dash: '4 4', sw: 1.2, parent: S.ghost });
@@ -168,9 +168,9 @@
         beats: [
           {
             say: 'First, deterministic preprocessing brings every input into the shape its encoder was trained on. Sketches are resized to a fixed resolution, or snapped to a multiple of the patch size for native resolution models.',
-            card: { tag: 'HOW IT WORKS', title: 'Resize, normalise, snap', body: 'Either a fixed 448 by 448 square, or native aspect ratio with both sides rounded to multiples of 28 under a pixel budget.', more: '<p>Tiling models (LLaVA-NeXT AnyRes, InternVL dynamic tiles) split a large image into 448² tiles plus a downscaled thumbnail so global layout and fine detail are both visible.</p>' },
+            card: { tag: 'HOW IT WORKS', title: 'Resize, normalise, snap', body: 'Either a fixed 448 by 448 square, or native aspect ratio with both sides rounded to multiples of 28 under a pixel budget.', more: '<p>Tiling models split a large image into encoder-sized tiles plus a downscaled thumbnail, so global layout and fine detail are both visible. InternVL 1.5 uses 448² tiles (1 to 12 in training, plus the thumbnail); LLaVA-NeXT AnyRes uses 336² tiles.</p>' },
             deep: '<p><b>Images</b>: bicubic resize to the encoder resolution (448² here), then per-channel normalisation, e.g. SigLIP maps pixels to [−1, 1] with <code>(x/255 − 0.5)/0.5</code>.</p>' +
-              '<p><b>Native-resolution</b> models (Qwen2.5-VL) instead round H and W to multiples of 28 under a min/max pixel budget, so a 2048×1536 sketch keeps its 4:3 aspect. <b>Tiling</b> models (LLaVA-NeXT AnyRes, InternVL dynamic tiles) cut big images into 448² tiles plus a thumbnail.</p>' +
+              '<p><b>Native-resolution</b> models (Qwen2.5-VL) instead round H and W to multiples of 28 under a min/max pixel budget, so a 2048×1536 sketch keeps its 4:3 aspect. <b>Tiling</b> models cut big images into fixed-size tiles plus a thumbnail (InternVL: 448² tiles; LLaVA-NeXT AnyRes: 336² tiles).</p>' +
               '<p>Multiples of 28 = the 14 px patch times the later 2×2 merge, so the token grid always divides evenly.</p>'
           },
           {
@@ -186,8 +186,8 @@
               '<p>Whisper-style encoders take fixed 30 s windows, so the memo becomes two windows: 30 s plus 12 s zero-padded, with the padding trimmed afterwards. Chapter <i>Audio Encoding</i> zooms into every step of this path.</p>'
           },
           {
-            say: 'Text simply goes through the tokenizer, which turns the prompt into about sixty integer ids.',
-            card: { tag: 'HOW IT WORKS', title: 'Text is already discrete', body: 'A byte-level BPE tokenizer with a vocabulary near 152k maps the prompt to about 60 ids. No learned encoder is needed before the embedding table.' },
+            say: 'Text simply goes through the tokenizer, which turns the prompt and its chat template into about sixty integer ids.',
+            card: { tag: 'HOW IT WORKS', title: 'Text is already discrete', body: 'A byte-level BPE tokenizer with a vocabulary near 152k maps the prompt and chat template to about 60 ids. No learned encoder is needed before the embedding table.' },
             deep: '<p><b>Text</b>: byte-level BPE (vocabulary ≈ 152 k for Qwen2.5) maps any Unicode string to token ids with no out-of-vocabulary case, because the fallback alphabet is the 256 possible bytes.</p>' +
               '<p>The chat template then wraps the ids with role markers (<code>&lt;|im_start|&gt;</code>) and inserts <b>placeholder ids</b> where images, video and audio will be spliced in: those placeholders are overwritten with projected embeddings in step 5.</p>'
           },
@@ -273,7 +273,7 @@
             });
             cap(ctx, gt, 390, 672, 'byte-level BPE → ids');
             var L3 = ctx.link({ x: 250, y: 637 }, { x: 296, y: 637 }, { color: 'cyan', straight: true, parent: S.prep });
-            dT = det(628, ['byte-level BPE · vocabulary ≈ 152k', 'prompt ≈ 60 token ids'], 'cyan');
+            dT = det(628, ['byte-level BPE · vocabulary ≈ 152k', 'prompt + template ≈ 60 ids'], 'cyan');
             ctx.reveal(L3, { from: 'draw' });
             ctx.reveal(gt, { from: 'scale', delay: 200 });
             return ctx.wait(400).then(function () {
@@ -315,13 +315,13 @@
             card: { tag: 'NUMBERS', title: 'Audio features', stat: { v: '50 Hz', l: 'one 1280-wide vector per 20 ms from the Whisper-large-v3 encoder' } },
             deep: '<table><tr><th>Encoder</th><th>Input → output</th></tr>' +
               '<tr><td>Whisper-large-v3 encoder (32 layers, width 1280, ~0.6 B)</td><td>128-bin log-mel, 100 frames/s → conv (stride 2) → 50 Hz → <code>[2100, 1280]</code> for 42 s</td></tr></table>' +
-              '<p>Audio LLMs (Qwen2-Audio, Kimi-Audio and others) start from Whisper because it was trained on millions of hours of transcribed speech: its features already encode phonemes, language and much about the speaker, in noise.</p>'
+              '<p>Audio LLMs (Qwen2-Audio, Kimi-Audio and others) start from Whisper because large-v3 was trained on about five million hours of weakly labelled and pseudo-labelled audio: its features already encode phonemes, language and much about the speaker, even in noise.</p>'
           },
           {
-            say: 'The vision encoder gets its language shaped features from contrastive pretraining on billions of image caption pairs. These encoders understand their modality, but they do not yet speak the language model\'s dialect.',
+            say: 'The vision encoder gets its language shaped features from contrastive pretraining on hundreds of millions to billions of web image caption pairs. These encoders understand their modality, but they do not yet speak the language model\'s dialect.',
             card: { tag: 'TRY IT', title: 'Open any encoder', body: 'All three boxes are zoom targets: <b>Vision Encoders</b>, <b>Audio Encoding</b> and <b>Contrastive Alignment</b>. Click one.' },
-            deep: '<p>Why contrastive pretraining? A CLIP or SigLIP encoder is trained so that image features align with text descriptions, so its patch features are already <i>semantic and language-shaped</i>, exactly what an LLM can use. Self-supervised encoders (DINOv2) give sharper spatial features; several VLMs (Cambrian-1, Eagle) concatenate both.</p>' +
-              '<div class="note">Encoders are usually frozen during projector alignment, then often unfrozen at a smaller learning rate (roughly 5–10× below the LLM\'s) during full multimodal training. Their output width (1152, 1280) still differs from the LLM\'s 3584: that gap is the projector\'s job.</div>'
+            deep: '<p>Why contrastive pretraining? A CLIP or SigLIP encoder is trained so that image features align with text descriptions, so its patch features are already <i>semantic and language-shaped</i>, exactly what an LLM can use. Self-supervised encoders (DINOv2) give sharper spatial features; several VLMs combine both (Eagle concatenates the visual tokens of complementary encoders, Cambrian-1 adds a spatial vision aggregator).</p>' +
+              '<div class="note">Encoders are usually frozen during projector alignment. In many recipes they are then unfrozen at a smaller learning rate during full multimodal training (LLaVA-OneVision: 2e-6 for the vision tower against 1e-5 for the LLM, 5× lower), while LLaVA-1.5 keeps the ViT frozen throughout. Their output width (1152, 1280) still differs from the LLM\'s 3584: that gap is the projector\'s job.</div>'
           }
         ],
         run: function (ctx) {
@@ -399,7 +399,7 @@
           {
             say: 'The simplest, and today most common, design is a small two layer MLP, often preceded by a two by two merge that folds four neighbouring patches into one token, cutting the count by four.',
             card: { tag: 'NUMBERS', title: 'Merge, then MLP', stat: { v: '1024 → 256', u: 'tokens', l: 'per 448² sketch; the projector itself is only ~29 M parameters' }, more: '<p>Parameter count: <code>4608·3584 + 3584² ≈ 16.5 M + 12.8 M ≈ 29 M</code>, about 0.4% of a 7.6 B LLM, and roughly 15 GFLOP per image against about 1 TFLOP for the ViT.</p>' },
-            deep: '<p><b>2×2 merge (pixel-shuffle) + MLP</b> (InternVL, Qwen2-VL / 2.5-VL, Idefics3). Plain per-patch MLPs without merging (LLaVA-1.5, LLaVA-OneVision) keep every patch as a token.</p>' +
+            deep: '<p><b>2×2 merge (pixel-shuffle) + MLP</b> (InternVL, Qwen2-VL / 2.5-VL, Idefics3). Plain per-patch MLPs without merging (LLaVA-1.5; LLaVA-OneVision for single images) keep every patch as a token.</p>' +
               '<div class="eq">z<sub>ij</sub> = [v<sub>2i,2j</sub> ; v<sub>2i,2j+1</sub> ; v<sub>2i+1,2j</sub> ; v<sub>2i+1,2j+1</sub>] ∈ ℝ<sup>4·1152 = 4608</sup></div>' +
               '<div class="eq">h<sub>ij</sub> = W<sub>2</sub> · GELU(W<sub>1</sub> · LN(z<sub>ij</sub>)) ∈ ℝ<sup>3584</sup></div>' +
               '<p>1024 patches → 256 tokens with the 2-D layout preserved: token (i, j) still sits where its 28×28 pixel block sits.</p>'
@@ -415,13 +415,13 @@
             say: 'That is cheaper, but lossier for fine detail such as small text, which is why most recent open models went back to the MLP.',
             card: { tag: 'TRADE-OFF', title: 'Cheap tokens or fine detail', body: 'Learned queries fix the cost but blur small text. MLP projectors keep every patch and read OCR well, so most 2025 open VLMs use them.' },
             deep: '<table><tr><th></th><th>MLP</th><th>Learned queries</th></tr><tr><td>tokens</td><td>∝ image area</td><td>fixed</td></tr><tr><td>OCR / fine detail</td><td>strong</td><td>weak</td></tr><tr><td>trainability</td><td>trivial</td><td>needs pretraining</td></tr></table>' +
-              '<p>A resampler must decide <i>before</i> seeing the question which few vectors summarise the picture. Thin strokes and small text are exactly what a 32-vector bottleneck drops. Some models (MiniCPM-V) keep a resampler but feed it many high-resolution slices to compensate.</p>'
+              '<p>A resampler must decide <i>before</i> seeing the question which few vectors summarise the picture. Thin strokes and small text are exactly what a 32-vector bottleneck drops. Idefics3 dropped its 64-token perceiver resampler for pixel shuffle (169 tokens per 364² tile) precisely to remove an OCR bottleneck, while MiniCPM-V keeps a resampler (64 queries per slice in its first versions) but feeds it many high-resolution slices to compensate.</p>'
           },
           {
-            say: 'Training the bridge is a two stage recipe. First only the projector learns, on image caption pairs, with the encoder and language model frozen. Then everything is unfrozen for multimodal instruction tuning.',
-            card: { tag: 'HOW IT WORKS', title: 'Two-stage training', body: 'Stage 1 aligns only the projector. Stage 2 unfreezes the LLM, and often the ViT at a lower learning rate, on instruction data.' },
-            deep: '<p>Stage 1 (alignment): freeze ViT and LLM, train the projector on image–caption pairs. A modest set is enough: LLaVA-1.5 used 558 k pairs. Stage 2 (instruction tuning): unfreeze the LLM (and often the ViT with a smaller LR) on interleaved and instruction data, e.g. 665 k mixed samples in LLaVA-1.5.</p>' +
-              '<div class="note">Training recipe in one line: <b>align cheaply, then specialise expensively</b>. Skipping stage 1 lets the randomly initialised projector wreck the LLM\'s weights with garbage gradients.</div>'
+            say: 'A popular recipe for training the bridge has two stages. First only the projector learns, on image caption pairs, with the encoder and language model frozen. Then the language model, and in many recipes the encoder too, is unfrozen for multimodal instruction tuning.',
+            card: { tag: 'HOW IT WORKS', title: 'A common two-stage recipe', body: 'Stage 1 aligns only the projector. Stage 2 unfreezes the LLM, and in many recipes the ViT at a lower learning rate, on instruction data.' },
+            deep: '<p>Stage 1 (alignment): freeze ViT and LLM, train the projector on image–caption pairs. A modest set is enough: LLaVA-1.5 used 558 k pairs. Stage 2 (instruction tuning): unfreeze the LLM on instruction data, e.g. 665 k mixed samples in LLaVA-1.5, which keeps the ViT frozen; LLaVA-OneVision also trains the ViT at a 5× smaller learning rate.</p>' +
+              '<div class="note">Recipe in one line: <b>align cheaply, then specialise expensively</b>. The rationale is that a randomly initialised projector would push noisy gradients into a pretrained LLM. The stage is not universal, though: Prismatic VLMs (ICML 2024) found single-stage training matches or beats it and saves 20–25% of the compute.</div>'
           }
         ],
         run: function (ctx) {
@@ -563,19 +563,19 @@
           {
             say: 'Then come the rendered shot and the voice memo, each wrapped in its own text, and the total reaches three thousand one hundred and fifty eight tokens.',
             card: { tag: 'NUMBERS', title: 'The trailer request', stat: { v: '3,158', u: 'tokens', l: '3 × 256 sketches + 1280 shot + 1050 memo + ~60 text' } },
-            deep: '<p>Token count for the trailer request: 3 × 256 (sketches) + 1280 (shot_03) + 1050 (memo) + ~60 text = <b>3,158</b>. The ~60 text tokens already include the chat-template and marker tokens (a dozen or so), so the sum is an honest order of magnitude, not a byte-exact count.</p>' +
+            deep: '<p>Token count for the trailer request: 3 × 256 (sketches) + 1280 (shot_03) + 1050 (memo) + ~60 text = <b>3,158</b>. The ~60 text tokens already include the chat template and marker tokens, so the sum is an honest order of magnitude, not a byte-exact count.</p>' +
               '<p>Interleaving order is free: images may sit between sentences, and multi-turn chats simply append new spans. There is no fixed slot per modality.</p>'
           },
           {
             say: 'Special marker tokens delimit each image, video and audio span, so the model knows where a picture begins and ends.',
             card: { tag: 'HOW IT WORKS', title: 'Markers frame each span', body: 'Start and end tokens (vision_start, vision_end) bracket every run of placeholders, so span boundaries are explicit.' },
-            deep: '<p>In Qwen2.5-VL a picture occupies <code>&lt;|vision_start|&gt;</code>, N × <code>&lt;|image_pad|&gt;</code>, <code>&lt;|vision_end|&gt;</code>; video and audio use analogous markers. The pad ids are pure placeholders: their embedding-table rows are never used, because the scatter step overwrites them.</p>' +
+            deep: '<p>In Qwen2.5-VL a picture occupies <code>&lt;|vision_start|&gt;</code>, N × <code>&lt;|image_pad|&gt;</code>, <code>&lt;|vision_end|&gt;</code>; video uses <code>&lt;|video_pad|&gt;</code> between the same markers, and audio-capable models add analogous markers of their own. The pad ids are pure placeholders: their embedding-table rows are never used, because the scatter step overwrites them.</p>' +
               '<p>Markers give the LLM learned boundary tokens (with trainable embeddings) so it can attend <i>to a whole image</i> as a unit and cope with several images per prompt.</p>'
           },
           {
             say: 'The language model then runs a single causal forward pass over roughly three thousand tokens, attending freely from words, to pixels, to sound.',
             card: { tag: 'HOW IT WORKS', title: 'One causal pass, prefill', body: 'The LLM reads the whole sequence in a single prefill. Every later token can attend to every earlier word, patch and audio frame.' },
-            deep: '<p>Attention is causal over the whole sequence in most VLMs; some (PaliGemma, Gemma 3) make attention <i>bidirectional within an image span</i> so every patch sees the full picture.</p>' +
+            deep: '<p>Attention is causal over the whole sequence in most VLMs; some make attention <i>bidirectional over the image</i> so every patch sees the full picture: Gemma 3 within each image span, PaliGemma over its whole image-plus-prompt prefix.</p>' +
               '<div class="note">Because the visual prefix is identical across the agents\' turns, it is a perfect candidate for <b>prefix (KV) caching</b>: encode the sketches once, reuse the KV blocks for every later question.</div>'
           }
         ],
@@ -697,7 +697,7 @@
           {
             say: 'Text tokens use the same value on all three axes, so they reduce to ordinary RoPE.',
             card: { tag: 'HOW IT WORKS', title: 'Text collapses to plain RoPE', body: 'For a word at index i the triple is (i, i, i). All three sections rotate together by the same angle, exactly like 1-D RoPE.' },
-            deep: '<p>Text: <code>t = h = w = index</code>. Section 1 rotates pairs 0–15 by <code>index · θ<sub>0:16</sub></code>, section 2 pairs 16–39 by <code>index · θ<sub>16:40</sub></code>, section 3 pairs 40–63 by <code>index · θ<sub>40:64</sub></code>. Every pair therefore gets exactly the angle ordinary RoPE would give it, so a text-only prompt is <b>bit-for-bit standard RoPE</b>. That keeps the pretrained language ability of the LLM intact when the vision tower is bolted on.</p>'
+            deep: '<p>Text: <code>t = h = w = index</code>. Section 1 rotates pairs 0–15 by <code>index · θ<sub>0:16</sub></code>, section 2 pairs 16–39 by <code>index · θ<sub>16:40</sub></code>, section 3 pairs 40–63 by <code>index · θ<sub>40:64</sub></code>. Every pair therefore gets exactly the angle ordinary RoPE would give it, so a text-only prompt is <b>identical to standard RoPE</b>. That keeps the pretrained language ability of the LLM intact when the vision tower is bolted on.</p>'
           },
           {
             say: 'Image tokens share one time id and vary in height and width, so a sixteen by sixteen picture consumes only sixteen position ids.',
@@ -871,7 +871,7 @@
           {
             say: 'One transformer is then trained from scratch on interleaved sequences, so it can both read and write images.',
             card: { tag: 'KEY IDEA', title: 'One model reads and writes', body: 'Because images are ordinary vocabulary ids, the same model can also sample them autoregressively and decode them back to pixels.' },
-            deep: '<p>Training from scratch on trillions of interleaved tokens gives a single model with one vocabulary, one loss and any interleaving of text and images. Generation runs the loop backwards: sample 1024 image ids, hand them to the VQ decoder, get pixels.</p>' +
+            deep: '<p>Training from scratch on trillions of interleaved tokens (Chameleon reports about 9.2 T) gives a single model with one vocabulary, one loss and any interleaving of text and images. Generation runs the loop backwards: sample 1024 image ids, hand them to the VQ decoder, get pixels.</p>' +
               '<p>The price: stability. Chameleon needed QK-Norm and z-loss (plus layer-norm re-ordering) to train at scale, and from-scratch training discards the pretrained ViT/LLM parts that late fusion reuses.</p>'
           },
           {
@@ -881,7 +881,7 @@
               '<tr><td>can emit images</td><td>no</td><td>yes</td></tr>' +
               '<tr><td>fine detail / OCR</td><td>strong</td><td>limited by tokenizer</td></tr>' +
               '<tr><td>training cost</td><td>reuse parts</td><td>from scratch</td></tr></table>' +
-              '<p><b>Hybrids</b>: Janus-Pro decouples a SigLIP encoder for understanding from a VQ tokenizer for generation; Transfusion and BAGEL keep one transformer but generate images with a diffusion or flow objective on continuous latents.</p>' +
+              '<p><b>Hybrids</b>: Janus-Pro decouples a SigLIP encoder for understanding from a VQ tokenizer for generation; Transfusion and BAGEL keep a single backbone but generate images with a diffusion or rectified-flow objective on continuous latents.</p>' +
               '<div class="note">This system uses late fusion for <i>understanding</i> and a dedicated latent video DiT for <i>generation</i> (see the Video Generation chamber). They communicate through text prompts, reference images and embeddings.</div>'
           }
         ],
@@ -980,7 +980,7 @@
               '<tr><td>memo (42 s)</td><td>50 Hz → 2100</td></tr>' +
               '<tr><td>text</td><td>60</td></tr>' +
               '<tr><td><b>total</b></td><td><b>≈ 173 k</b></td></tr></table>' +
-              '<p>Self-attention is quadratic in sequence length, so 55× more tokens is roughly 3,000× more attention work.</p>'
+              '<p>Self-attention is quadratic in sequence length, so 55× more tokens is roughly 3,000× more attention work. The naive prompt would not even fit: it exceeds the 131,072-token context window of Qwen2.5-7B.</p>'
           },
           {
             say: 'Resizing, sampling at two frames per second, two frame tubelets and two by two merging bring it down to about three thousand, roughly fifty five times fewer.',
@@ -991,7 +991,7 @@
               '<tr><td>memo (42 s)</td><td>25 Hz → 1050</td></tr>' +
               '<tr><td>text</td><td>60</td></tr>' +
               '<tr><td><b>total</b></td><td><b>3,158</b></td></tr></table>' +
-              '<p>Typical per-image budgets: 256 tokens (448² + 2×2 merge) up to ~1,280 (Qwen2.5-VL with <code>max_pixels = 1280·28²</code>); video frames get a smaller per-frame pixel cap so long clips fit.</p>'
+              '<p>Typical per-image budgets: 256 tokens (448² + 2×2 merge) up to ~1,280 (the Qwen2.5-VL README suggests <code>max_pixels = 1280·28²</code>; the processor default is far higher, 16,384·28²); video frames get a smaller per-frame pixel cap so long clips fit.</p>'
           },
           {
             say: 'Prefill, the single pass that reads all of these tokens, then takes about a tenth of a second on one GPU, instead of more than twenty seconds for the naive version.',
@@ -1000,7 +1000,7 @@
               '<div class="eq">FLOPs ≈ 2·P·N + 2·L·d·N² (causal: FlashAttention skips masked tiles)</div>' +
               '<div class="eq">N = 3,158: 48 + 2 ≈ 50 TFLOP &nbsp;·&nbsp; N = 173 k: 2.6 + 6.0 ≈ 8.7 PFLOP</div>' +
               '<p>On an H100 (989 TFLOP/s dense BF16) at ~40% MFU: ~0.13 s vs ~22 s of prefill.</p>' +
-              '<details><summary>Go deeper</summary><p>Where the two terms come from. Each of the L = 28 layers spends 2·(non-embedding params) FLOP per token on its matmuls, and 4·N·d per query token on QKᵀ plus AV, halved by the causal mask, giving 2·L·d·N² in total. P = 7.6 B counts the 0.55 B input-embedding table, which is a lookup and costs no FLOPs, so the true matmul weight is ≈ 6.5 B and the linear term is ~15% lower. The estimate is deliberately upper-bound; the ratio between the two prompts (≈ 175×) is what matters.</p></details>'
+              '<details><summary>Go deeper</summary><p>Where the two terms come from. Each of the L = 28 layers spends 2·(non-embedding params) FLOP per token on its matmuls, and 4·N·d per query token on QKᵀ plus AV, halved by the causal mask, giving 2·L·d·N² in total. P = 7.6 B also counts the 0.55 B input-embedding table (a lookup, no FLOPs) and the untied 0.55 B output head (applied to the last token only during prefill), so the matmul weight per prompt token is the 6.5 B non-embedding part and the linear term is ~15% lower. The estimate is deliberately upper-bound; the ratio between the two prompts (≈ 175×) is what matters.</p></details>'
           },
           {
             say: 'And the KV cache that the language model keeps for later turns stays under two hundred megabytes, instead of nearly ten gigabytes.',
@@ -1118,7 +1118,7 @@
             say: 'The embeddings are also written to vector memory, so later shots can retrieve the fox and the style by similarity.',
             card: { tag: 'WHY IT MATTERS', title: 'Memory keeps shots consistent', body: 'Reference embeddings persist beyond this prompt: every later shot can query the same fox, palette and voice.' },
             deep: '<p>SigLIP image embeddings (1152-d) of the reference crops and ECAPA voice vectors (192-d) are indexed in the vector store (HNSW). The storyboard and video agents query them by text or by image, so identity is <i>retrieved</i>, not re-described in words that drift from shot to shot.</p>' +
-              '<p>Sizing: a 1152-d float16 vector is 2.3 kB, so even 10<sup>6</sup> keyframes and crops are ~2.3 GB plus the graph. An HNSW index (M = 16, efSearch ≈ 64) answers a top-k query in about a millisecond at recall above 0.95, and each modality gets its own index because image–text and image–image cosines live on different scales (see the Contrastive Alignment chamber).</p>'
+              '<p>Sizing: a 1152-d float16 vector is 2.3 kB, so even 10<sup>6</sup> keyframes and crops are ~2.3 GB plus the graph. An HNSW index (for example M = 16, efSearch in the tens to low hundreds) typically answers a top-k query in milliseconds at high recall, and each modality gets its own index because image–text and image–image cosines live on different scales (see the Contrastive Alignment chamber).</p>'
           },
           {
             say: 'To see how each piece works inside, zoom into the vision encoder, the audio encoder, or contrastive alignment.',
@@ -1148,7 +1148,7 @@
             '    "f0_median_hz": 118, "rate_wpm": 142,',
             '    "timbre": "warm, slightly breathy" },',
             '  "critic": { "shot_03": { "identity_sim": 0.81,',
-            '    "style_sim": 0.74, "fix": "visor flicker 2.1-2.9 s" } } }'
+            '    "style_sim": 0.74, "fix": "visor flicker 3.1-3.6 s" } } }'
           ].map(nbsp);
           function type(lines) { return lines.reduce(function (p, s) { return p.then(function () { return S.json.addLine(s); }); }, Promise.resolve()); }
           ctx.focus([S.json, S.llm, S.llmIn, S.vit, S.aud, S.con, S.head], 0.25);

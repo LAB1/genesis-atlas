@@ -11,6 +11,26 @@
 
   /* make elements invisible until the beat that introduces them reveals them */
   function hide(list) { (Array.isArray(list) ? list : [list]).forEach(function (e) { if (Array.isArray(e)) hide(e); else if (e) e.setAttribute('opacity', 0); }); }
+  /* The light theme inverts luminance with a CSS filter. Magenta, violet, blue and red keep a mid luminance, so small text in those
+   * hues turns pale on white. Lighten such text once (the inversion then makes it dark); hue and dark-theme legibility are unchanged. */
+  var HARD = [[255, 63, 210], [155, 123, 255], [77, 141, 255], [255, 77, 109]];
+  function tint(ctx) {
+    var list = ctx.layer.querySelectorAll('text');
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      if (t.hasAttribute('data-tt')) continue;
+      t.setAttribute('data-tt', '1');
+      var m = /^(?:#([0-9a-f]{6})|rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+))/i.exec(t.getAttribute('fill') || '');
+      if (!m) continue;
+      var rgb = m[1] ? [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)] : [+m[2], +m[3], +m[4]];
+      for (var k = 0; k < HARD.length; k++) {
+        if (Math.abs(rgb[0] - HARD[k][0]) + Math.abs(rgb[1] - HARD[k][1]) + Math.abs(rgb[2] - HARD[k][2]) < 8) {
+          t.setAttribute('fill', ctx.mix('rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')', '#ffffff', 0.42));
+          break;
+        }
+      }
+    }
+  }
   /* type several lines into a ctx.code panel, one after the other */
   function typeLines(code, list) {
     return list.reduce(function (p, s) { return p.then(function () { return code.addLine(s); }); }, Promise.resolve());
@@ -181,7 +201,7 @@
     });
     var dens = on / 400;
     S.densT.textContent = Math.round(dens * 100) + '%';
-    S.densS.textContent = '≈ ' + (1 / dens).toFixed(1) + '× fewer attention FLOPs';
+    S.densS.textContent = '≈ ' + (1 / dens).toFixed(1) + '× fewer FLOPs (toy)';
     S.maskChips.forEach(function (m) {
       var sel = m.mode === mode;
       m.r.setAttribute('fill', sel ? ctx.alpha('lime', 0.3) : 'rgba(255,255,255,0.03)');
@@ -204,14 +224,15 @@
     refs: [
       'Peebles &amp; Xie, <i>Scalable Diffusion Models with Transformers (DiT)</i>, ICCV 2023',
       'Esser et al., <i>Scaling Rectified Flow Transformers for High-Resolution Image Synthesis (SD3)</i>, ICML 2024',
-      'Wan Team (Alibaba), <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
       'Kong et al., <i>HunyuanVideo: A Systematic Framework for Large Video Generative Models</i>, arXiv 2412.03603, 2024',
-      'Yang et al., <i>CogVideoX: Text-to-Video Diffusion Models with an Expert Transformer</i>, ICLR 2025',
-      'Su et al., <i>RoFormer: Enhanced Transformer with Rotary Position Embedding</i>, 2021; Peng et al., <i>YaRN: Efficient Context Window Extension of LLMs</i>, ICLR 2024',
+      'Yang et al., <i>CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer</i>, ICLR 2025',
+      'Su et al., <i>RoFormer: Enhanced Transformer with Rotary Position Embedding</i>, 2021; Peng et al., <i>YaRN: Efficient Context Window Extension of Large Language Models</i>, ICLR 2024',
       'Zhao et al., <i>RIFLEx: A Free Lunch for Length Extrapolation in Video Diffusion Transformers</i>, ICML 2025',
       'Bertasius et al., <i>Is Space-Time Attention All You Need for Video Understanding? (TimeSformer)</i>, ICML 2021',
-      'Zhang et al., <i>Fast Video Generation with Sliding Tile Attention</i>, ICML 2025; Xi et al., <i>Sparse VideoGen</i>, ICML 2025',
-      'Li et al., <i>Radial Attention: O(n log n) Sparse Attention with Energy Decay for Long Video Generation</i>, 2025'
+      'Zhang et al., <i>Fast Video Generation with Sliding Tile Attention</i>, ICML 2025',
+      'Xi et al., <i>Sparse VideoGen: Accelerating Video Diffusion Transformers with Spatial-Temporal Sparsity</i>, ICML 2025',
+      'Li et al., <i>Radial Attention: O(n log n) Sparse Attention with Energy Decay for Long Video Generation</i>, NeurIPS 2025'
     ],
     steps: [
       /* ------------------------------------------------------------------ 1 */
@@ -221,9 +242,10 @@
           {
             say: 'Zoom into the heart of the video model: the diffusion transformer, or DiT. At every sampling step it receives a noisy video latent, and its job is to say how that latent should change.',
             card: { tag: 'KEY IDEA', title: 'A learned vector field', body: 'Given a noisy latent, the DiT points toward a cleaner one. Sampling is nothing more than following those arrows, step after step.' },
-            deep: '<p>The DiT is the learned <b>vector field</b> of a flow-matching sampler. Take a clean latent <i>x</i>, draw Gaussian noise ε, and interpolate. With the rectified-flow convention used by SD3, Wan and HunyuanVideo:</p>' +
+            deep: '<p>The DiT is the learned <b>vector field</b> of a flow-matching sampler. Take a clean latent <i>x</i>, draw Gaussian noise ε, and interpolate. In SD3’s rectified-flow notation (the Wan and HunyuanVideo papers write the same straight path with time running the other way, t = 1 − σ):</p>' +
               '<div class="eq">z<sub>σ</sub> = (1−σ)·x + σ·ε,&nbsp;&nbsp; v = ε − x,&nbsp;&nbsp; L = E‖v<sub>θ</sub>(z<sub>σ</sub>, σ, c) − v‖²</div>' +
-              '<p>Training draws σ (SD3 uses a logit-normal density that favours mid noise levels), builds z<sub>σ</sub> and regresses the velocity. Everything after this point is a way of making v<sub>θ</sub> accurate and affordable.</p>'
+              '<p>Training draws σ (SD3 uses a logit-normal density that favours mid noise levels), builds z<sub>σ</sub> and regresses the velocity. Everything after this point is a way of making v<sub>θ</sub> accurate and affordable.</p>' +
+              '<details><summary>Go deeper</summary><p>Along one pair (x, ε) the path is a straight line with constant velocity ε − x, but many pairs pass through the same z<sub>σ</sub>. The regression therefore learns the conditional mean E[ε − x | z<sub>σ</sub>], which is exactly the marginal velocity field whose ODE transports the noise distribution to the data distribution (flow matching, Lipman et al.; rectified flow, Liu et al.).</p></details>'
           },
           {
             say: 'Two more inputs steer it. The noise level tells the network how much of what it sees is still signal, and the encoded prompt, from a multilingual T five text encoder, says what the fox astronaut scene should contain.',
@@ -233,22 +255,22 @@
               '<tr><td>latent z<sub>σ</sub></td><td>16 × 21 × 90 × 160 (C×T×H×W)</td></tr>' +
               '<tr><td>text c</td><td>512 × 4096 (umT5-XXL, frozen)</td></tr>' +
               '<tr><td>noise level</td><td>scalar σ, fed as t = 1000σ</td></tr></table>' +
-              '<p>The text is projected to the model width by a small MLP and read by cross-attention; σ goes through a sinusoidal embedding and a time MLP and re-enters every block as adaptive-LayerNorm modulation (steps 6 and 7).</p>'
+              '<p>The text is projected to the model width by a small MLP and read by cross-attention; σ goes through a sinusoidal embedding and a time MLP and re-enters every block as adaptive-LayerNorm modulation (σ in step 6, the text in step 7).</p>'
           },
           {
             say: 'Out comes a velocity: for every one of the roughly five million latent numbers, a direction that carries noise toward a clean video. It has exactly the same shape as the input.',
-            card: { tag: 'NUMBERS', title: 'Same shape in and out', stat: { v: '4.8 M', u: 'numbers per tensor', l: 'a 16 × 21 × 90 × 160 latent goes in; an identically shaped velocity comes out' } },
+            card: { tag: 'NUMBERS', title: 'Same shape in and out', stat: { v: '4.8 M', u: 'numbers', l: 'per tensor: a 16 × 21 × 90 × 160 latent goes in; an identically shaped velocity comes out' } },
             deep: '<p>Each of the ≈ 4.8 M latent numbers gets its own velocity. Because v = ε − x, a prediction converts into a clean-video estimate:</p>' +
               '<div class="eq">x̂ = z<sub>σ</sub> − σ·v̂,&nbsp;&nbsp; ε̂ = z<sub>σ</sub> + (1−σ)·v̂</div>' +
               '<p>Early (σ ≈ 1) x̂ is a blurry average of every video that fits the prompt; late (σ ≈ 0) it is nearly the sample. The same network must therefore behave very differently at different σ: the job of the noise-level modulation in step 6.</p>' +
-              '<details><summary>Go deeper</summary><p>Check: z − σ(ε − x) = x. Predicting v keeps the target well scaled at both ends of the schedule (ε is unidentifiable at σ → 0, x at σ → 1).</p></details>'
+              '<details><summary>Go deeper</summary><p>Check: z − σ(ε − x) = x. Predicting v keeps the target well scaled at both ends of the schedule: ε-prediction is ill-conditioned as σ → 0 (z ≈ x says almost nothing about ε) and x-prediction as σ → 1 (z ≈ ε says almost nothing about x).</p></details>'
           },
           {
-            say: 'For our fox shot the sampler takes fifty Euler steps, and each step needs two network evaluations because of classifier free guidance, one with the prompt and one without. That is one hundred passes through a fourteen billion parameter transformer. This chamber opens the box and follows a single pass.',
+            say: 'For our fox shot the sampler takes fifty steps, drawn here as simple Euler steps, and each step needs two network evaluations because of classifier free guidance, one with the prompt and one without. That is one hundred passes through a fourteen billion parameter transformer. This chamber opens the box and follows a single pass.',
             card: { tag: 'NUMBERS', title: 'The loop around the box', stat: { v: '100', u: 'forward passes', l: 'per 5 s shot: 50 sampler steps × 2 for classifier-free guidance' }, more: '<p>Each pass costs about 6.5 PFLOP at 720p, so one shot is roughly 650 PFLOP. Step 9 derives this from the block shapes and shows why the serving chambers fight for every factor.</p>' },
             deep: '<p>Sampling integrates the ODE dz/dσ = v from σ = 1 (pure noise) to σ = 0 with an Euler or higher-order solver:</p>' +
               '<div class="eq">z<sub>σ′</sub> = z<sub>σ</sub> + (σ′ − σ) · v̂,&nbsp;&nbsp; v̂ = v<sub>u</sub> + w·(v<sub>c</sub> − v<sub>u</sub>)</div>' +
-              '<p>The second equation is classifier-free guidance (w ≈ 5 for Wan): one conditional and one unconditional pass per step, hence <b>2 × 50 = 100 network evaluations</b> per shot. The σ grid is shifted toward high noise, σ′ = sσ / (1 + (s−1)σ), so more steps go where the scene layout is decided.</p>' +
+              '<p>The second equation is classifier-free guidance (w ≈ 5 for Wan): one conditional and one unconditional pass per step, hence <b>2 × 50 = 100 network evaluations</b> per shot. The σ grid is shifted toward high noise, σ′ = sσ / (1 + (s−1)σ) (s = 5 for Wan T2V), so more steps go where the scene layout is decided. Wan’s default solver is UniPC, a multistep predictor–corrector; plain Euler is drawn because it is one line of algebra.</p>' +
               '<p class="muted">Schedules, samplers and distillation: Diffusion &amp; Flow Matching chamber. The VAE behind z: Spatiotemporal VAE chamber.</p>'
           }
         ],
@@ -336,18 +358,18 @@
         beats: [
           {
             say: 'A transformer consumes a sequence, so the latent video must become tokens. The VAE has already compressed eighty one frames of seven twenty p video by four in time and eight in each spatial direction. What is left is twenty one latent frames, each ninety by one hundred sixty cells with sixteen channels.',
-            card: { tag: 'NUMBERS', title: 'What the VAE leaves behind', stat: { v: '46×', u: 'fewer numbers', l: '223.9 M pixel values become a 4.8 M value latent: 256× fewer positions, 16 channels each' } },
+            card: { tag: 'NUMBERS', title: 'What the VAE leaves behind', stat: { v: '46×', u: 'fewer numbers', l: '223.9 M pixel values become a 4.8 M value latent: ≈ 247× fewer positions, 16 channels each' } },
             deep: '<p>The causal VAE keeps frame 0 on its own and compresses the following frames 4:1 in time, so T′ = 1 + (81 − 1)/4 = 21. Spatially it is 8× per axis, and the latent has 16 channels:</p>' +
               '<div class="eq">81 × 720 × 1280 × 3 = 223.9 M values &nbsp;→&nbsp; 16 × 21 × 90 × 160 = 4.84 M values</div>' +
-              '<p>That is a 46× reduction in numbers and 256× in positions. The DiT never sees a pixel: it works entirely on this latent, which is why the VAE decides what the generator can afford.</p>' +
+              '<p>That is a 46× reduction in numbers and ≈ 247× in positions (4·8·8 = 256 in steady state; the lone first frame costs a little). The DiT never sees a pixel: it works entirely on this latent, which is why the VAE decides what the generator can afford.</p>' +
               '<p class="muted">The autoencoder itself lives in the Spatiotemporal VAE chamber.</p>'
           },
           {
             say: 'The patch embedder then groups every two by two block of cells within a frame into one token. Time is not grouped, so each token lives inside a single latent frame.',
-            card: { tag: 'HOW IT WORKS', title: 'A patch is a 1×2×2 cube', body: 'Non-overlapping cubes: one latent frame, a 2 × 2 block of cells, 16 channels. That is 64 numbers per token.', more: '<p>Token count for the 720p shot under other patch sizes: 1×2×2 gives 75,600; 2×2×2 (frame pairs merged) gives 37,800; 1×4×4 gives 18,900. Attention scales with n², so those cost 4× and 16× less, at the price of coarser tokens that must carry more detail.</p>' },
+            card: { tag: 'HOW IT WORKS', title: 'A patch is a 1×2×2 cube', body: 'Non-overlapping cubes: one latent frame, a 2 × 2 block of cells, 16 channels. That is 64 numbers per token.', more: '<p>Token count for the 720p shot under other patch sizes: 1×2×2 gives 75,600; 2×2×2 (frame pairs merged) gives roughly 37,800; 1×4×4 gives roughly 18,900 (21 frames and 90 rows do not divide evenly, so real models pad). Attention scales with n², so those cost about 4× and 16× less, at the price of coarser tokens that must carry more detail.</p>' },
             deep: '<p>Patchify is a strided 3D convolution: <code>Conv3d(16, 5120, kernel=(1,2,2), stride=(1,2,2))</code>, one shared linear map applied to non-overlapping 1×2×2 cubes.</p>' +
               '<div class="eq">n = T′·(H′/p<sub>h</sub>)·(W′/p<sub>w</sub>) = 21 · 45 · 80 = 75,600</div>' +
-              '<p><b>Design trade-off:</b> a larger patch (2×2×2 or 1×4×4) cuts n by 2–4× and attention by 4–16×, but every token must then reconstruct more detail through the final linear layer. High-compression VAEs (Wan 2.2 TI2V-5B with a 16×16×4 VAE, LTX-Video with 32×32×8) move that burden into the autoencoder instead.</p>'
+              '<p><b>Design trade-off:</b> a larger patch (2×2×2 or 1×4×4) cuts n by 2–4× and attention by 4–16×, but every token must then reconstruct more detail through the final linear layer. High-compression VAEs (Wan 2.2 TI2V-5B with a 4×16×16 VAE, LTX-Video with 8×32×32, both in T×H×W) move that burden into the autoencoder instead.</p>'
           },
           {
             say: 'A linear layer then lifts those sixty four numbers to the model width of five thousand one hundred twenty. No position is added here; where a token sits is injected later, inside attention.',
@@ -369,7 +391,7 @@
               '<tr><td>480×832</td><td>21·30·52 = 32,760</td><td>0.19×</td></tr>' +
               '<tr><td>720×1280</td><td>21·45·80 = 75,600</td><td>1×</td></tr>' +
               '<tr><td>1088×1920</td><td>21·68·120 = 171,360</td><td>5.1×</td></tr></table>' +
-              '<p>Same recipe everywhere: Wan 2.x, HunyuanVideo and CogVideoX use a 4×8×8 VAE with 2×2 patches; the Sora report calls the result <i>spacetime patches</i>. The VAE fixes T′·H′·W′, the patch fixes tokens per latent cell; together they fix n, and n² fixes the bill.</p>'
+              '<p>Same recipe everywhere: Wan 2.1, HunyuanVideo and CogVideoX use a 4×8×8 VAE with 2×2 patches; the Sora report calls the result <i>spacetime patches</i>. The VAE fixes T′·H′·W′, the patch fixes tokens per latent cell; together they fix n, and n² fixes the bill.</p>'
           }
         ],
         run: function (ctx) {
@@ -444,20 +466,30 @@
               ctx.text(1420, y, row[2], { size: 13, font: 'mono', color: row[3], anchor: 'end', parent: S.gRes });
             });
             S.gNote = ctx.group({ parent: g });
-            ctx.text(70, 742, 'same recipe everywhere: Wan 2.x, HunyuanVideo, CogVideoX (4×8×8 VAE + 2×2 patch); Sora report: "spacetime patches"', { size: 12, font: 'mono', color: 'dim', parent: S.gNote });
+            ctx.text(70, 742, 'same recipe everywhere: Wan 2.1, HunyuanVideo, CogVideoX (4×8×8 VAE + 2×2 patch); Sora report: "spacetime patches"', { size: 12, font: 'mono', color: 'dim', parent: S.gNote });
             ctx.text(70, 766, 'the VAE sets T′·H′·W′, the patch sets tokens per latent cell: together they fix n, and n² fixes the bill', { size: 12, font: 'mono', color: 'dim', parent: S.gNote });
-            hide([S.gPatch, S.gLin, S.gSeq, S.gBig, S.gRes, S.gNote, S.gFrame]);
+            /* the VAE's time axis: 81 pixel frames become 21 latent frames (shown in beat 1, replaced by the patch details in beat 2) */
+            S.gVae = ctx.group({ parent: g });
+            ctx.text(580, 262, 'video: 81 frames', { size: 12, font: 'mono', color: 'dim', parent: S.gVae });
+            for (var vf = 0; vf < 81; vf++) ctx.rect(580 + vf * 5, 276, 4, 26, { rx: 1, fill: vf === 0 ? ctx.C.amber : ctx.alpha('white', 0.35), parent: S.gVae });
+            ctx.text(580, 328, '↓ causal VAE · 4× in time · frame 0 alone', { size: 12, font: 'mono', color: 'lime', parent: S.gVae });
+            ctx.text(580, 356, 'latent: 21 frames = 1 + 80 / 4', { size: 12, font: 'mono', color: 'dim', parent: S.gVae });
+            for (vf = 0; vf < 21; vf++) ctx.rect(580 + vf * 19.3, 372, 15, 30, { rx: 2, fill: vf === 0 ? ctx.C.amber : ctx.alpha('lime', 0.6), parent: S.gVae });
+            ctx.text(580, 424, 'each latent frame: 90 × 160 cells × 16 channels', { size: 12, font: 'mono', color: 'dim', parent: S.gVae });
+            hide([S.gPatch, S.gLin, S.gSeq, S.gBig, S.gRes, S.gNote, S.gFrame, S.gVae]);
             patchAt(0);
 
             /* beat 0: latent frames and the VAE arithmetic */
             return Promise.all([
               ctx.reveal(S.gFrame, { from: 'left', dur: 500 }),
+              ctx.reveal(S.gVae, { from: 'up', delay: 300 }),
               typeLines(S.code2, ['video    81 × 720 × 1280 × 3', 'VAE ↓    t/4 · h/8 · w/8 · 16 ch', 'latent   21 × 90 × 160 × 16', '         (21 = 1 + 80/4, frame 0 alone)'])
             ]);
           }).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: 1x2x2 patches sweep across the frame */
+            ctx.fadeOut(S.gVae, 300, true);
             return Promise.all([
-              ctx.reveal(S.gPatch, { dur: 400 }),
+              ctx.reveal(S.gPatch, { dur: 400, delay: 300 }),
               typeLines(S.code2, ['patch    1 × 2 × 2', 'tokens   21 × 45 × 80']),
               ctx.tween(2600, function (t) { patchAt(Math.min(23, Math.floor(t * 24))); }, 'linear', 400)
             ]);
@@ -514,7 +546,7 @@
             say: 'The price is a score matrix with seventy five thousand six hundred squared entries, per head and per layer. It is never stored: FlashAttention streams tiles through on-chip memory, so memory stays linear even though compute stays quadratic.',
             card: { tag: 'NUMBERS', title: 'The price of seeing everything', stat: { v: '5.7 × 10⁹', u: 'scores', l: 'per head per layer at n = 75,600; times 40 heads and 40 layers in one forward pass' }, more: '<p>Total ≈ 9.1 × 10¹² softmax entries per pass, 100 passes per shot. Materialised in bf16 that would be 18 TB per pass; streaming tiles through SRAM avoids it entirely.</p>' },
             deep: '<p>With n = 75,600, H = 40 heads and d<sub>h</sub> = 128, each head scores 5.7·10<sup>9</sup> pairs per layer; × 40 heads × 40 layers ≈ 9.1·10<sup>12</sup> softmax entries per forward pass. FlashAttention-style kernels stream K/V tiles through on-chip SRAM with an online softmax, so memory is O(n·d) while compute stays O(n²·d).</p>' +
-              '<p>Wan also applies <b>QK-RMSNorm</b> to q and k (over the full 5120-wide projection; HunyuanVideo and SD3 normalise per head). It keeps logits bounded at this length; without it, attention-logit growth destabilises large-scale bf16 training (Dehghani et al., ViT-22B).</p>'
+              '<p>Wan also applies <b>QK-RMSNorm</b> to q and k (over the full 5120-wide projection; HunyuanVideo normalises per head). It keeps logits bounded; without it, attention-logit growth can destabilise large-scale training (Dehghani et al., ViT-22B; SD3 applies the same fix).</p>'
           },
           {
             say: 'Click any token to move the query, and the row of the matrix and the arrows follow it. Put the query on the ice, and the attention moves to the ice in every frame.',
@@ -570,10 +602,16 @@
             ctx.text(FX0, 684, 'Q, K, V ∈ ℝ^(n × dₕ),  n = 75,600,  dₕ = 128,  40 heads × 40 layers', { size: 13.5, font: 'mono', color: 'text', parent: S.b3 }),
             ctx.text(FX0, 714, 'one hop links the fox at t = 0 … 20 although its (h, w) changes every frame: motion = a diagonal path in spacetime', { size: 13.5, font: 'mono', color: 'amber', parent: S.b3 }),
             ctx.text(FX0, 744, 'scores per head per layer: n² ≈ 5.7 × 10⁹ — never materialised: FlashAttention streams K/V tiles through SRAM', { size: 13.5, font: 'mono', color: 'dim', parent: S.b3 }),
-            ctx.text(FX0, 774, 'QK-RMSNorm on q and k keeps logits bounded at n = 75,600 (Wan); heads specialise into local, tracking and global patterns', { size: 13.5, font: 'mono', color: 'dim', parent: S.b3 }),
+            ctx.text(FX0, 774, 'QK-RMSNorm on q and k (Wan) keeps logits bounded; heads specialise into local, tracking and global patterns', { size: 13.5, font: 'mono', color: 'dim', parent: S.b3 }),
             ctx.label(1340, 648, 'CLICK A TOKEN → MOVE THE QUERY', { color: 'cyan', size: 12, parent: S.b3 })
           ];
-          hide([S.fr, S.qRing, S.rays, S.stripG, bl]);
+          /* the whole score matrix, of which the strip above is one row */
+          S.sq = ctx.group({ parent: S.b3 });
+          ctx.rect(1290, 676, 112, 112, { rx: 3, fill: ctx.alpha('amber', 0.1), stroke: ctx.alpha('amber', 0.7), sw: 1.2, parent: S.sq });
+          ctx.rect(1290, 730, 112, 4, { fill: 'amber', parent: S.sq });
+          ctx.text(1412, 732, '← one query’s row', { size: 11.5, font: 'mono', color: 'dim', parent: S.sq });
+          ctx.text(1346, 808, 'n × n scores per head', { size: 12, font: 'mono', color: 'amber', anchor: 'middle', parent: S.sq });
+          hide([S.fr, S.qRing, S.rays, S.stripG, bl, S.sq]);
 
           /* beat 0: five latent frames, dark, fox outlined */
           return Promise.all([ctx.reveal(S.fr, { from: 'up' }), ctx.reveal([bl[0], bl[1]], { from: 'up', delay: 400, stagger: 150 })]).then(function () { return ctx.beat(1); }).then(function () {
@@ -607,7 +645,7 @@
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: the n^2 bill */
-            return Promise.all([ctx.reveal([bl[3], bl[4]], { from: 'up', stagger: 200 })]).then(function () {
+            return Promise.all([ctx.reveal([bl[3], bl[4]], { from: 'up', stagger: 200 }), ctx.reveal(S.sq, { from: 'scale', s0: 0.85, delay: 200 })]).then(function () {
               return ctx.pulse(bl[3], { color: 'amber', dur: 700 });
             });
           }).then(function () { return ctx.beat(4); }).then(function () {
@@ -634,7 +672,7 @@
             card: { tag: 'PITFALL', title: 'Temporal attention misses motion', body: 'A fixed (h, w) column through time sees empty sky where the fox used to be. The moving fox is invisible to it.' },
             deep: '<p><b>Temporal</b> attention runs along the time axis at a fixed (h, w): n<sub>s</sub> independent sequences of T′ = 21 tokens.</p>' +
               '<div class="eq">temporal: 4·n·T′·d FLOPs per layer</div>' +
-              '<p><b>What is lost:</b> the attention graph is no longer complete. Token (t, h, w) reaches (t′, h′, w′) only via (t, h′, w′) → (t′, h′, w′): two layers, and the intermediate token must already carry the right content. Large or fast motion, occlusion and identity preservation degrade; image-pretrained spatial layers plus bolted-on temporal layers also bias toward “moving stills”.</p>'
+              '<p><b>What is lost:</b> the attention graph is no longer complete. Token (t, h, w) reaches (t′, h′, w′) only via (t, h′, w′) → (t′, h′, w′): two layers, and the intermediate token must already carry the right content. Large or fast motion, occlusion and identity preservation degrade; image-pretrained spatial layers plus bolted-on temporal layers can also bias toward “moving stills”.</p>'
           },
           {
             say: 'The saving is large. Here the factorized pair is about twenty one times cheaper than full attention, because each token scores a few thousand keys instead of seventy five thousand.',
@@ -646,7 +684,7 @@
           {
             say: 'But motion must now be relayed through two hops and many layers, which hurts large movements and identity. That is why today\'s leading open models, Wan, HunyuanVideo and CogVideoX, all use full three dimensional attention.',
             card: { tag: 'STATE OF THE ART', title: 'Full 3D attention won', body: 'CogVideoX ablated it directly and found full attention better. Wan, HunyuanVideo and Mochi followed. The escape from n² is sparsity, not factorization.' },
-            deep: '<p>CogVideoX explicitly ablated this and reported that 3D full attention beats separated spatial/temporal attention; HunyuanVideo, Wan, Mochi and Sora-class systems all use full attention. Factorized designs persist mainly in models initialised from image networks (AnimateDiff, SVD).</p>' +
+            deep: '<p>CogVideoX explicitly ablated this and reported that 3D full attention beats separated spatial/temporal attention; HunyuanVideo, Wan and Mochi all use full attention (the Sora report describes a transformer over spacetime patches but does not detail its attention pattern). Factorized designs persist mainly in models initialised from image networks (AnimateDiff, SVD).</p>' +
               '<p>The escape from the O(n²) bill is therefore not factorization but <i>learned-structure-aware sparsity</i> (step 8) plus sequence parallelism across GPUs.</p>'
           },
           {
@@ -667,10 +705,11 @@
           S.chG = ctx.group({ parent: g });
           S.modeChips = [];
           [['full', 'FULL 3D', 1270], ['spatial', 'SPATIAL', 1380], ['temporal', 'TEMPORAL', 1490]].forEach(function (m) {
-            var ch = chip(ctx, S.chG, m[2], 660, 100, m[1], function () { S.mode = m[0]; attnUpdate(ctx, S); });
+            var ch = chip(ctx, S.chG, m[2], 620, 100, m[1], function () { S.mode = m[0]; attnUpdate(ctx, S); });
             ch.mode = m[0];
             S.modeChips.push(ch);
           });
+          S.tryG = ctx.label(930, 620, 'TRY IT · pick a mode, then click a token', { color: 'cyan', size: 12, opacity: 0, parent: g });
           /* cost bars */
           S.costG = ctx.group({ parent: g });
           ctx.text(FX0, 660, 'COST PER LAYER  (720p shot, n = 75,600, d = 5120)', { size: 15, font: 'display', weight: 700, color: 'white', parent: S.costG });
@@ -689,7 +728,7 @@
           });
           ctx.text(FX0, 824, 'factorized total ≈ 5.6 TFLOP → 20.9× cheaper, but a moving object needs ≥ 2 hops (space, then time)', { size: 13, font: 'mono', color: 'text', parent: S.costG });
           S.noteG = ctx.group({ parent: g });
-          ctx.text(FX0, 850, 'factorized: TimeSformer, VDM, Make-A-Video, AnimateDiff, SVD  ·  full 3D: CogVideoX, HunyuanVideo, Wan 2.x, Mochi 1, Sora-class', { size: 12, font: 'mono', color: 'dim', parent: S.noteG });
+          ctx.text(FX0, 850, 'factorized: TimeSformer, VDM, Make-A-Video, AnimateDiff, SVD  ·  full 3D: CogVideoX, HunyuanVideo, Wan 2.x, Mochi 1', { size: 12, font: 'mono', color: 'dim', parent: S.noteG });
           /* warning marker at the fox's true position in the last frame */
           S.warn = ctx.group({ parent: g });
           var fp = cellXY(4, 4, 7);
@@ -717,7 +756,9 @@
             return Promise.all([ctx.reveal(S.noteG, { from: 'up' }), ctx.pulse(S.modeChips[0].g, { color: 'lime', dur: 700 })]);
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: the viewer's turn */
-            return S.modeChips.reduce(function (p, c) { return p.then(function () { return ctx.pulse(c.g, { color: 'lime', dur: 450 }); }); }, Promise.resolve());
+            return ctx.reveal(S.tryG, { from: 'left' }).then(function () {
+              return S.modeChips.reduce(function (p, c) { return p.then(function () { return ctx.pulse(c.g, { color: 'lime', dur: 450 }); }); }, Promise.resolve());
+            });
           });
         }
       },
@@ -738,7 +779,7 @@
             deep: '<p>Within band a ∈ {T, H, W}, pair i rotates by angle p<sub>a</sub>·ω<sub>a,i</sub>:</p>' +
               '<div class="eq">ω<sub>a,i</sub> = θ<sup>−2i/d<sub>a</sub></sup>&nbsp; (Wan θ = 10⁴, HunyuanVideo θ = 256)</div>' +
               '<p>Pair 0 has ω = 1 (a full turn per 2π ≈ 6.3 positions); the last pair is nearly frozen. Fast pairs resolve small offsets, slow pairs stay unambiguous over the whole clip. Implementation: a complex multiply of (q<sub>2i</sub> + j·q<sub>2i+1</sub>) by e<sup>j·p·ω</sup>, fused into the attention prologue. In the animation the token wanders through (t, h, w) and every hand turns at its own rate.</p>' +
-              '<details><summary>Go deeper</summary><pre>def rope_3d(q, t, h, w):        # q: [n, H, 128]\n    q_t, q_h, q_w = q.split([44, 42, 42], -1)\n    rot = lambda x, p, f: cplx_mul(x, exp(1j * p[:, None] * f))\n    return cat([rot(q_t, t, f_t), rot(q_h, h, f_h), rot(q_w, w, f_w)], -1)</pre></details>'
+              '<details><summary>Go deeper</summary><pre>def rope_3d(q, t, h, w):\n  a, b, c = q.split([44, 42, 42], -1)\n  rot = lambda x, p, f: cmul(\n      x, exp(1j * p[:, None] * f))\n  return cat([rot(a, t, f_t),\n              rot(b, h, f_h),\n              rot(c, w, f_w)], -1)</pre></details>'
           },
           {
             say: 'When a query meets a key, the rotations cancel into a function of only their relative offset in time, height and width. There is no position table and no fixed maximum length.',
@@ -748,18 +789,18 @@
               '<details><summary>Go deeper</summary><p>For one pair, with q and k as complex numbers: Re[(q·e<sup>jpω</sup>)* (k·e<sup>jp′ω</sup>)] = Re[q*k·e<sup>j(p′−p)ω</sup>]. The absolute angle cancels and only Δ·ω remains. Across a band the score is Σ<sub>i</sub> |q<sub>i</sub>||k<sub>i</sub>| cos(Δ·ω<sub>i</sub> + φ<sub>i</sub>).</p></details>'
           },
           {
-            say: 'Averaging over the pairs gives a positional factor that falls as the offset grows, a soft locality prior. Wan gives forty four dimensions to time with a base of ten thousand, while HunyuanVideo gives only sixteen with a base of two hundred fifty six.',
+            say: 'Averaging over the pairs gives a positional factor that decays slowly as the offset grows, a soft locality prior. Wan gives forty four dimensions to time with a base of ten thousand, while HunyuanVideo gives only sixteen with a base of two hundred fifty six.',
             card: { tag: 'NUMBERS', title: 'How each model splits the head', stat: { v: '44 / 42 / 42', u: 'dims for t / h / w', l: 'Wan 2.x splits its 128-dim head this way; HunyuanVideo uses 16 / 56 / 56 with base 256' }, more: '<p>Wan’s slowest temporal pair has ω = 10⁴<sup>−42/44</sup> ≈ 1.5·10⁻⁴, a period of about 41,000 frames: effectively a constant. HunyuanVideo’s slowest has a period of about 800 frames. Both are far beyond any clip, so the slow pairs act as coarse absolute anchors while the fast pairs measure offsets.</p>' },
             deep: '<table><tr><th>Model</th><th>d<sub>head</sub></th><th>T / H / W dims</th><th>θ</th></tr>' +
               '<tr><td>Wan 2.1 / 2.2</td><td>128</td><td>44 / 42 / 42</td><td>10⁴</td></tr>' +
               '<tr><td>HunyuanVideo</td><td>128</td><td>16 / 56 / 56</td><td>256</td></tr></table>' +
-              '<p>The plot shows mean<sub>i</sub> cos(Δ·ω<sub>i</sub>), the positional factor for q = k with equal energy per pair: it falls with |Δ|, a soft locality prior. HunyuanVideo spends few dimensions on time but uses a small base (θ = 256), so its 8 temporal frequencies still span periods from 6 to about 800 frames.</p>'
+              '<p>The plot shows mean<sub>i</sub> cos(Δ·ω<sub>i</sub>), the positional factor for q = k with equal energy in every pair. It decays only slowly and wiggles (RoFormer’s “long-term decay”): most of Wan’s 22 temporal pairs barely turn over a 21-frame clip, so its time axis is a coarse ruler. HunyuanVideo spends only 8 pairs on time, but with θ = 256 they sweep periods from 6 to about 800 frames: a sharper ruler.</p>'
           },
           {
             say: 'Generate longer or larger than the model was trained on, and the angles leave the range it has seen. Fixes include base rescaling and position interpolation, and RIFLEx, which lowers one frequency so that long videos stop looping.',
             card: { tag: 'PITFALL', title: 'Longer than trained: loops or breaks', body: 'Angles beyond the training range are out of distribution. RIFLEx lowers one intrinsic frequency so extended clips stop repeating.' },
             deep: '<p><b>Extrapolation:</b> generating longer or larger than trained pushes angles into a range the model never saw, and quality collapses. Fixes borrowed from LLMs: NTK / YaRN-style base rescaling and position interpolation.</p>' +
-              '<p>Video adds a second failure: <b>repetition</b>. <b>RIFLEx</b> identifies the “intrinsic” temporal frequency whose period matches the training length, and lowers it so that the clip does not loop. Spatial RoPE has the same issue at higher resolutions, which is why models are trained on several aspect ratios and sizes.</p>'
+              '<p>Video adds a second failure: <b>repetition</b>. <b>RIFLEx</b> finds the “intrinsic” temporal frequency whose period is closest to the frame where the video first starts to repeat (component 4 for HunyuanVideo, 2 for CogVideoX-5B) and lowers it so that its period covers the longer clip: 2× extrapolation works training-free, 3× with light fine-tuning. Spatial RoPE has the same issue at higher resolutions, which is why models are trained on several aspect ratios and sizes.</p>'
           }
         ],
         run: function (ctx) {
@@ -813,9 +854,15 @@
           ctx.line(z0.x, z0.y, z1.x, z1.y, { color: ctx.alpha('white', 0.15), sw: 1, dash: '2 4', parent: S.plotG });
           ctx.text(205, pl.toPx(0, 1).y, '1', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: S.plotG });
           ctx.text(205, z0.y, '0', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: S.plotG });
-          ctx.text(232, 770, '— Wan t-band (44 dims, θ = 10⁴)', { size: 12, font: 'mono', color: 'amber', parent: S.plotG });
-          ctx.text(232, 790, '- - HunyuanVideo t-band (16 dims, θ = 256)', { size: 12, font: 'mono', color: 'orange', parent: S.plotG });
+          ctx.text(232, 770, '— Wan (44 dims, θ = 10⁴)', { size: 12, font: 'mono', color: 'amber', parent: S.plotG });
+          ctx.text(232, 790, '- - HunyuanVideo (16, θ = 256)', { size: 12, font: 'mono', color: 'orange', parent: S.plotG });
           S.ropeCurves = [pl.curve, pl2.curve];
+          /* beat 5: offsets beyond the trained length */
+          S.ood = ctx.group({ parent: g });
+          var o0 = pl.toPx(20, 1), o1 = pl.toPx(40, -0.3);
+          ctx.rect(o0.x, o0.y, o1.x - o0.x, o1.y - o0.y, { fill: ctx.alpha('red', 0.08), parent: S.ood });
+          ctx.line(o0.x, o0.y, o0.x, o1.y, { color: 'red', sw: 1.2, dash: '5 4', parent: S.ood });
+          ctx.text((o0.x + o1.x) / 2, o0.y + 14, 'Δ > 20 · never seen in training', { size: 11.5, font: 'mono', color: 'red', anchor: 'middle', parent: S.ood });
           /* equations: A = the relative-position identity, B = the two configurations, C = extrapolation */
           function eqBlock(list) {
             var eg = ctx.group({ parent: g });
@@ -830,12 +877,12 @@
           ]);
           S.eqB = eqBlock([
             ['Wan 44/42/42, θ = 10⁴  ·  HunyuanVideo 16/56/56, θ = 256', 13, 'text', 712],
-            ['text tokens: unrotated (HunyuanVideo) or id (0,0,0) (FLUX)', 12.5, 'amber', 836]
+            ['text tokens: unrotated (HunyuanVideo) or id (0,0,0) (FLUX)', 12.5, 'amber', 738]
           ]);
           S.eqC = eqBlock([
-            ['longer / larger than training → angles go out of distribution:', 13, 'dim', 752],
-            ['NTK / YaRN base scaling, position interpolation, RIFLEx', 13, 'dim', 774],
-            ['(lower the intrinsic frequency so long videos stop looping)', 13, 'dim', 796]
+            ['longer / larger than training → angles go out of distribution:', 13, 'text', 782],
+            ['NTK / YaRN base scaling, position interpolation, RIFLEx', 13, 'dim', 806],
+            ['(lower the intrinsic frequency so long videos stop looping)', 13, 'dim', 830]
           ]);
 
           function setPhasors(T) {
@@ -851,7 +898,8 @@
             S.posT[2].textContent = 'w = ' + pos.w.toFixed(1) + '  (0…79)';
           }
           setPhasors(0);
-          hide([S.pairG, S.phG, S.posG, S.plotG, S.eqA, S.eqB, S.eqC]);
+          tint(ctx);
+          hide([S.pairG, S.phG, S.posG, S.plotG, S.eqA, S.eqB, S.eqC, S.ood]);
 
           /* beat 0: the head is split into three bands */
           return ctx.reveal(S.pairG, { from: 'down' }).then(function () {
@@ -874,7 +922,7 @@
             ]);
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: extrapolation beyond the trained range */
-            return ctx.reveal(S.eqC, { from: 'left' }).then(function () {
+            return Promise.all([ctx.reveal(S.eqC, { from: 'left' }), ctx.reveal(S.ood, { delay: 200 })]).then(function () {
               return ctx.pulse(S.eqC, { color: 'amber', dur: 700 });
             });
           });
@@ -898,22 +946,23 @@
               '<p>Each block has two residual branches, self-attention and FFN. Each gets a <b>shift β</b> and a <b>scale γ</b> applied to its LayerNorm output, plus a <b>gate α</b> applied before the residual add. In Wan an unmodulated cross-attention branch sits between them. The vectors are per sample and broadcast over all n tokens, so the same instruction reaches every patch.</p>'
           },
           {
-            say: 'Shift and scale modulate the normalized activations channel by channel. Watch one channel on the right: as the noise level sweeps from one toward zero, the same weights reshape its distribution.',
-            card: { tag: 'HOW IT WORKS', title: 'One block, many behaviours', body: 'Shift and scale re-centre and stretch every channel as a function of σ, so identical weights act differently at high and low noise.' },
+            say: 'Shift and scale modulate the normalized activations channel by channel. Watch one channel on the right: as the noise level sweeps from one toward zero, the same weights reshape its distribution. Then click the sigma pill to step the noise level yourself.',
+            card: { tag: 'TRY IT', title: 'Click σ, reshape the channel', body: 'Each click on the σ pill steps the noise level from 1 down to 0.05. The channel distribution and the shift and scale numbers move with it.' },
             deep: '<p>LayerNorm without learned affine parameters yields roughly zero-mean, unit-variance channels (dashed curve). Shift and scale then move and stretch that distribution as a function of σ:</p>' +
               '<div class="eq">x̂ ⊙ (1 + γ(σ)) + β(σ)</div>' +
-              '<p>At high noise the block sees mostly noise and must attend to coarse layout; at low noise it refines texture. The same weights can realise both because γ and β retune every channel. In the DiT paper this modulation beat cross-attention and in-context conditioning of the timestep by a wide FID margin.</p>'
+              '<p>At high noise the block sees mostly noise and must attend to coarse layout; at low noise it refines texture. The same weights can realise both because γ and β retune every channel. In the DiT paper’s ablation this modulation beat in-context and cross-attention conditioning of timestep and class label by a wide FID margin.</p>' +
+              '<p class="muted">The six numbers on the stage are illustrative curves, not values read from a trained network.</p>'
           },
           {
             say: 'The gates scale each branch before it joins the residual stream. In adaLN Zero they start at zero, so every block begins as an identity map, which lets very deep diffusion transformers train stably.',
-            card: { tag: 'KEY IDEA', title: 'Gates start closed', body: 'In adaLN-Zero each gate α starts at 0: every block is the identity at initialisation, so a 40-block stack trains stably.', more: '<p>With α = 0 the residual branch contributes nothing, so gradients reach the first layer through the identity path undiminished. The gates then open only as far as the loss rewards it, which is why very deep DiTs train without warm-up tricks.</p>' },
+            card: { tag: 'KEY IDEA', title: 'Gates start closed', body: 'In adaLN-Zero each gate α starts at 0: every block is the identity at initialisation, so a 40-block stack trains stably.', more: '<p>With α = 0 the residual branch contributes nothing, so gradients reach the first layer through the identity path undiminished. The gates then open only as far as the loss rewards it, which helps very deep DiTs train stably.</p>' },
             deep: '<div class="eq">h = x + α₁ ⊙ SelfAttn(LN(x) ⊙ (1+γ₁) + β₁)<br>h′ = h + CrossAttn(LN(h), c<sub>text</sub>)<br>y = h′ + α₂ ⊙ FFN(LN(h′) ⊙ (1+γ₂) + β₂)</div>' +
-              '<p><b>Zero:</b> in the DiT recipe W<sub>mod</sub> is initialised to 0, so α = 0 and every residual branch is switched off: the 40-block stack starts as the identity and gradients flow cleanly to the earliest layers. Training gradually opens the gates. Note that in Wan the cross-attention branch is <i>not</i> modulated.</p>'
+              '<p><b>Zero:</b> in the DiT recipe W<sub>mod</sub> is initialised to 0, so α = 0 and every residual branch is switched off: the 40-block stack starts as the identity and gradients flow cleanly to the earliest layers. Training gradually opens the gates. Two caveats for Wan: its cross-attention branch is <i>not</i> modulated, and its adaLN-single modulation (shared projection plus per-block biases, as in PixArt-α) starts from random rather than zero values, so identity-at-init is the DiT recipe, not a Wan property.</p>'
           },
           {
             say: 'Per block, that head is a linear map from the model width to six times the width. Wan shares one modulation projection across all forty blocks and learns only a bias per block, saving billions of parameters.',
-            card: { tag: 'NUMBERS', title: 'Share one modulation head', stat: { v: '6.3 B', u: 'parameters saved', l: 'one shared projection instead of a 6d² linear in each of 40 blocks (d = 5120)' } },
-            deep: '<p><b>Parameter cost:</b> a per-block d → 6d linear is 6d² parameters. For DiT-XL/2 (d = 1152, 28 blocks) that is ≈ 223 M of 675 M parameters. At Wan’s d = 5120 the same design would cost 6d² = 157 M per block, 6.3 B over 40 blocks.</p>' +
+            card: { tag: 'NUMBERS', title: 'Share one modulation head', stat: { v: '6.1 B', u: 'parameters saved', l: 'a 6d² head in each of 40 blocks would cost 6.3 B (d = 5120); one shared head plus biases costs 0.16 B' } },
+            deep: '<p><b>Parameter cost:</b> a per-block d → 6d linear is 6d² parameters. For DiT-XL/2 (d = 1152, 28 blocks) that is ≈ 223 M of 675 M parameters. At Wan’s d = 5120 the same design would cost 6d² = 157 M per block, 6.3 B over 40 blocks; the shared design costs 157 M once plus 40 × 6 × 5120 ≈ 1.2 M of biases, saving ≈ 6.1 B.</p>' +
               '<p>Wan shares <i>one</i> modulation projection across all blocks and lets each block learn only a bias B<sub>l</sub> ∈ ℝ<sup>6×d</sup> (the “adaLN-single” design introduced by PixArt-α). Compute is negligible either way: O(d) per block for the modulation, versus O(n·d²) for the layers it steers.</p>'
           }
         ],
@@ -940,7 +989,7 @@
             return ng;
           }
           S.lgP = noteBlock([['Wan: one MLP shared by all 40 blocks;', 'text', 0], ['each block adds only a learned bias Bₗ', 'text', 1], ['DiT-XL/2: a d → 6d Linear per block', 'dim', 3], ['= 6d² × 28 ≈ 223M of 675M params', 'dim', 4]]);
-          S.lgZ = noteBlock([['init W_mod = 0  ⇒  α = γ = β = 0', 'magenta', 6], ['⇒  every block = identity at step 0', 'magenta', 7]]);
+          S.lgZ = noteBlock([['DiT: W_mod = 0 ⇒ α = γ = β = 0', 'magenta', 6], ['⇒  every block = identity at step 0', 'magenta', 7]]);
           /* mini comparison of modulation parameters */
           S.lgB = ctx.group({ parent: g });
           [['per-block heads: 40 × 6d²', 692, 240, '6.29 B', 'red'], ['shared head + biases (Wan)', 738, 240 * 0.157 / 6.29, '0.16 B', 'lime']].forEach(function (b) {
@@ -1038,8 +1087,20 @@
               S.gates[i].v.textContent = fmt(v);
             });
           }
-          S.sig = 1;
+          S.sig = 1; S.gs = 1; S.sigK = 4; S.sigLive = false;
           setSigma(1, 1);
+          /* TRY IT: clicking the sigma pill steps the noise level (enabled after the sweep of beat 3) */
+          var SIGS = [1, 0.75, 0.5, 0.25, 0.05];
+          var stepSigma = function () {
+            if (!S.sigLive) return;
+            S.sigK = (S.sigK + 1) % SIGS.length;
+            S.sig = SIGS[S.sigK];
+            setSigma(S.sig, S.gs);
+          };
+          S.sigR.style.cursor = 'pointer'; S.sigT.style.cursor = 'pointer';
+          S.sigR.addEventListener('click', stepSigma); S.sigT.addEventListener('click', stepSigma);
+          S.sigHint = ctx.label(470, 211, 'CLICK σ · STEP THE NOISE', { color: 'cyan', size: 11.5, opacity: 0, parent: S.lg });
+          tint(ctx);
           hide([S.lg, S.lgHead, S.lgP, S.lgZ, S.lgB, S.cg, S.bus, S.rgD, S.rgG, S.rgC]);
           /* the σ pill and the first two nodes belong to beat 0; only the head + notes wait */
           S.lg.setAttribute('opacity', 0);
@@ -1056,12 +1117,17 @@
             /* beat 2: shift and scale reshape the activations while sigma sweeps down */
             return ctx.reveal(S.rgD, { from: 'right' }).then(function () {
               return ctx.tween(3000, function (t) { S.sig = 1 - 0.9 * t; setSigma(S.sig, 1); }, 'inOut');
+            }).then(function () {
+              S.sig = 0.1; S.sigK = 4; setSigma(S.sig, 1); S.sigLive = true;
+              return ctx.reveal(S.sigHint, { from: 'left' });
             });
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: replay the start of training: gates closed, then opening */
-            setSigma(S.sig, 0);
+            S.gs = 0; setSigma(S.sig, 0);
             return Promise.all([ctx.reveal(S.rgG, { from: 'right' }), ctx.reveal(S.lgZ, { from: 'left', delay: 200 })]).then(function () {
-              return ctx.tween(1600, function (t) { setSigma(S.sig, t); if (t > 0.05) S.gateNote.textContent = t < 1 ? 'training opens the gates …' : 'trained: each branch is scaled by its gate'; }, 'out', 500);
+              return ctx.tween(1600, function (t) { S.gs = t; setSigma(S.sig, t); if (t > 0.05) S.gateNote.textContent = t < 1 ? 'training opens the gates …' : 'trained: each branch is scaled by its gate'; }, 'out', 500);
+            }).then(function () {
+              S.gs = 1; setSigma(S.sig, 1); S.gateNote.textContent = 'trained: each branch is scaled by its gate';
             }).then(function () {
               return Promise.all([ctx.pulse(S.chain[4], { color: 'magenta', dur: 600 }), ctx.pulse(S.chain[8], { color: 'magenta', dur: 600 })]);
             });
@@ -1204,6 +1270,7 @@
           ctx.text(302, 796, 'dual-stream × 20', { size: 12, font: 'mono', color: 'text', anchor: 'middle', parent: S.B });
           ctx.text(1037, 796, 'single-stream × 40 (parallel attention + MLP, shared weights)', { size: 12, font: 'mono', color: 'text', anchor: 'middle', parent: S.B });
           ctx.text(82, 836, 'joint cost: m ≈ 256 text tokens next to n = 75,600 → (n+m)²/n² − 1 ≈ 0.7% more attention · FLUX.1 uses 19 dual + 38 single', { size: 12.5, font: 'mono', color: 'dim', parent: S.B });
+          tint(ctx);
           hide([S.L, S.Ln, S.R, S.wG, S.qG, S.B]);
 
           /* beat 0: the cross-attention design */
@@ -1249,7 +1316,7 @@
             say: 'At Wan\'s width the two curves cross at about twenty nine thousand tokens. At our seventy five thousand six hundred, attention costs one hundred seventeen teraflops per layer, against forty five for everything else.',
             card: { tag: 'NUMBERS', title: 'The crossover', stat: { v: '≈ 29 k', u: 'tokens', l: 'n* = 3d + d_ff: beyond this, attention costs more than all linear layers combined' }, more: '<p>Setting 4n²d = (12d² + 4d·d<sub>ff</sub>)·n and dividing by 4nd gives n = 3d + d<sub>ff</sub> = 15,360 + 13,824 = 29,184. Wider models cross later; longer sequences always cross eventually.</p>' },
             deep: '<div class="eq">4n²d = (12d² + 4d·d<sub>ff</sub>)·n &nbsp;⇒&nbsp; n* = 3d + d<sub>ff</sub> ≈ 29,200</div>' +
-              '<p>Above n*, attention dominates and grows quadratically. At our n = 75,600 attention is 117 TFLOP against 45 TFLOP for the linear layers. FlashAttention-3 reaches roughly 600–750 TFLOP/s in BF16 on an H100 at d<sub>h</sub> = 128, so dense attention alone is about 0.2 s per layer per GPU.</p>'
+              '<p>Above n*, attention dominates and grows quadratically. At our n = 75,600 attention is 117 TFLOP against 45 TFLOP for the linear layers. FlashAttention-3 reaches roughly 600–650 TFLOP/s on an H100 at head dimension 128 (its 740 TFLOP/s headline is at head dimension 256), so dense attention alone takes roughly 0.18–0.20 s per layer per GPU.</p>'
           },
           {
             say: 'One transformer block at our size costs about one hundred sixty three teraflops, and seventy two percent of it is self attention. At ten eighty p the share is even larger, which is why high resolution is often a separate super resolution pass.',
@@ -1264,14 +1331,14 @@
           {
             say: 'Sparse patterns attack exactly this. Sliding tile attention keeps local three dimensional windows built from dense tiles, so no computation is wasted on masked entries.',
             card: { tag: 'HOW IT WORKS', title: 'Sliding tile attention', body: 'Each query tile attends a 3-D window of key tiles. Every computed block is dense, so the FLOP saving becomes a real speedup: 1.4× training-free, 3.5× fine-tuned.' },
-            deep: '<p><b>Sliding Tile Attention</b> tiles the (t, h, w) grid into cubes (e.g. 6×8×8 = 384 tokens) and lets each query tile attend a 3D window of key tiles. Every computed block is fully dense, so no FLOPs are wasted on masked entries and the kernel stays FlashAttention-fast. On HunyuanVideo it cut end-to-end latency from 945 s (FA3) to 685 s training-free and to 268 s after fine-tuning.</p>' +
+            deep: '<p><b>Sliding Tile Attention</b> tiles the (t, h, w) grid into 4×4×4 cubes (64 tokens, one FlashAttention block) and lets each query tile attend a 3D window of key tiles. Every computed block is fully dense, so no FLOPs are wasted on masked entries and the kernel stays FlashAttention-fast. On HunyuanVideo (a 30 × 48 × 80 latent, 117 frames at 1280 × 768) an 18 × 24 × 24 window keeps 9% of the scores; end-to-end latency fell from 945 s with FlashAttention-3 to 685 s training-free and to 268 s after fine-tuning (a 0.09% VBench drop).</p>' +
               '<p class="muted">The matrix on the right is a toy: 20 tiles per axis, 4 temporal blocks × 5 spatial tiles.</p>'
           },
           {
             say: 'Radial attention instead shrinks the window as the distance in time grows, which gives n log n scaling. Try the buttons to compare dense, sliding tile and radial masks.',
             card: { tag: 'TRY IT', title: 'Toggle the masks', body: 'Dense, sliding tile and radial: click the chips and watch the computed-tile density and the implied FLOP saving change.' },
-            deep: '<p><b>Radial attention</b> uses a static mask whose spatial window halves as temporal distance doubles (attention energy decays with distance), giving O(n log n). <b>Sparse VideoGen</b> classifies heads online as spatial or temporal and gives each its own pattern. Orthogonal levers: SageAttention (INT8/FP8 QKᵀ), step caching (TeaCache), and sequence parallelism (Ulysses / Ring) across 8 GPUs.</p>' +
-              '<p class="muted">Density and the implied saving are computed from the toy mask. At the real n = 75.6k there are about 200 tiles, and density is roughly 10–45%.</p>'
+            deep: '<p><b>Radial attention</b> (Li et al., NeurIPS 2025) keeps a static mask whose spatial window halves each time the temporal distance doubles, since post-softmax attention energy decays with distance. That gives O(n log n): up to 1.9× faster at default length, and videos up to 4× longer after a light LoRA fine-tune. <b>Sparse VideoGen</b> picks a spatial or temporal pattern per head, online. Orthogonal levers: SageAttention (INT8 QKᵀ), TeaCache step caching, Ulysses / Ring sequence parallelism.</p>' +
+              '<p class="muted">Toy mask: the radial window halves per tile step of |Δt| (the real one per doubling). At n = 75.6k there are about 1,200 tiles of 64 tokens, with windows tuned per layer and step.</p>'
           }
         ],
         run: function (ctx) {
@@ -1295,6 +1362,8 @@
           S.curves8 = [pa.curve, plin.curve];
           S.mk = ctx.group({ parent: S.pg });
           var cx8 = pa.toPx(29.18, 17.44);
+          ctx.rect(cx8.x, PY, PX + PW - cx8.x, PH, { fill: ctx.alpha('lime', 0.07), parent: S.mk });
+          ctx.text(PX + PW * 75.6 / 120 + 14, PY + PH - 14, 'attention-dominated regime', { size: 11.5, font: 'mono', color: 'lime', parent: S.mk });
           ctx.circle(cx8.x, cx8.y, 5, { fill: 'amber', glow: true, parent: S.mk });
           ctx.line(cx8.x, cx8.y - 6, cx8.x - 30, cx8.y - 80, { color: ctx.alpha('amber', 0.7), sw: 1, parent: S.mk });
           ctx.text(cx8.x - 34, cx8.y - 92, 'n* = 3d + d_ff ≈ 29k', { size: 12.5, font: 'mono', color: 'amber', anchor: 'middle', parent: S.mk });
@@ -1343,18 +1412,19 @@
           S.densS = ctx.text(1330, 500, '', { size: 12, font: 'mono', color: 'lime', parent: S.sg });
           ctx.text(1330, 540, 'bright = same temporal block', { size: 11.5, font: 'mono', color: 'dim', parent: S.sg });
           ctx.text(1330, 566, 'toy size: at n = 75.6k there', { size: 11.5, font: 'mono', color: 'dim', parent: S.sg });
-          ctx.text(1330, 584, 'are ~200 tiles and density', { size: 11.5, font: 'mono', color: 'dim', parent: S.sg });
-          ctx.text(1330, 602, 'is roughly 10–45%', { size: 11.5, font: 'mono', color: 'dim', parent: S.sg });
+          ctx.text(1330, 584, 'are ~1,200 tiles; real windows', { size: 11.5, font: 'mono', color: 'dim', parent: S.sg });
+          ctx.text(1330, 602, 'are tuned per layer and step', { size: 11.5, font: 'mono', color: 'dim', parent: S.sg });
           function lineBlock(list, y0) {
             var lg = ctx.group({ parent: g });
             list.forEach(function (l, i) { ctx.text(880, y0 + i * 26, l[0], { size: 12.5, font: 'mono', color: l[1], parent: lg }); });
             return lg;
           }
-          S.sl1 = lineBlock([['STA: a 3D window over tiles (e.g. 6×8×8 = 384 tokens) →', 'text'], ['every computed tile is dense: no masked-FLOP waste', 'text']], 690);
+          S.sl1 = lineBlock([['STA: a 3D window over 4×4×4 tiles (64 tokens each) →', 'text'], ['every computed tile is dense: no masked-FLOP waste', 'text']], 690);
           S.sl2 = lineBlock([['Radial: spatial window halves as |Δt| doubles → O(n log n)', 'text'], ['Sparse VideoGen: per-head spatial vs temporal, chosen online', 'dim'],
             ['orthogonal: SageAttention (INT8 QKᵀ), TeaCache step caching,', 'dim'], ['Ulysses / Ring sequence parallelism across 8 GPUs', 'dim']], 742);
           S.mask = 'dense';
           maskUpdate(ctx, S);
+          tint(ctx);
           hide([S.pg, S.mk, S.bk, S.sg, S.sl1, S.sl2]);
 
           /* beat 0: the two cost curves */
@@ -1390,7 +1460,7 @@
             say: 'Putting it together for our trailer. Wan\'s large model has forty blocks of width five thousand one hundred twenty, with forty heads of one hundred twenty eight dimensions each. That is roughly fourteen billion parameters.',
             card: { tag: 'NUMBERS', title: 'The real models', stat: { v: '14 B', u: 'parameters', l: 'Wan 2.1: 40 blocks × ≈ 351 M (105 M self-attn + 105 M cross-attn + 142 M FFN)' } },
             deep: '<p><b>Parameter check</b> (Wan 2.1 14B, per block): self-attn 4d² = 105 M, cross-attn 4d² = 105 M, FFN 2·d·d<sub>ff</sub> = 142 M → ≈ 351 M × 40 blocks ≈ <b>14.0 B</b>. In BF16 the weights take 28 GB: one 80 GB GPU holds the model, but activations for n = 75.6 k push toward FSDP and sequence parallelism.</p>' +
-              '<p>The 1.3 B sibling (d = 1536, 30 blocks) runs on an 8 GB consumer GPU; HunyuanVideo’s 13 B mixes 20 dual-stream and 40 single-stream blocks, with a 3D RoPE split of 16 / 56 / 56 and a decoder-only MLLM as text encoder.</p>'
+              '<p>The 1.3 B sibling (d = 1536, 30 blocks) needs about 8.2 GB of GPU memory in the official repo, so it fits a consumer card; HunyuanVideo’s 13 B mixes 20 dual-stream and 40 single-stream blocks, with a 3D RoPE split of 16 / 56 / 56 and a decoder-only MLLM as text encoder.</p>'
           },
           {
             say: 'One forward pass over a five second, seven twenty p shot costs about six and a half petaflops. Fifty steps with guidance make roughly six hundred fifty petaflops.',
@@ -1399,21 +1469,21 @@
               '<p>One forward pass costs ≈ 6.5 PFLOP; guidance doubles it and fifty steps multiply it by fifty. The bars use a log scale from 10<sup>13.5</sup> to 10<sup>18</sup> FLOP, so each row looks similar in length while the number grows by orders of magnitude.</p>'
           },
           {
-            say: 'On an H one hundred at a realistic forty five percent utilization, that is around twenty four GPU minutes per shot, and about two and a half GPU hours for all six shots.',
-            card: { tag: 'NUMBERS', title: 'In GPU time', stat: { v: '≈ 24', u: 'GPU-minutes per shot', l: '650 PFLOP ÷ (989 TFLOP/s × 45% MFU); six shots ≈ 2.4 GPU-hours before re-renders' } },
-            deep: '<p>At 989 TFLOP/s dense BF16 (H100 SXM) and ~45% MFU: 6.5·10<sup>17</sup> / 4.45·10<sup>14</sup> ≈ 1,460 s ≈ <b>24 GPU-minutes</b> per shot; six shots ≈ 2.4 GPU-hours, before VAE decode and re-renders.</p>' +
-              '<p class="muted">At the 24 fps / 111,600-token spec of the Video Serving chamber the naive figure is ≈ 54 GPU-minutes; its speedup ladder brings the whole trailer to ≈ 1.2 GPU-hours, the overview’s ≈ 76 GPU-min.</p>'
+            say: 'On an H one hundred at a realistic forty percent utilization, that is around twenty seven GPU minutes per shot, and about two point seven GPU hours for all six shots.',
+            card: { tag: 'NUMBERS', title: 'In GPU time', stat: { v: '≈ 27', u: 'GPU-min per shot', l: '650 PFLOP ÷ (989 TFLOP/s × 40% MFU); six shots ≈ 2.7 GPU-hours before re-renders' } },
+            deep: '<p>At 989 TFLOP/s dense BF16 (H100 SXM) and ~40% MFU (396 TFLOP/s): 6.5·10<sup>17</sup> / 3.96·10<sup>14</sup> ≈ 1,650 s ≈ <b>27 GPU-minutes</b> per shot; six shots ≈ 2.7 GPU-hours, before VAE decode and re-renders. MFU is achieved model FLOP/s divided by peak: FlashAttention-3 alone reaches roughly 65% at head dimension 128, while norms, modulation and communication pull the blended figure down.</p>' +
+              '<p class="muted">At the 24 fps / 111,600-token spec of the Video Serving chamber the same arithmetic gives ≈ 54 GPU-minutes per shot; its speedup ladder brings the whole trailer to ≈ 1.2 GPU-hours, the overview’s ≈ 76 GPU-min.</p>'
           },
           {
             say: 'Here is the whole pass in one line: patchify the latent, run forty blocks that combine rotary positions, full attention, text and modulation, then unpatchify into a velocity for the sampler.',
             card: { tag: 'KEY IDEA', title: 'One pass, end to end', body: 'Everything in this chamber lives inside the middle box, evaluated 100 times per shot. Self-attention alone is 72% of its FLOPs.' },
             deep: '<p>The chain is exactly one evaluation of v<sub>θ</sub>: patchify (Conv3d 16 → 5120), 40 blocks of [adaLN-modulated full 3D self-attention with 3D RoPE → cross-attention to text → FFN], then Linear 5120 → 64 and unpatchify.</p>' +
-              '<p><b>Wan 2.2 A14B</b> keeps this block but splits the denoising trajectory between two 14B experts (high-noise for early σ, low-noise for late σ): 27 B parameters, 14 B active per step, so the per-shot FLOPs above are unchanged.</p>'
+              '<p><b>Wan 2.2 A14B</b> keeps this block but splits the denoising trajectory between two 14B experts (high-noise for early σ, low-noise for late σ): 27 B parameters, 14 B active per step, so the per-shot FLOPs above stay essentially unchanged.</p>'
           },
           {
             say: 'That is why serving splits each shot across eight GPUs, and why distillation to a handful of steps matters so much. The levers multiply: sequence parallelism, sparse attention, fewer steps, cheaper arithmetic and caching each attack a different factor of the bill.',
             card: { tag: 'WHY IT MATTERS', title: 'The levers multiply', body: 'Each lever cuts a different factor: GPUs per shot, FLOPs per step, steps per shot, guidance passes, bytes per number.' },
-            deep: '<ul><li>Sequence parallel (DeepSpeed-Ulysses all-to-all over heads, or Ring attention) ×8 GPUs → ~3 min wall-clock.</li>' +
+            deep: '<ul><li>Sequence parallel (DeepSpeed-Ulysses all-to-all over heads, or Ring attention) ×8 GPUs → ≈ 3.4 min wall-clock at ideal scaling (27 GPU-min ÷ 8).</li>' +
               '<li>Sparse attention: ≈ 1.4–3.5× end-to-end at 720p (STA, training-free vs fine-tuned), more at longer n.</li>' +
               '<li>Step distillation (consistency / DMD / rectified-flow students): 50 → 4–8 steps; CFG distillation removes the ×2.</li>' +
               '<li>FP8 GEMMs and quantized attention; step caching reuses block outputs across adjacent σ.</li></ul>' +
@@ -1453,7 +1523,7 @@
           ctx.text(880, 190, 'BUDGET · one 5 s 720p shot on Wan 14B', { size: 18, font: 'display', weight: 700, color: 'white', parent: S.bg });
           ctx.rect(870, 206, 680, 322, { rx: 10, fill: 'rgba(6,12,24,0.8)', stroke: ctx.alpha('amber', 0.35), sw: 1, parent: S.bg });
           var bud = [['1 block · n = 75,600', '163 TFLOP', 1.63e14], ['× 40 blocks', '6.5 PFLOP', 6.52e15], ['× 2 (CFG)', '13 PFLOP', 1.30e16], ['× 50 steps', '650 PFLOP', 6.52e17],
-            ['÷ H100 @ 45% MFU (445 TFLOP/s)', '≈ 24 GPU-min', 0], ['× 6 shots in the trailer', '≈ 2.4 GPU-h', 0]];
+            ['÷ H100 @ 40% MFU (396 TFLOP/s)', '≈ 27 GPU-min', 0], ['× 6 shots in the trailer', '≈ 2.7 GPU-h', 0]];
           S.bbars = [];
           S.brow = bud.map(function (b, i) {
             var rg = ctx.group({ parent: S.bg });
@@ -1501,7 +1571,7 @@
             })));
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: converted to GPU time */
-            ctx.hud('≈ 24 H100-min per shot at 50 steps + CFG');
+            ctx.hud('≈ 27 H100-min per shot at 50 steps + CFG');
             return ctx.reveal(S.brow.slice(4), { from: 'right', stagger: 400 }).then(function () {
               return ctx.pulse(S.brow[4], { color: 'amber', dur: 700 });
             });

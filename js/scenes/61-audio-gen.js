@@ -72,8 +72,11 @@
     return d;
   }
   function nb(lines) { return lines.map(function (s) { return s.replace(/^ +| {2,}/g, function (m) { return new Array(m.length + 1).join(' '); }); }); }
-  function head(ctx, parent, x, y, s, col) { return ctx.text(x, y, s, { size: 13, font: 'mono', weight: 600, color: col || 'orange', parent: parent, spacing: 1 }); }
-  function note(ctx, parent, x, y, s, col, anchor, size) { return ctx.text(x, y, s, { size: size || 12, font: 'mono', color: col || 'dim', anchor: anchor || 'start', parent: parent }); }
+  /* violet, pink, red, blue and magenta are low-luminance hues: as text they wash out in the light theme, so
+   * text in those hues is lightened towards white (which the light theme turns into a dark, readable tone) */
+  function tc(ctx, c) { return (c === 'violet' || c === 'pink' || c === 'red' || c === 'blue' || c === 'magenta') ? ctx.mix(c, 'white', 0.55) : c; }
+  function head(ctx, parent, x, y, s, col) { return ctx.text(x, y, s, { size: 13, font: 'mono', weight: 600, color: tc(ctx, col || 'orange'), parent: parent, spacing: 1 }); }
+  function note(ctx, parent, x, y, s, col, anchor, size) { return ctx.text(x, y, s, { size: size || 12, font: 'mono', color: tc(ctx, col || 'dim'), anchor: anchor || 'start', parent: parent }); }
   function panelBox(ctx, parent, x, y, w, h, col) { return ctx.rect(x, y, w, h, { rx: 10, fill: 'rgba(7,12,24,0.88)', stroke: ctx.alpha(col || 'orange', 0.4), sw: 1.1, parent: parent }); }
 
   /* navigator chips (top right, below the HUD band) */
@@ -113,13 +116,14 @@
   Atlas.register({
     id: 'tts-audio',
     refs: [
-      'Wang et al., <i>Neural Codec Language Models are Zero-Shot Text to Speech Synthesizers (VALL-E)</i>, 2023; Chen et al., <i>VALL-E 2</i>, 2024',
+      'Wang et al., <i>Neural Codec Language Models are Zero-Shot Text to Speech Synthesizers (VALL-E)</i>, 2023; Chen et al., <i>VALL-E 2: Neural Codec Language Models are Human Parity Zero-Shot Text to Speech Synthesizers</i>, 2024',
+      'Lipman et al., <i>Flow Matching for Generative Modeling</i>, ICLR 2023',
       'Le et al., <i>Voicebox: Text-Guided Multilingual Universal Speech Generation at Scale</i>, NeurIPS 2023; Chen et al., <i>F5-TTS: A Fairytaler that Fakes Fluent and Faithful Speech with Flow Matching</i>, 2024',
       'Du et al., <i>CosyVoice 2: Scalable Streaming Speech Synthesis with Large Language Models</i>, 2024',
-      'Kong et al., <i>HiFi-GAN</i>, NeurIPS 2020; Siuzdak, <i>Vocos: Closing the Gap Between Time-Domain and Fourier-Based Neural Vocoders</i>, ICLR 2024',
-      'Copet et al., <i>Simple and Controllable Music Generation (MusicGen)</i>, NeurIPS 2023; Evans et al., <i>Fast Timing-Conditioned Latent Audio Diffusion</i>, ICML 2024',
+      'Kong et al., <i>HiFi-GAN: Generative Adversarial Networks for Efficient and High Fidelity Speech Synthesis</i>, NeurIPS 2020; Siuzdak, <i>Vocos: Closing the Gap Between Time-Domain and Fourier-Based Neural Vocoders for High-Quality Audio Synthesis</i>, ICLR 2024',
+      'Copet et al., <i>Simple and Controllable Music Generation (MusicGen)</i>, NeurIPS 2023; Evans et al., <i>Fast Timing-Conditioned Latent Audio Diffusion</i>, ICML 2024; Evans et al., <i>Long-Form Music Generation with Latent Diffusion</i>, ISMIR 2024',
       'Cheng et al., <i>MMAudio: Taming Multimodal Joint Training for High-Quality Video-to-Audio Synthesis</i>, CVPR 2025',
-      'Li et al., <i>LatentSync</i>, 2024; Prajwal et al., <i>A Lip Sync Expert Is All You Need (Wav2Lip)</i>, ACM MM 2020; Chung &amp; Zisserman, <i>Out of Time (SyncNet)</i>, ACCV-W 2016',
+      'Li et al., <i>LatentSync: Taming Audio-Conditioned Latent Diffusion Models for Lip Sync with SyncNet Supervision</i>, 2024; Prajwal et al., <i>A Lip Sync Expert Is All You Need for Speech to Lip Generation In The Wild (Wav2Lip)</i>, ACM MM 2020; Chung &amp; Zisserman, <i>Out of Time: Automated Lip Sync in the Wild (SyncNet)</i>, ACCV-W 2016',
       'San Roman et al., <i>Proactive Detection of Voice Cloning with Localized Watermarking (AudioSeal)</i>, ICML 2024'
     ],
     setup: function (ctx) {
@@ -141,7 +145,7 @@
           {
             say: 'A music model writes a thirty second score to a cue sheet, with the tempo, the key and the moment of the crash written down in advance.',
             card: { tag: 'NUMBERS', title: 'A score to measure', stat: { v: '30 s', u: 'stereo score', l: '44.1 kHz, 96 BPM, D minor, with the build peaking at 15.0 s' } },
-            deep: '<p><b>Music</b> is conditioned on a text cue, a tempo and a duration. Families: codec LMs (MusicGen: EnCodec tokens with a delay pattern) and latent diffusion (Stable Audio: a DiT over a VAE latent with timing conditioning).</p>' +
+            deep: '<p><b>Music</b> is conditioned on a text cue, a tempo and a duration. Families: codec LMs (MusicGen: EnCodec tokens with a delay pattern) and latent diffusion (Stable Audio 2 and Open: a DiT over a VAE latent with timing conditioning).</p>' +
               '<p>Output is a set of 44.1 kHz stereo stems (strings, synth, percussion) kept separate until the final mix, so the editor can re-time or mute any of them without regenerating.</p>'
           },
           {
@@ -164,7 +168,9 @@
               '<tr><td>Music</td><td>text cue, tempo, duration</td><td>codec LM (MusicGen), latent diffusion (Stable Audio)</td></tr>' +
               '<tr><td>Foley</td><td>video frames + text</td><td>video-to-audio flow matching (MMAudio); joint A/V generators (Veo 3)</td></tr>' +
               '<tr><td>Lip-sync</td><td>face video + speech</td><td>audio-conditioned latent inpainting (LatentSync)</td></tr></table>' +
-              '<p>The shared pattern: compress audio into a low-rate representation (codec tokens, mel frames or VAE latents), generate there, then decode back to a 24–48 kHz waveform.</p>'
+              '<p>The shared pattern: compress audio into a low-rate representation (codec tokens, mel frames or VAE latents), generate there, then decode back to a 24–48 kHz waveform.</p>' +
+              '<details><summary>Go deeper: the GPU budget behind "seconds"</summary>' +
+              '<p>Rough per-job cost on one GPU: narration ≈ 4 s (about 12 s of speech at RTF 0.3), score ≈ 10 s (30 s of audio, 100 denoising steps), foley ≈ 5 s (MMAudio makes 8 s of audio in about 1.2 to 2 s on an H100), lip-sync ≈ 10 s (62 frames as four 16-frame windows of 20 DDIM steps). That is on the order of 30 GPU-seconds, against 6 shots × 8 GPUs × 95 s = 4,560 GPU-seconds of video diffusion: under 1 %. These are budgets, not benchmarks, but the ratio is robust to a factor of two either way.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -232,29 +238,36 @@
             say: 'Zoom into speech. Both sides must become tokens. The text is normalized, so numbers and abbreviations are spelled out, and optionally converted to phonemes.',
             card: { tag: 'HOW IT WORKS', title: 'Normalize, then phonemes or characters', body: 'Two front-ends exist in 2025: phonemes (VALL-E, Voicebox) and raw characters or BPE (F5-TTS, CosyVoice), where pronunciation is learned.' },
             deep: '<p><b>Text front-end</b>: normalisation (numbers, units, abbreviations), then either G2P phonemes (VALL-E, Voicebox) or raw characters/BPE (F5-TTS, E2, CosyVoice), letting the model learn pronunciation.</p>' +
-              '<p>Phonemes make pronunciation explicit and data-efficient but need a G2P dictionary and fail on names. Characters or BPE remove that dependency and scale with data, at the price of relying on attention to discover pronunciation, especially for heteronyms such as "read".</p>'
+              '<p>Phonemes make pronunciation explicit and data-efficient but need a G2P dictionary and fail on names. Characters or BPE remove that dependency and scale with data, at the price of relying on attention to discover pronunciation, especially for heteronyms such as "read".</p>' +
+              '<details><summary>Go deeper: why normalisation is its own problem</summary>' +
+              '<p>"1984" is "nineteen eighty-four" as a year but "one thousand nine hundred eighty-four" as a quantity; "2/3" is a date or a fraction; "St." is street or saint. Production front-ends use weighted finite-state grammars (Google\'s Kestrel and Sparrowhawk) or an LLM whose output is verified against the source, because a wrong expansion is fluent and therefore invisible to the synthesis model. In our sentence only one rewrite is needed: the hyphenated "30-second" becomes "thirty second".</p></details>'
           },
           {
             say: 'The audio side needs a neural codec. An encoder squeezes twenty four kilohertz audio into seventy five frames per second.',
             card: { tag: 'NUMBERS', title: 'A frame every 13 ms', stat: { v: '75', u: 'frames per second', l: '24 kHz audio through a conv encoder with total stride 320, so 9,600 samples become 30 frames' } },
             deep: '<p><b>Codec</b> (EnCodec 24 kHz, as in VALL-E): a strided convolutional encoder with total stride 320 = 2·4·5·8 maps a waveform of T samples to T/320 frames of a continuous latent, so 24,000 samples per second become 75 frames per second.</p>' +
-              '<p>The 0.4 s slice drawn here is 9,600 samples and 30 frames. The decoder mirrors the encoder with transposed convolutions.</p>'
+              '<p>The 0.4 s slice drawn here is 9,600 samples and 30 frames. The decoder mirrors the encoder with transposed convolutions.</p>' +
+              '<details><summary>Go deeper: EnCodec in numbers</summary>' +
+              '<p>The 24 kHz model is a SEANet-style convolutional encoder (32 base channels, dilated residual units, strides 2, 4, 5, 8) followed by a 2-layer LSTM, producing a 128-dimensional latent at 75 Hz. It is trained with a multi-scale spectral reconstruction loss, a time-domain L1, adversarial and feature-matching losses from multi-scale STFT discriminators, and the RVQ commitment loss. Raw 16-bit mono at 24 kHz is 384 kbps, so the codec compresses by 16× at 24 kbps and by 256× at 1.5 kbps.</p></details>'
           },
           {
             say: 'Residual vector quantization describes each frame with eight codebook indices. The first codebook captures most of the signal; each later one encodes what the previous ones missed.',
-            card: { tag: 'HOW IT WORKS', title: 'Each codebook fixes the last one\'s error', body: 'Eight quantizers in series: the residual shrinks at every stage, so early rows carry content and later rows carry acoustic detail.', more: '<p>Training uses quantizer dropout: the decoder is sometimes given only the first k codebooks. As a result any prefix q<sub>1..k</sub> decodes to valid audio, and one codec serves many bitrates: 1 codebook is 0.75 kbps, 2 are 1.5 kbps, 8 are 6 kbps at 75 frames per second.</p>' },
+            card: { tag: 'HOW IT WORKS', title: 'Each codebook fixes the last one\'s error', body: 'Eight quantizers in series: the residual shrinks at every stage, so early rows carry content and later rows carry acoustic detail.', more: '<p>Training samples how many codebooks are active (EnCodec 24 kHz uses bandwidths of 1.5, 3, 6, 12 and 24 kbps, that is 2, 4, 8, 16 and 32 codebooks). As a result a prefix of the codebooks decodes to valid audio, and one codec serves several bitrates. Each codebook adds 10 bits × 75 Hz = 0.75 kbps: 2 are 1.5 kbps, 8 are 6 kbps.</p>' },
             deep: '<div class="eq">r<sub>0</sub> = z,   q<sub>k</sub> = argmin<sub>c∈C<sub>k</sub></sub> ‖r<sub>k−1</sub> − c‖,   r<sub>k</sub> = r<sub>k−1</sub> − q<sub>k</sub>,   ẑ = Σ<sub>k</sub> q<sub>k</sub></div>' +
-              '<p>Coarse-to-fine: q<sub>1</sub> carries content and much of speaker identity; q<sub>2..8</sub> add acoustic detail. Training uses quantizer dropout so any prefix of codebooks decodes. Each of the 8 codebooks has 1024 entries, which is 10 bits per index.</p>'
+              '<p>Coarse-to-fine: q<sub>1</sub> carries content and much of speaker identity; q<sub>2..8</sub> add acoustic detail. Training samples the number of active codebooks, so prefixes decode. Each of the 8 codebooks has 1024 entries, which is 10 bits per index.</p>' +
+              '<details><summary>Go deeper: why residual quantisation</summary>' +
+              '<p>One codebook with 80 bits per frame would need 2<sup>80</sup> ≈ 1.2 × 10<sup>24</sup> entries and could never be trained or searched. Eight stages of 1,024 entries store only 8,192 vectors yet address the same 2<sup>80</sup> combinations, and encoding is eight nearest-neighbour searches over 1,024 vectors each. Every stage is trained on the residual the earlier stages left behind, with exponential-moving-average codebook updates and re-initialisation of dead entries so all 1,024 vectors stay in use.</p></details>'
           },
           {
-            say: 'Three point eight seconds of narration becomes about two thousand three hundred tokens. That length is what the language model on the next page has to generate.',
-            card: { tag: 'NUMBERS', title: 'One line of narration', stat: { v: '2,280', u: 'tokens', l: 'N1 = 3.8 s × 75 frames × 8 codebooks, a 6 kbps stream' } },
+            say: 'With all eight codebooks, three point eight seconds of narration becomes about two thousand three hundred tokens. Click a shorter prefix to trade sequence length for fidelity. That length is what the language model in the next step must generate.',
+            card: { tag: 'TRY IT', title: 'Click a codebook prefix', body: 'Decode with 1, 2, 4 or all 8 codebooks. Tokens, bitrate and the rows that survive update. Fewer codebooks mean a shorter sequence and a rougher voice.' },
             deep: '<table><tr><th>Codec</th><th>Rate</th><th>Tokens/s</th></tr>' +
               '<tr><td>EnCodec 24k (8 q)</td><td>75 Hz</td><td>600</td></tr>' +
               '<tr><td>DAC 44k (9 q)</td><td>86 Hz</td><td>774</td></tr>' +
               '<tr><td>Mimi (Moshi, 8 q)</td><td>12.5 Hz</td><td>100</td></tr>' +
               '<tr><td>CosyVoice 2 semantic (1 q)</td><td>25 Hz</td><td>25</td></tr></table>' +
-              '<p>Narration line N1: 3.8 s × 75 = 285 frames × 8 = 2,280 tokens. Lower frame rates shorten LM sequences, which is why 2025 systems moved to 12.5–25 Hz tokens.</p>'
+              '<p>Narration line N1: 3.8 s × 75 = 285 frames × 8 = 2,280 tokens, a 6 kbps stream. Lower frame rates shorten LM sequences, which is why 2025 systems moved to 12.5–25 Hz tokens.</p>' +
+              '<p>The chips on the stage keep only the first n codebooks: tokens = 285 · n and bitrate = 0.75 · n kbps. The residual left after n stages (the bars) is what the decoder cannot reproduce; the drawn norms are schematic, but their geometric decay is the point of residual coding.</p>'
           }
         ],
         run: function (ctx) {
@@ -294,11 +307,11 @@
             /* beat 2: residual vector quantisation, one codebook row at a time */
             var r = ctx.rng(4);
             var vals = []; for (var q = 0; q < 8; q++) { vals.push([]); for (var c = 0; c < 30; c++) vals[q].push(r()); }
-            var grid = ctx.matrix(150, 580, 8, 30, { cell: 20, gap: 3, values: function () { return '#0d1424'; }, rowLabels: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8'], parent: G });
+            var grid = S.rvqGrid = ctx.matrix(150, 580, 8, 30, { cell: 20, gap: 3, values: function () { return '#0d1424'; }, rowLabels: ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8'], parent: G });
             var gn = note(ctx, G, 150, 780, '30 frames (0.4 s) × 8 codebook indices (0…1023) = 240 tokens', 'text');
             var l2 = ctx.line(430, 551, 430, 574, { color: 'violet', arrow: true, parent: G });
-            var norms = [1, 0.56, 0.38, 0.28, 0.21, 0.17, 0.14, 0.12];
-            var rn = note(ctx, G, 890, 572, '‖r_k‖ after stage k', 'dim');
+            var norms = S.rvqNorms = [1, 0.56, 0.38, 0.28, 0.21, 0.17, 0.14, 0.12];
+            var rn = note(ctx, G, 890, 572, '‖r_k‖ after stage k (schematic)', 'dim');
             var nb2 = ctx.bars(890, 590, 240, 160, norms.map(function () { return 0.01; }), { color: 'orange', gap: 8, labels: ['1', '2', '3', '4', '5', '6', '7', '8'], parent: G });
             ctx.hud('8 codebooks × 1024 entries = 6 kbps');
             return Promise.all([ctx.reveal([l2, gn, rn], { stagger: 100 }), ctx.reveal(grid, { delay: 100 })]).then(function () {
@@ -312,10 +325,41 @@
             }).then(function () { return nb2.update(norms, 700); });
           }).then(function () { return ctx.beat(3); }).then(function () {
             if (ctx.dead) return;
-            /* beat 3: the token budget */
-            var mp = ctx.para(1180, 440, nb(['N1 = 3.8 s', '× 75 frames/s   = 285 frames', '× 8 codebooks   = 2,280 tokens', '', 'bitrate: 75 × 8 × 10 bit = 6 kbps', '', 'Mimi 12.5 Hz × 8   = 100 tok/s', 'CosyVoice 2 25 Hz × 1 = 25 tok/s']), { size: 14, font: 'code', color: 'text', lh: 26, parent: G });
-            ctx.hud('3.8 s → 285 frames × 8 q = 2,280 tokens');
-            return ctx.reveal(mp, { from: 'left', dur: 700 }).then(function () { return ctx.pulse(mp, { color: 'orange', times: 1, dur: 700 }); });
+            /* beat 3: TRY IT, the token budget for a chosen codebook prefix */
+            var mpA = ctx.para(1180, 460, nb(['N1 = 3.8 s', '× 75 frames/s   = 285 frames']), { size: 14, font: 'code', color: 'text', lh: 26, parent: G });
+            S.rvqT1 = ctx.text(1180, 512, '', { size: 14, font: 'code', color: 'text', pre: true, parent: G });
+            S.rvqT2 = ctx.text(1180, 564, '', { size: 14, font: 'code', color: 'text', pre: true, parent: G });
+            S.rvqT3 = ctx.text(1180, 616, '', { size: 14, font: 'code', color: 'amber', pre: true, parent: G });
+            var mpB = ctx.para(1180, 690, nb(['Mimi 12.5 Hz × 8   = 100 tok/s', 'CosyVoice 2 25 Hz × 1 = 25 tok/s']), { size: 14, font: 'code', color: 'text', lh: 26, parent: G });
+            var pre = ctx.text(1180, 420, 'decode with', { size: 12, font: 'mono', color: 'dim', parent: G });
+            var WHICH = [1, 2, 4, 8];
+            function paint(n) {
+              S.rvqN = n;
+              var tok = 285 * n, kb = 0.75 * n;
+              S.rvqT1.textContent = nb(['× ' + n + ' codebook' + (n > 1 ? 's' : '') + '   = ' + String(tok).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' tokens'])[0];
+              S.rvqT2.textContent = nb(['bitrate: 75 × ' + n + ' × 10 bit = ' + (kb % 1 ? kb.toFixed(2) : kb) + ' kbps'])[0];
+              S.rvqT3.textContent = nb(['residual after q' + n + ' ≈ ' + S.rvqNorms[n - 1].toFixed(2)])[0];
+              for (var q = 0; q < 8; q++) for (var c = 0; c < 30; c++) S.rvqGrid.cells[q][c].setAttribute('opacity', q < n ? 1 : 0.14);
+              S.rvqChips.forEach(function (ch, k) {
+                var on = WHICH[k] === n;
+                ch.childNodes[0].setAttribute('fill', on ? ctx.alpha('orange', 0.25) : 'rgba(123,140,171,0.08)');
+                ch.childNodes[0].setAttribute('stroke', on ? ctx.C.orange : ctx.alpha('dim', 0.5));
+                ch.childNodes[1].setAttribute('fill', on ? ctx.C.orange : ctx.C.dim);
+              });
+              ctx.hud(n + ' of 8 codebooks · ' + (285 * n) + ' tokens · ' + (0.75 * n) + ' kbps');
+            }
+            S.rvqChips = WHICH.map(function (n, k) {
+              var c = ctx.label(1315 + k * 66, 420, 'q1–' + n, { color: 'dim', size: 12, w: 60, parent: G });
+              c.style.cursor = 'pointer';
+              c.addEventListener('click', function () { if (!ctx.dead) paint(n); });
+              return c;
+            });
+            paint(8);
+            return Promise.all([ctx.reveal([mpA, S.rvqT1, S.rvqT2, S.rvqT3, mpB], { from: 'left', dur: 700, stagger: 80 }), ctx.reveal(pre, { delay: 200 }), ctx.reveal(S.rvqChips, { from: 'up', stagger: 80, delay: 300 })]).then(function () { return ctx.wait(500); }).then(function () {
+              paint(2); return ctx.wait(1500);
+            }).then(function () {
+              paint(8); return ctx.pulse(S.rvqChips[3], { color: 'orange', times: 1, dur: 600 });
+            });
           });
         }
       },
@@ -335,7 +379,9 @@
             card: { tag: 'HOW IT WORKS', title: 'AR over the first codebook', body: 'A causal decoder emits q1, one frame per step, sampled with top-p. It is the expressive stage, and the one that can fail.' },
             deep: '<ul><li><b>AR stage</b>: decoder-only transformer, causal, sampled (top-p / repetition-aware sampling in VALL-E 2) → prosodic diversity, but also failure modes: skipped or repeated words, run-on silence.</li>' +
               '<li><b>Guards</b>: maximum length from text length, a CTC/ASR re-check of the output, and re-sampling on failure.</li></ul>' +
-              '<p>Cost: 285 sequential decode steps for line N1, roughly 1.5–3 s of wall-clock at 5–10 ms per step for a few-hundred-million-parameter model with a KV cache. The prefix, about two thirds of the sequence, is prefilled once and cached.</p>'
+              '<p>Cost (an estimate, not a benchmark): 285 sequential decode steps for line N1, roughly 1.5–3 s of wall-clock at 5–10 ms per step in eager PyTorch (1–2 ms with CUDA graphs) for a model of a few hundred million parameters with a KV cache (VALL-E\'s AR and NAR transformers each have 12 layers at width 1024). The prefix, about two thirds of the sequence, is prefilled once and cached.</p>' +
+              '<details><summary>Go deeper: why small-model decoding is launch-bound</summary>' +
+              '<p>A 300 M parameter model is 600 MB in fp16, which an H100 SXM (3.35 TB/s of HBM3) streams in about 0.2 ms, so the memory-bandwidth floor sits far below the 5–10 ms an eager step takes. The gap is kernel-launch and Python overhead across every layer, each a dozen or so small kernels. CUDA graphs or a fused engine remove most of it, and many concurrent streams can share one launch, so batching is cheap.</p></details>'
           },
           {
             say: 'The remaining seven codebooks are filled by a non autoregressive model, one whole codebook per pass, conditioned on everything coarser.',
@@ -350,10 +396,12 @@
               '<p>The trade-off is two models to train and serve, and NAR passes that cannot condition on the future of their own codebook.</p>'
           },
           {
-            say: 'Production systems today keep the autoregressive idea but change the tokens: a language model predicts one semantic codebook at twenty five hertz, a flow matching decoder renders the mel spectrogram, and a vocoder makes the waveform.',
-            card: { tag: 'STATE OF THE ART', title: 'CosyVoice 2 style pipeline', body: 'One codebook at 25 Hz means 3× shorter sequences, better robustness and streaming, with flow matching restoring the acoustic detail.' },
-            deep: '<div class="note">2025 production variant (CosyVoice 2, Seed-TTS, MiniMax-Speech): a text-speech LM, often initialised from a general LLM, predicts <b>single-codebook semantic tokens</b> at 25 Hz; a <b>flow-matching</b> decoder then renders mel conditioned on the speaker, and a vocoder makes the waveform. Same AR idea, far shorter sequences, better robustness.</div>' +
-              '<p>The speaker enters as prompt tokens plus a global embedding, and the whole chain can run chunk by chunk for streaming, which the vocoder page returns to.</p>'
+            say: 'Recent systems such as CosyVoice two keep the autoregressive idea but change the tokens: a language model predicts one semantic codebook at twenty five hertz, a flow matching decoder renders the mel spectrogram, and a vocoder makes the waveform.',
+            card: { tag: 'STATE OF THE ART', title: 'CosyVoice 2 style pipeline', body: 'One semantic codebook at 25 Hz means about 95 autoregressive steps for N1 instead of 285. Flow matching restores the acoustic detail, and chunks can stream.' },
+            deep: '<div class="note">Recent production variant (CosyVoice 2): a text-speech LM, initialised from a general LLM (Qwen2.5-0.5B), predicts <b>single-codebook semantic tokens</b> at 25 Hz; a <b>flow-matching</b> decoder then renders mel conditioned on the speaker, and a vocoder makes the waveform. Same AR idea, far shorter sequences. Seed-TTS (AR model plus diffusion) and MiniMax-Speech (AR Transformer plus Flow-VAE) also pair an autoregressive front half with a generative decoder.</div>' +
+              '<p>The speaker enters as prompt tokens plus a global embedding, and the whole chain can run chunk by chunk for streaming, which the vocoder step returns to.</p>' +
+              '<details><summary>Go deeper: CosyVoice 2 in numbers</summary>' +
+              '<p>The speech tokenizer uses finite scalar quantisation: a low-rank projection to 8 dimensions, each rounded to 3 levels, gives 3<sup>8</sup> = 6,561 codes at 25 Hz, so N1 is about 95 tokens. The text-speech LM is initialised from a pre-trained LLM (Qwen2.5-0.5B) and, in streaming mode, interleaves text and speech tokens in a fixed 5 : 15 ratio. A chunk-aware causal flow-matching model turns each chunk of tokens into mel frames, and a vocoder renders them. Streaming and offline modes share one model, so the reported first-packet latency of about 150 ms and the offline quality figures come from the same weights.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -414,19 +462,19 @@
             /* beat 3: the cost comparison */
             var pb = panelBox(ctx, G, 60, 600, 700, 250, 'amber');
             var hh = head(ctx, G, 80, 625, 'SEQUENTIAL WORK FOR N1 (T = 285)', 'amber');
-            var cb = ctx.bars(100, 660, 400, 140, [0.01, 0.01, 0.01], { color: ['amber', 'orange', 'dim'], gap: 40, labels: ['AR q1: 285', 'NAR: 7', 'flat AR: 2,280'], parent: G });
+            var cb = ctx.bars(100, 660, 400, 140, [0.01, 0.01], { color: ['amber', 'dim'], gap: 60, labels: ['AR 285 + NAR 7 = 292', 'flat AR: 2,280'], parent: G });
             var ns = [note(ctx, G, 530, 690, 'AR fixes content, rhythm,', 'text'), note(ctx, G, 530, 712, 'timbre (q1 ≈ most info)', 'text'), note(ctx, G, 530, 750, 'NAR adds detail in 7', 'text'), note(ctx, G, 530, 772, 'full-sequence passes', 'text')];
             ctx.hud('285 AR steps + 7 NAR passes vs 2,280 flat');
-            return Promise.all([ctx.reveal([pb, hh].concat(ns), { stagger: 60 }), ctx.reveal(cb, { delay: 200 }), ctx.wait(300).then(function () { return cb.update([285 / 2280, 7 / 2280 * 8, 1], 1200); })]);
+            return Promise.all([ctx.reveal([pb, hh].concat(ns), { stagger: 60 }), ctx.reveal(cb, { delay: 200 }), ctx.wait(300).then(function () { return cb.update([292 / 2280, 1], 1200); })]);
           }).then(function () { return ctx.beat(4); }).then(function () {
             if (ctx.dead) return;
             /* beat 4: the 2025 variant */
             var pb2 = panelBox(ctx, G, 800, 600, 760, 250, 'orange');
-            var h2 = head(ctx, G, 820, 625, '2025 VARIANT · CosyVoice 2 / Seed-TTS');
+            var h2 = head(ctx, G, 820, 625, 'RECENT VARIANT · CosyVoice 2');
             var chain = [['text', 870, 100], ['LLM → semantic 25 Hz', 1045, 168], ['flow match → mel', 1235, 168], ['vocoder', 1400, 110]];
             var cn = chain.map(function (s, k) { return ctx.node({ x: s[1], y: 700, w: s[2], h: 44, title: s[0], color: k === 1 ? 'amber' : 'orange', kind: 'chip', titleSize: 12, glow: false, parent: G }); });
             var cl = []; for (var k = 0; k < 3; k++) cl.push(ctx.link(cn[k], cn[k + 1], { color: 'dim', straight: true, parent: G }));
-            var ns2 = [note(ctx, G, 820, 770, 'speaker enters as prompt tokens + embedding; 3× shorter', 'dim'), note(ctx, G, 820, 792, 'sequences than 75 Hz codec tokens (1 codebook, 25 Hz),', 'dim'), note(ctx, G, 820, 814, 'streamable chunk by chunk', 'dim')];
+            var ns2 = [note(ctx, G, 820, 770, 'speaker enters as prompt tokens + embedding;', 'dim'), note(ctx, G, 820, 792, 'one codebook at 25 Hz: 95 AR steps for N1, not 285,', 'dim'), note(ctx, G, 820, 814, 'and streamable chunk by chunk', 'dim')];
             ctx.hud('1 codebook · 25 Hz · streamable');
             return Promise.all([ctx.reveal([pb2, h2], { stagger: 60 }), ctx.reveal(cn, { from: 'up', stagger: 100, delay: 300 }), ctx.reveal(cl, { from: 'draw', stagger: 100, delay: 600 }), ctx.reveal(ns2, { delay: 900, stagger: 120 })]).then(function () { return ctx.pulse(cn[1], { color: 'amber', times: 2, dur: 600 }); });
           });
@@ -452,16 +500,24 @@
           },
           {
             say: 'A transformer predicts a velocity field, and an ordinary differential equation carries the noise to speech along nearly straight paths, in about thirty two function evaluations.',
-            card: { tag: 'NUMBERS', title: 'Straight paths, few steps', stat: { v: '32', u: 'NFE', l: 'Euler steps of the flow ODE; F5-TTS reports RTF 0.15 and 2.4 percent WER' } },
+            card: { tag: 'NUMBERS', title: 'Straight paths, few steps', stat: { v: '32', u: 'NFE', l: 'Euler steps of the flow ODE; F5-TTS reports RTF 0.31 (0.15 at 16 steps) and 2.4 percent WER' } },
             deep: '<div class="eq">x<sub>t</sub> = (1 − t)·x<sub>0</sub> + t·x<sub>1</sub>,    L = E ‖ v<sub>θ</sub>(x<sub>t</sub>, t, x<sub>ctx</sub>, y) − (x<sub>1</sub> − x<sub>0</sub>) ‖²  over masked frames</div>' +
-              '<p>The optimal-transport path is a straight line, so a coarse Euler solver is accurate; curved diffusion paths need many more steps. <b>CFG</b>: v = v(c) + w·(v(c) − v(∅)), w ≈ 2.</p>' +
-              '<p>F5-TTS (≈336 M params, DiT + ConvNeXt text encoder) reports RTF ≈ 0.15 at 32 NFE, WER ≈ 2.4 % on LibriSpeech-PC.</p>'
+              '<p>The conditional optimal-transport path is a straight line and the learned flow stays close to straight, so a coarse Euler solver is accurate; curved diffusion paths need many more steps. <b>CFG</b>: v = v(c) + w·(v(c) − v(∅)), w ≈ 2.</p>' +
+              '<p>F5-TTS (≈336 M params, DiT + ConvNeXt text encoder) reports WER ≈ 2.4 % and speaker SIM ≈ 0.66 on LibriSpeech-PC test-clean at 32 NFE with RTF ≈ 0.31, and RTF ≈ 0.15 at 16 NFE.</p>' +
+              '<details><summary>Go deeper: why the target is a simple regression</summary>' +
+              '<p>Flow matching regresses v<sub>θ</sub> onto the field u<sub>t</sub> that generates a probability path p<sub>t</sub>, which is intractable. Conditioning on a data point x<sub>1</sub> makes it closed-form: for x<sub>t</sub> = (1 − t)x<sub>0</sub> + t·x<sub>1</sub> the conditional velocity is x<sub>1</sub> − x<sub>0</sub>, and the conditional and marginal objectives have the same gradients (Lipman et al., 2023). Sampling integrates dx/dt = v<sub>θ</sub>(x, t) from t = 0 to 1. At any t the clean-speech estimate is x̂<sub>1</sub> = x<sub>t</sub> + (1 − t)·v<sub>θ</sub>, so the solver is refining an estimate that is already recognisable early on.</p></details>'
           },
           {
             say: 'Sway sampling spends more of those steps at small times, where coarse structure forms. Watch the target region condense into harmonics and formants as the counter climbs.',
             card: { tag: 'STATE OF THE ART', title: 'Sway sampling', body: 'Warping the time grid so half of the 32 steps land below t = 0.29 gives more accuracy where coarse spectral structure appears.', more: '<p>With s = −1 the warp is t′ = 1 − cos(πt/2). The step at k/32 lands at t′(k/32); half the steps (k ≤ 16) fall below t′(0.5) = 1 − cos(π/4) ≈ 0.29. Early time is where the model decides pitch contour and formant layout, so extra steps there help more than near t = 1, where only fine detail changes.</p>' },
             deep: '<ul><li><b>Sampling</b>: Euler/midpoint ODE with 16–32 NFE; F5-TTS uses <i>sway sampling</i> t′ = t + s(cos(πt/2) − 1 + t), s = −1, which spends more steps at small t where structure forms.</li></ul>' +
               '<p>Trade-off vs codec LMs: no streaming out of the box (a chunked variant exists), but robust, parallel, and often the best word error rate at a given quality. Both families end in the same place: a mel spectrogram or codec latent that a vocoder turns into sound.</p>'
+          },
+          {
+            say: 'Your turn. Click along the schedule to scrub the solver. At step sixteen, half of the compute is spent, yet the path is only twenty nine percent complete, because sway sampling front loads the steps.',
+            card: { tag: 'TRY IT', title: 'Scrub the ODE solver', body: 'Click the schedule to jump to any of the 32 steps and watch noise become spectrogram. Half of the steps sit in the first 29 % of the path.' },
+            deep: '<p>Each tick on the schedule is one Euler step, x ← x + Δt · v<sub>θ</sub>(x, t). Under sway sampling the ticks crowd near t = 0, where the coarse layout is decided: which frames are voiced and where the harmonics and formants sit. Near t = 1 only fine texture changes, so a few large steps suffice.</p>' +
+              '<p>The marker shows the interpolant x<sub>t</sub> = (1 − t)·x<sub>0</sub> + t·x<sub>1</sub>. At step 16, t′ = 0.29, so 71 % of that mix is still noise, yet the solver\'s own clean estimate x̂<sub>1</sub> is far closer to speech than the mix suggests. That gap is why coarse, front-loaded steps work.</p>'
           }
         ],
         run: function (ctx) {
@@ -472,6 +528,15 @@
           var MX = 100, MY = 310, MWp = 1000, MHp = 240;
           var tgtX = MX + MWp * NPC / MW;
           var noiseEl, nfe, dots = [];
+          /* sway-warped time of Euler step n (of 32), and the scene state at that step */
+          function swayT(n) { var u = n / 32; return u - (Math.cos(Math.PI * u / 2) - 1 + u); }
+          function setStep(n) {
+            var ts = swayT(n);
+            noiseEl.setAttribute('opacity', (1 - ts).toFixed(3));
+            nfe.textContent = 'NFE ' + n + ' / 32 · t = ' + ts.toFixed(2);
+            dots.forEach(function (d) { d.el.setAttribute('cx', d.A.x + (d.B.x - d.A.x) * ts); d.el.setAttribute('cy', d.A.y + (d.B.y - d.A.y) * ts); });
+            if (S.scrM) { S.scrM.setAttribute('x1', 100 + ts * 1000); S.scrM.setAttribute('x2', 100 + ts * 1000); }
+          }
           /* beat 0: the mel: a kept prompt, a noise target */
           var h0 = head(ctx, G, 80, 185, 'FLOW MATCHING · infill the target mel (F5-TTS / E2 / Voicebox)');
           var rN = ctx.rng(77);
@@ -527,8 +592,8 @@
             /* bottom: the ODE */
             var bb = panelBox(ctx, G, 60, 600, 1500, 250, 'orange');
             var hb = head(ctx, G, 80, 625, 'THE ODE · one velocity field, 32 Euler steps');
-            var eqs = ctx.para(100, 750, nb(['train:  x_t = (1−t)·x₀ + t·x₁ ,   target velocity  u = x₁ − x₀', 'sample: x ← x + Δt · [ v(c) + w·(v(c) − v(∅)) ] ,   w ≈ 2', 'F5-TTS ≈ 336 M params · RTF ≈ 0.15 @ 32 NFE · WER ≈ 2.4 %']), { size: 14, font: 'code', color: 'text', lh: 28, parent: G });
-            ctx.hud('32 NFE · RTF ≈ 0.15 · no aligner');
+            var eqs = ctx.para(100, 750, nb(['train:  x_t = (1−t)·x₀ + t·x₁ ,   target velocity  u = x₁ − x₀', 'sample: x ← x + Δt · [ v(c) + w·(v(c) − v(∅)) ] ,   w ≈ 2', 'F5-TTS ≈ 336 M params · RTF ≈ 0.31 @ 32 NFE (0.15 @ 16) · WER ≈ 2.4 %']), { size: 14, font: 'code', color: 'text', lh: 28, parent: G });
+            ctx.hud('32 NFE · RTF ≈ 0.31 · no aligner');
             return Promise.all([ctx.reveal([pb, hp], { stagger: 60 }), ctx.reveal(pg, { delay: 300, dur: 800 }), ctx.reveal(pn, { delay: 800, stagger: 100 }), ctx.reveal([bb, hb], { delay: 200, stagger: 60 }), ctx.reveal(eqs, { delay: 700 })]);
           }).then(function () { return ctx.beat(3); }).then(function () {
             if (ctx.dead) return;
@@ -545,13 +610,29 @@
             var sway = ctx.para(1170, 650, nb(['sway: t′ = t + s·(cos(πt/2) − 1 + t)', 's = −1  ⇒  t′ = 1 − cos(πt/2)', 'half of the 32 steps land below t′ ≈ 0.29', 'where coarse spectral structure forms']), { size: 13, font: 'mono', color: 'amber', lh: 26, parent: G });
             ctx.hud('sway: half the steps below t ≈ 0.29');
             return Promise.all([ctx.reveal(sch, { delay: 100 }), ctx.reveal(sway, { delay: 400 })]).then(function () {
-              return ctx.tween(3600, function (t) {
-                var n = Math.round(t * 32), t0 = n / 32, ts = t0 - (Math.cos(Math.PI * t0 / 2) - 1 + t0);
-                noiseEl.setAttribute('opacity', (1 - ts).toFixed(3));
-                nfe.textContent = 'NFE ' + n + ' / 32 · t = ' + ts.toFixed(2);
-                dots.forEach(function (d) { d.el.setAttribute('cx', d.A.x + (d.B.x - d.A.x) * ts); d.el.setAttribute('cy', d.A.y + (d.B.y - d.A.y) * ts); });
-              }, 'linear');
+              return ctx.tween(3600, function (t) { setStep(Math.round(t * 32)); }, 'linear');
             });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            if (ctx.dead) return;
+            /* beat 4: TRY IT, click the schedule to scrub the solver */
+            /* no glow on a moving vertical line: its filter region would stay behind at the creation point */
+            S.scrM = ctx.line(1100, 670, 1100, 710, { color: 'white', sw: 3, parent: G });
+            var hit = ctx.rect(100, 674, 1000, 32, { rx: 6, fill: 'rgba(255,255,255,0.03)', stroke: ctx.alpha('white', 0.3), sw: 1, dash: '4 4', parent: G });
+            hit.style.cursor = 'pointer';
+            hit.addEventListener('click', function (e) {
+              if (ctx.dead) return;
+              var r = hit.getBoundingClientRect();
+              var u = ctx.clamp((e.clientX - r.left) / r.width, 0, 1), best = 0, bd = 9;
+              for (var k = 0; k <= 32; k++) { var d = Math.abs(swayT(k) - u); if (d < bd) { bd = d; best = k; } }
+              setStep(best);
+              ctx.hud('step ' + best + ' of 32 · t = ' + swayT(best).toFixed(2));
+            });
+            ctx.hud('click the schedule to scrub the solver');
+            return ctx.reveal([S.scrM, hit], { stagger: 150 }).then(function () {
+              return ctx.tween(1300, function (e) { setStep(Math.round(32 * (1 - e))); }, 'inOut');
+            }).then(function () {
+              return ctx.tween(1500, function (e) { setStep(Math.round(16 * e)); }, 'inOut');
+            }).then(function () { ctx.hud('step 16 of 32 · half the compute, t = 0.29'); return ctx.pulse(S.scrM, { color: 'white', times: 1, dur: 600 }); });
           });
         }
       },
@@ -562,7 +643,7 @@
           {
             say: 'Mel frames and codec tokens are not sound yet. A vocoder turns them into a waveform. One mel frame holds eighty values and covers about ten milliseconds.',
             card: { tag: 'NUMBERS', title: 'Frames to samples', stat: { v: '256', u: 'samples per frame', l: 'one mel frame, 10.7 ms at 24 kHz with hop 256, must become 256 waveform samples' } },
-            deep: '<p>A mel spectrogram has one column per hop of 256 samples: 24,000 / 256 = 93.75 frames per second, 80 mel bins each. That is only 80 × 93.75 = 7,500 numbers per second against 24,000 samples, roughly a 3× reduction, and it discards phase entirely.</p>' +
+            deep: '<p>A mel spectrogram has one column per hop of 256 samples: 24,000 / 256 = 93.75 frames per second, 80 mel bins each (HiFi-GAN\'s setting; F5-TTS and Vocos use 100). That is only 80 × 93.75 = 7,500 numbers per second against 24,000 samples, roughly a 3× reduction, and it discards phase entirely.</p>' +
               '<p>The vocoder\'s job is to invent a plausible phase and fine structure consistent with the magnitudes, and to do it fast: it runs on every frame of every utterance.</p>'
           },
           {
@@ -574,15 +655,19 @@
           },
           {
             say: 'Vocos instead predicts a short time Fourier spectrum, magnitude and phase, and applies one inverse FFT, which is much faster.',
-            card: { tag: 'TRADE-OFF', title: 'Predict the spectrum, not the samples', body: 'Vocos stays at frame rate and inverts with an iSTFT. No upsampling layers, so roughly an order of magnitude faster than HiFi-GAN at similar quality.' },
-            deep: '<p><b>Vocos</b>: a ConvNeXt backbone stays at the frame rate and predicts |X| and φ per STFT bin; x = iSTFT(|X|·e<sup>iφ</sup>). No upsampling layers, so it runs roughly an order of magnitude faster than HiFi-GAN at similar quality.</p>' +
-              '<p>Codec decoders (EnCodec, DAC, Mimi) play the same role for token models. The cost of the Fourier route is phase: the network must predict it, wrapped into (−π, π], which is why the loss adds phase-aware terms.</p>'
+            card: { tag: 'TRADE-OFF', title: 'Predict the spectrum, not the samples', body: 'Vocos stays at frame rate and inverts with an iSTFT. With no upsampling layers, the paper reports about an order of magnitude more speed than time-domain vocoders, at similar quality.' },
+            deep: '<p><b>Vocos</b>: a ConvNeXt backbone stays at the frame rate and predicts |X| and φ per STFT bin; x = iSTFT(|X|·e<sup>iφ</sup>). No upsampling layers, so the paper reports over an order of magnitude more speed than time-domain vocoders at comparable quality: about 13× faster than HiFi-GAN and about 70× faster than BigVGAN in its GPU benchmark (the exact factor depends on hardware and implementation).</p>' +
+              '<p>Codec decoders (EnCodec, DAC, Mimi) play the same role for token models. The cost of the Fourier route is phase. It is periodic, so Vocos predicts two outputs, a cosine-like and a sine-like channel, and recovers the angle with atan2 rather than regressing a wrapped value. Training uses adversarial (hinge), feature-matching and mel losses, with no explicit phase loss.</p>' +
+              '<details><summary>Go deeper: the iSTFT is one cheap operator</summary>' +
+              '<p>At 24 kHz with n_fft = 1024 and hop 256, each frame carries 513 complex bins. The inverse STFT is an inverse FFT per frame followed by windowed overlap-add: O(N log N) per frame, with no learned parameters. HiFi-GAN spends its compute after four transposed convolutions that leave 256, 128, 64 and 32 channels at 8×, 64×, 128× and 256× the frame rate; Vocos runs all of its ConvNeXt blocks at the frame rate and pays for the time axis only once, in the FFT.</p></details>'
           },
           {
-            say: 'For interactive previews the whole chain streams in chunks, and the first audio can play after about a hundred and fifty milliseconds.',
-            card: { tag: 'NUMBERS', title: 'Time to first sound', stat: { v: '≈ 150', u: 'ms', l: 'first packet in a chunk-aware causal flow-matching plus vocoder chain (CosyVoice 2 class)' } },
-            deep: '<p><b>Streaming</b>: chunk-aware causal flow matching + causal vocoder (CosyVoice 2 reports ≈150 ms first-packet latency). Budget: text chunk → ~15 LM tokens → FM on a 0.5–1 s chunk (few NFE) → vocoder; later chunks pipeline, so steady-state RTF ≪ 1.</p>' +
-              '<p>For the trailer, offline quality mode is used; streaming serves the live preview in the editor UI, where a creator wants to hear a line before committing GPU time to the full render.</p>'
+            say: 'For interactive previews the whole chain streams in chunks, and in the best reported cases the first audio can play after roughly a hundred and fifty milliseconds.',
+            card: { tag: 'NUMBERS', title: 'Time to first sound', stat: { v: '≈ 150', u: 'ms', l: 'best reported first packet for the CosyVoice project, with a chunk-aware causal flow-matching plus vocoder chain' } },
+            deep: '<p><b>Streaming</b>: chunk-aware causal flow matching + causal vocoder (the CosyVoice project reports first-packet latency as low as about 150 ms). Budget: text chunk → ~15 LM tokens → FM on a 0.5–1 s chunk (few NFE) → vocoder; later chunks pipeline, so steady-state RTF ≪ 1.</p>' +
+              '<p>For the trailer, offline quality mode is used; streaming serves the live preview in the editor UI, where a creator wants to hear a line before committing GPU time to the full render.</p>' +
+              '<details><summary>Go deeper: an illustrative latency budget</summary>' +
+              '<p>The chart is a budget, not a measurement: about 20 ms to chunk and embed the text, 50 ms for the first 15 LM tokens (≈ 3 ms each with a KV cache), 50 ms for a few flow-matching steps on the first chunk, and 30 ms for the causal vocoder. After that, generation outruns playback (RTF well below 1), so the buffer grows and the listener never hears a gap. The design constraint is causality: every stage may look only at the past and a small fixed look-ahead, which costs some quality against the offline model.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -636,7 +721,7 @@
             /* beat 2: Vocos */
             var pv = panelBox(ctx, G, 60, 530, 800, 110, 'violet');
             var hv = head(ctx, G, 80, 554, 'VOCOS · stay at frame rate, predict the spectrum', 'violet');
-            var vc = ['mel', 'ConvNeXt ×8', '|X|, φ', 'iSTFT', 'wave'];
+            var vc = ['mel', 'ConvNeXt blocks', '|X|, φ', 'iSTFT', 'wave'];
             var vn = vc.map(function (s, k) { return ctx.node({ x: 130 + k * 160, y: 598, w: 118, h: 36, title: s, color: 'violet', kind: 'chip', titleSize: 12, glow: false, parent: G }); });
             var vl = []; for (var k = 0; k < 4; k++) vl.push(ctx.link(vn[k], vn[k + 1], { color: 'violet', straight: true, parent: G }));
             ctx.hud('Vocos: 1 iSTFT instead of 4 upsamplers');
@@ -672,30 +757,36 @@
             say: 'Zero shot cloning means no fine tuning. A voice activity detector and a quality scorer choose the cleanest six seconds of the memo.',
             card: { tag: 'KEY IDEA', title: 'No training run per voice', body: 'The voice is supplied at inference, as a prompt. The only choice is which six seconds: clean, single-speaker, no reverb.' },
             deep: '<ul><li><b>Prompt choice</b>: 3–10 s; score segments by VAD coverage, SNR / DNSMOS, clipping, reverb (C50), single-speaker check. Longer prompts raise similarity but also copy the phone\'s room tone and codec artifacts.</li></ul>' +
-              '<p>Here seven 6 s segments of the memo are scored; the 12–18 s window wins with SNR 31 dB and a single speaker. Its transcript comes from ASR, since in-context models condition on text as well as audio.</p>'
+              '<p>Here seven 6 s segments of the memo are scored; the 12–18 s window wins with SNR 31 dB and a single speaker. Its transcript comes from ASR, since in-context models condition on text as well as audio.</p>' +
+              '<details><summary>Go deeper: in-context versus fine-tuning</summary>' +
+              '<p>Fine-tuning a voice (for example a LoRA adapter on the TTS backbone) needs far more clean audio than a prompt plus a training run, and it leaves an adapter that must be stored, versioned and deleted on request. In-context cloning needs a few seconds of audio, no training and no stored model: deleting the voice means deleting one prompt. The price is fidelity, since a prompt transfers timbre and room well but rare speaker traits (idiosyncratic prosody, singing) less well than a fine-tune does.</p></details>'
           },
           {
             say: 'The model either continues that prompt in context, or conditions on a speaker embedding. Many systems do both.',
             card: { tag: 'TRADE-OFF', title: 'Prefix versus embedding', body: 'In-context prompts transfer timbre and recording conditions. A global embedding transfers identity only, and is cheaper to store and reuse.' },
-            deep: '<ul><li><b>Conditioning</b>: in-context continuation (prompt codes/mel as prefix, VALL-E, F5) transfers timbre <i>and</i> recording conditions; a global embedding (x-vector/ECAPA, 192–256 d) transfers identity only. Many systems use both.</li></ul>' +
+            deep: '<ul><li><b>Conditioning</b>: in-context continuation (prompt codes/mel as prefix, VALL-E, F5) transfers timbre <i>and</i> recording conditions; a global embedding (x-vector or ECAPA-TDNN, 192-d for ECAPA) transfers identity only. Many systems use both.</li></ul>' +
               '<p>The embedding is the compact, storable handle for a consented voice: 192 floats instead of seconds of audio, which also makes scoping and revocation simpler.</p>'
           },
           {
             say: 'We check the result in a speaker verification space: the new lines land inside the creator\'s cluster and far from every other speaker.',
-            card: { tag: 'NUMBERS', title: 'Inside her cluster', stat: { v: '0.68', u: 'vs 0.21', l: 'cosine of N1 to the creator\'s prompt, versus the nearest other speaker' }, more: '<p>Cosine similarity of L2-normalised speaker embeddings lies in [−1, 1]. Different people typically score well below 0.3, while the same person across sessions scores around 0.6 to 0.8, so 0.68 against 0.21 is a wide margin. A generated line whose best match is another speaker, or whose score falls below the acceptance threshold, is re-sampled.</p>' },
-            deep: '<ul><li><b>Verification</b>: SIM = cos(e(ŷ), e(prompt)) with a WavLM-TDNN verifier; 2025 zero-shot systems reach ≈0.6–0.75 (ground-truth re-recordings ≈0.7–0.8).</li></ul>' +
-              '<p>The check is automatic: if a generated line drifts outside the creator\'s cluster (low cosine or a nearer neighbour), the line is re-sampled. The three narration lines N1, N2, N3 all sit inside the dashed threshold circle.</p>'
+            card: { tag: 'NUMBERS', title: 'Inside her cluster', stat: { v: '0.68', u: 'vs 0.21', l: 'cosine of N1 to the creator\'s prompt, versus the nearest other speaker' }, more: '<p>Cosine similarity of L2-normalised speaker embeddings lies in [−1, 1]. Real recordings of the same speaker score about 0.7 in the F5-TTS evaluation (0.69), while unrelated speakers score far lower, so 0.68 against 0.21 is a wide margin. A generated line whose best match is another speaker, or whose score falls below the acceptance threshold, is re-sampled.</p>' },
+            deep: '<ul><li><b>Verification</b>: SIM = cos(e(ŷ), e(prompt)) with a WavLM-TDNN verifier; 2025 zero-shot systems reach ≈0.6–0.75 (real recordings score 0.69 in the F5-TTS table).</li></ul>' +
+              '<p>The check is automatic: if a generated line drifts outside the creator\'s cluster (low cosine or a nearer neighbour), the line is re-sampled. The three narration lines N1, N2, N3 all sit inside the dashed threshold circle.</p>' +
+              '<details><summary>Go deeper: choosing the acceptance threshold</summary>' +
+              '<p>Speaker-verification models are compared by their equal error rate, where false accepts equal false rejects; the large ECAPA-TDNN reaches about 0.9 % on VoxCeleb1-O. A cloning gate does not sit at that point. Accepting a wrong speaker (a false accept) is the costly error, so the threshold is set at a much lower false-accept rate, and a rejected line is simply re-sampled. That is also why the margin matters more than the score itself: 0.68 against a nearest impostor at 0.21 leaves room on both sides of the threshold.</p></details>'
           },
           {
             say: 'Prosody is steered separately, here lower, slower and breathier for a hushed trailer read, without changing whose voice it is.',
             card: { tag: 'HOW IT WORKS', title: 'Who versus how', body: 'The embedding pins timbre. Instructions or a prosody prompt reshape pitch, rate and energy without leaving the speaker\'s cluster.' },
             deep: '<ul><li><b>Prosody</b>: instruction text ("hushed, awe"), emotion tags, or a reference-prosody prompt; explicit knobs for rate and F0 range. Here F0 mean −15 %, rate 0.9×.</li></ul>' +
-              '<p>The plot shows the F0 contour of N1: the neutral read averages 150 Hz, the hushed read 127.5 Hz. Identity (who) and prosody (how) are separable controls, which is what makes a single cloned voice usable for narration, dialogue and whispers.</p>'
+              '<p>The plot shows the F0 contour of N1: the neutral read averages 150 Hz, the hushed read 127.5 Hz. Identity (who) and prosody (how) are separable controls, which is what makes a single cloned voice usable for narration, dialogue and whispers.</p>' +
+              '<details><summary>Go deeper: F0 in semitones</summary>' +
+              '<p>A 15 % drop in mean F0 is 12 · log<sub>2</sub>(0.85) = −2.8 semitones, roughly the step from a neutral read to a low, confiding one. Rate 0.9× stretches segments by 11 %, and pauses stretch more than vowels. Prosody models predict log-F0, energy and duration per phoneme (a FastSpeech-style variance adaptor), or, in flow-matching TTS, let the style prompt shift them implicitly.</p></details>'
           },
           {
             say: 'And because a cloned voice is a powerful thing, consent verification and watermarking are part of the pipeline, not an afterthought.',
-            card: { tag: 'PITFALL', title: 'Cloning without consent is a bug', body: 'Verify the speaker is the account holder, block public figures, watermark every sample, and record a signed synthetic-voice assertion.' },
-            deep: '<div class="note"><b>Safeguards</b>: clone only a voice the account can prove is its own (speaker-verify the memo against an enrolled consent phrase), refuse public-figure voices (voice-ID blocklist), watermark every sample (AudioSeal: localized, robust to re-encoding, sample-level detection), and record a C2PA "synthetic voice" assertion in the final manifest.</div>' +
+            card: { tag: 'PITFALL', title: 'Cloning without consent is a bug', body: 'Verify the speaker is the account holder, block public figures, watermark every sample, and record a signed AI-generated declaration.' },
+            deep: '<div class="note"><b>Safeguards</b>: clone only a voice the account can prove is its own (speaker-verify the memo against an enrolled consent phrase), refuse public-figure voices (voice-ID blocklist), watermark every sample (AudioSeal: localized, robust to re-encoding, sample-level detection), and record an AI-generated declaration (digital source type trainedAlgorithmicMedia) in the final C2PA manifest.</div>' +
               '<p>Watermarks are checked at the delivery gate as well, so a stripped watermark is itself a signal. The clone is scoped to this project and discarded with it.</p>'
           }
         ],
@@ -727,13 +818,13 @@
             var pb = panelBox(ctx, G, 860, 170, 700, 330, 'violet');
             var hh = head(ctx, G, 880, 195, 'SPEAKER-VERIFICATION SPACE (2-D projection)', 'violet');
             var rr = ctx.rng(15), pts = [];
-            var clusters = [[1060, 330, 'dim'], [1240, 250, 'dim'], [1420, 380, 'dim'], [1300, 420, 'dim']];
+            var clusters = [[1010, 400, 'dim'], [1290, 262, 'dim'], [1440, 385, 'dim'], [1290, 430, 'dim']];
             clusters.forEach(function (c) { for (var k = 0; k < 9; k++) pts.push(ctx.circle(c[0] + (rr() - 0.5) * 70, c[1] + (rr() - 0.5) * 60, 3, { fill: ctx.alpha('dim', 0.6), parent: G })); });
             var me = [];
-            for (var k = 0; k < 12; k++) me.push(ctx.circle(1160 + (rr() - 0.5) * 80, 360 + (rr() - 0.5) * 70, 3.5, { fill: 'orange', parent: G }));
-            var thr = ctx.circle(1160, 360, 70, { stroke: 'orange', sw: 1.2, dash: '4 4', parent: G });
-            var cn = note(ctx, G, 1160, 443, 'creator (memo utterances)', 'orange', 'middle');
-            var stars = [[1150, 345, 'N1'], [1178, 372, 'N2'], [1138, 382, 'N3']].map(function (s) {
+            for (var k = 0; k < 12; k++) me.push(ctx.circle(1160 + (rr() - 0.5) * 110, 345 + (rr() - 0.5) * 96, 3.5, { fill: 'orange', parent: G }));
+            var thr = ctx.circle(1160, 345, 88, { stroke: 'orange', sw: 1.2, dash: '4 4', parent: G });
+            var cn = note(ctx, G, 1160, 452, 'creator (memo utterances)', 'orange', 'middle');
+            var stars = [[1130, 325, 'N1'], [1200, 360, 'N2'], [1140, 385, 'N3']].map(function (s) {
               var g = ctx.group({ parent: G });
               ctx.poly([[s[0], s[1] - 8], [s[0] + 3, s[1] - 2], [s[0] + 9, s[1] - 2], [s[0] + 4, s[1] + 2], [s[0] + 6, s[1] + 9], [s[0], s[1] + 5], [s[0] - 6, s[1] + 9], [s[0] - 4, s[1] + 2], [s[0] - 9, s[1] - 2], [s[0] - 3, s[1] - 2]], { fill: 'white', parent: g, glow: true });
               note(ctx, g, s[0] + 12, s[1] - 6, s[2], 'white', 'start', 11);
@@ -752,15 +843,19 @@
             var pA = ctx.plot(120, 565, 520, 120, f0n, { xDomain: [0, 4], yDomain: [90, 200], color: 'dim', sw: 1.6, parent: G });
             var pB = ctx.plot(120, 565, 520, 120, f0h, { xDomain: [0, 4], yDomain: [90, 200], color: 'amber', sw: 2.2, axes: false, parent: G, glow: true });
             var pn = [note(ctx, G, 660, 590, 'neutral read', 'dim'), note(ctx, G, 660, 640, '"hushed, awe"', 'amber'), note(ctx, G, 660, 662, 'F0 −15 % · rate 0.9×', 'amber')];
+            var y150 = pA.toPx(0, 150).y, y127 = pA.toPx(0, 127.5).y;
+            pn.push(ctx.line(120, y150, 640, y150, { color: ctx.alpha('dim', 0.7), dash: '3 4', sw: 1, parent: G }), ctx.line(120, y127, 640, y127, { color: ctx.alpha('amber', 0.7), dash: '3 4', sw: 1, parent: G }));
+            [[200, 'dim'], [150, 'dim'], [127.5, 'amber'], [100, 'dim']].forEach(function (tk) { pn.push(note(ctx, G, 112, pA.toPx(0, tk[0]).y, String(tk[0]), tk[1], 'end', 11)); });
+            pn.push(note(ctx, G, 640, 698, 'time within N1 (s), 0–4', 'dim', 'end', 11));
             var pi = [note(ctx, G, 80, 742, 'Identity (who) and prosody (how) are separable controls:', 'text', 'start', 13), note(ctx, G, 80, 766, 'the embedding pins timbre, instructions or a prosody prompt', 'text', 'start', 13), note(ctx, G, 80, 790, 'reshape pitch, rate and energy without leaving the cluster.', 'text', 'start', 13)];
             ctx.hud('F0 −15 % · rate 0.9× · same speaker');
-            return Promise.all([ctx.reveal([pb, hh, pA, pn[0]], { stagger: 60 }), ctx.reveal(pB.curve, { from: 'draw', delay: 500, dur: 1000 }), ctx.reveal([pn[1], pn[2]], { delay: 1200, stagger: 100 }), ctx.reveal(pi, { delay: 1400, stagger: 150 })]);
+            return Promise.all([ctx.reveal([pb, hh, pA, pn[0]], { stagger: 60 }), ctx.reveal(pB.curve, { from: 'draw', delay: 500, dur: 1000 }), ctx.reveal([pn[1], pn[2]], { delay: 1200, stagger: 100 }), ctx.reveal(pn.slice(3), { delay: 300, stagger: 25 }), ctx.reveal(pi, { delay: 1400, stagger: 150 })]);
           }).then(function () { return ctx.beat(4); }).then(function () {
             if (ctx.dead) return;
             /* beat 4: consent and provenance safeguards */
             var pb = panelBox(ctx, G, 860, 520, 700, 330, 'pink');
             var hh = head(ctx, G, 880, 544, 'SAFEGUARDS · before and after synthesis', 'pink');
-            var cs = ['memo speaker = enrolled account voice', 'spoken consent phrase + liveness', 'not on public-figure voice blocklist', 'AudioSeal watermark on every sample', 'C2PA: "synthetic voice" assertion', 'clone scoped to this project only'];
+            var cs = ['memo speaker = enrolled account voice', 'spoken consent phrase + liveness', 'not on public-figure voice blocklist', 'AudioSeal watermark on every sample', 'C2PA: "AI-generated" declaration', 'clone scoped to this project only'];
             S.cons = cs.map(function (c, k) { return ctx.label(1210, 584 + k * 42, c, { color: 'dim', size: 13, w: 620, parent: G }); });
             ctx.hud('consent ✓ · watermark ✓ · SIM 0.68');
             return Promise.all([ctx.reveal([pb, hh], { stagger: 60 }), ctx.reveal(S.cons, { from: 'left', stagger: 90, delay: 300 })]).then(function () { return turnGreen(ctx, S.cons, 180); });
@@ -786,10 +881,12 @@
               '<tr><td>delay</td><td>1500 + 3</td><td>codebook k of frame f is emitted at step f + k, after codebooks &lt; k of f, so it can condition on them; near flatten quality</td></tr></table>'
           },
           {
-            say: 'Stable Audio instead runs a diffusion transformer on a continuous VAE latent, conditioned on text and on timing, so the length and the build to the impact at fifteen seconds can be specified directly.',
-            card: { tag: 'STATE OF THE ART', title: 'Timing-conditioned latent DiT', body: 'Seconds-start and seconds-total enter as tokens, so a 30 s cue is generated to length rather than trimmed.' },
-            deep: '<p><b>Stable Audio</b> (Open / 2.x): a VAE compresses 44.1 kHz stereo to a 64-channel latent at ≈21.5 Hz (≈2048× in time); a DiT denoises it with T5 text cross-attention and <i>timing conditioning</i> (seconds_start, seconds_total) as extra tokens, so a 30 s cue is generated to length inside a fixed window (47 s for Open, up to ~3 min for 2.x).</p>' +
-              '<p>The denoiser works on a tensor of 64 channels × about 645 latent frames for 30 s, far shorter than 1,500 × 4 tokens, at the cost of 50–100 denoising steps.</p>'
+            say: 'Stable Audio instead runs a diffusion transformer on a continuous VAE latent, conditioned on text and on timing, so the length can be specified directly, while the build to the impact at fifteen seconds is steered by the text and checked afterwards.',
+            card: { tag: 'STATE OF THE ART', title: 'Timing-conditioned latent DiT', body: 'Seconds-start and seconds-total enter as tokens, so a 30 s cue is generated to length rather than trimmed. Where the build peaks is only steered by text.' },
+            deep: '<p><b>Stable Audio</b> (Open / 2.x): a VAE compresses 44.1 kHz stereo to a 64-channel latent at ≈21.5 Hz (≈2048× in time); a DiT denoises it with T5 text cross-attention and <i>timing conditioning</i> (seconds_start, seconds_total) as extra tokens, so a 30 s cue is generated to length inside a fixed window (47 s for Open, up to 4 min 45 s in the long-form paper). The original Stable Audio used a U-Net at ≈43 Hz (1024× compression) and a 95 s window.</p>' +
+              '<p>The denoiser works on a tensor of 64 channels × about 645 latent frames for 30 s, far shorter than 1,500 × 4 tokens, at the cost of 50–100 denoising steps.</p>' +
+              '<details><summary>Go deeper: attention cost of the three layouts</summary>' +
+              '<p>Self-attention cost grows as n². Flattening 4 × 1,500 codec tokens gives n = 6,000 and n² = 3.6 × 10<sup>7</sup> score entries per head per layer. The delay pattern or a parallel layout has n ≈ 1,500 and 2.3 × 10<sup>6</sup>, sixteen times fewer. The Stable Audio latent has only 646 frames, but every denoising step re-reads the whole sequence, so 100 steps cost 100 forward passes; the AR model pays its n steps once, with a KV cache that makes each step cheap.</p></details>'
           },
           {
             say: 'The finished score is checked against the cue. A beat tracker measures the tempo, and a small time stretch lands the downbeats on the edit grid.',
@@ -874,7 +971,7 @@
               ctx.line(fx + b * fw / 12, 700, fx + b * fw / 12, 800, { color: b === 6 ? 'amber' : 'rgba(255,255,255,0.12)', sw: b === 6 ? 2 : 1, parent: bars });
               if (b < 12) note(ctx, bars, fx + (b + 0.5) * fw / 12, 818, 'bar ' + (b + 1), b === 6 ? 'amber' : 'dim', 'middle', 11);
             }
-            var hit = note(ctx, G, fx + 6 * fw / 12 + 8, 712, 'HIT 15.0 s', 'amber', 'start', 12);
+            var hit = note(ctx, G, fx + 6 * fw / 12 + 8, 676, 'HIT 15.0 s (bar 7, beat 24)', 'amber', 'start', 12);
             var mt = note(ctx, G, 1500, 838, 'measured 95.4 BPM → stretch 0.6 %', 'text', 'end', 12);
             ctx.hud('measured 95.4 BPM → stretch 0.6 %');
             return Promise.all([ctx.reveal([pb3, h3], { stagger: 60 }), ctx.reveal(env, { from: 'draw', dur: 1200, delay: 300 }), ctx.reveal(bars, { delay: 500 }), ctx.reveal([hit, mt], { delay: 1300, stagger: 200 })]);
@@ -886,17 +983,21 @@
         title: 'Foley from video',
         beats: [
           {
-            say: 'Sound effects must follow the picture. Shot four ends in an impact on frame three hundred sixty, and the effect has to land on that exact frame.',
+            say: 'Sound effects must follow the picture. Shot four contains the impact, on frame three hundred sixty, and the effect has to land on that exact frame.',
             card: { tag: 'NUMBERS', title: 'One frame is 41.7 ms', stat: { v: '41.7', u: 'ms per frame', l: 'one 24 fps frame. Audio lead is noticed from about 45 ms, lag from about 125 ms (ITU-R BT.1359)' } },
             deep: '<p>A 24 fps frame is 41.7 ms. Humans notice audio-leading offsets from ≈45 ms and audio-lagging offsets from ≈125 ms (ITU-R BT.1359), so an impact must be within about one frame.</p>' +
-              '<p>The strip shows twelve consecutive frames of shot S4 around the impact. The motion energy (green) spikes exactly at the hit frame, 360 = 15.000 s on the timeline; that is the moment the sound must arrive.</p>'
+              '<p>The strip shows twelve consecutive frames of shot S4 around the impact (timeline frames 355 to 366). The motion energy (green) spikes exactly at the hit frame, 360 = 15.000 s; that is the moment the sound must arrive.</p>' +
+              '<details><summary>Go deeper: audio-video asynchrony thresholds</summary>' +
+              '<p>ITU-R BT.1359 measured when viewers detect asynchrony: about 45 ms with the sound early and about 125 ms with the sound late, because light and sound reach a viewer at different speeds and people are used to sound trailing the picture. Acceptability limits in the same recommendation are wider still. Percussive events such as an impact are the most revealing test signals, since a sharp onset gives the eye and ear a common reference point. At 24 fps the detection limits are about one frame early and three frames late.</p></details>'
           },
           {
             say: 'A video to audio model like MMAudio watches the shot. Semantic features at eight frames per second say what is happening, and synchronization features at twenty four frames per second say exactly when.',
             card: { tag: 'HOW IT WORKS', title: 'What, when, and a text hint', body: 'CLIP visual tokens give semantics, Synchformer features give fine timing, CLIP text adds "impact, ice". A noisy audio latent is denoised.' },
-            deep: '<p><b>MMAudio</b> (CVPR 2025): multimodal joint training on audio-visual and audio-text data; ~157 M–1 B params; generates 8 s of 44.1 kHz audio in ≈1.2 s.</p>' +
-              '<ul><li><b>Conditions</b>: CLIP visual tokens at 8 fps (semantics), Synchformer features at 24 fps (fine timing), CLIP text tokens.</li></ul>' +
-              '<p>The generative target is a noisy latent of a mel-VAE, so the model works on a compact time-frequency representation rather than raw samples.</p>'
+            deep: '<p><b>MMAudio</b> (CVPR 2025): multimodal joint training on audio-visual and audio-text data; 157 M to 1.03 B parameters depending on the variant; generates 8 s of audio in about 1.2 to 2 s on an H100 (1.23 s for the 157 M model at 16 kHz).</p>' +
+              '<ul><li><b>Conditions</b>: CLIP visual tokens at 8 fps (semantics), Synchformer features at 24 fps in the paper, 25 fps in the released code (fine timing), CLIP text tokens.</li></ul>' +
+              '<p>The generative target is a noisy latent of a mel-VAE, so the model works on a compact time-frequency representation rather than raw samples.</p>' +
+              '<details><summary>Go deeper: what Synchformer measures</summary>' +
+              '<p>Synchformer is an audio-visual synchronisation model: it classifies the offset between a video clip and its audio into 21 classes from −2 s to +2 s in 0.2 s steps. MMAudio uses its features as the frame-level timing signal, and its offset predictor, averaged over the first and last 4.8 s of an 8 s clip, as the DeSync metric. Because the classes are a fifth of a second wide, DeSync can rank models but cannot resolve single frames, which is why a frame-level check still follows generation.</p></details>'
           },
           {
             say: 'These tokens attend jointly with text and audio latents inside one transformer, trained with flow matching on audio, video and text data together.',
@@ -906,9 +1007,9 @@
               '<div class="eq">DeSync = | Δ̂<sub>Synchformer</sub>(video, audio) |   (seconds, lower is better)</div>'
           },
           {
-            say: 'The impact in shot four lands on frame three hundred sixty, and the generated transient lands within a frame of it. Newer generators like Veo three skip this step by generating audio and video together.',
-            card: { tag: 'NUMBERS', title: 'Onset within a frame', stat: { v: '12 ms', u: 'offset', l: 'generated impact onset versus the hit frame, well inside one 41.7 ms frame' } },
-            deep: '<p>Evaluation: FD (PaSST/PANNs/VGGish), IS, IB-score (ImageBind audio-visual similarity), DeSync. A 24 fps frame is 41.7 ms; the measured 12 ms onset offset is below it.</p>' +
+            say: 'The impact in shot four lands on frame three hundred sixty, and after an onset check the generated transient sits within a frame of it. Newer generators like Veo three sidestep the problem by generating audio and video together.',
+            card: { tag: 'NUMBERS', title: 'Onset within a frame', stat: { v: '12 ms', u: 'offset', l: 'generated impact onset versus the hit frame after the onset check, inside one 41.7 ms frame' } },
+            deep: '<p>Evaluation: FD (PaSST/PANNs/VGGish), IS, IB-score (ImageBind audio-visual similarity), DeSync. A 24 fps frame is 41.7 ms; after the frame-level nudge the measured onset offset is 12 ms, and since whole-frame nudging leaves at most half a frame (20.8 ms), it can never exceed that.</p>' +
               '<div class="note">Joint audio-video generation (Veo 3, and open models in 2025–26) emits both modalities from one denoiser: native sync and dialogue, but no independent control over the stems; the editor still needs separate music and voice tracks.</div>'
           }
         ],
@@ -922,7 +1023,7 @@
           var ins = [['CLIP visual · 8 fps', 'what', 'violet', 560], ['Synchformer · 24 fps', 'when', 'lime', 640], ['CLIP text', '"impact, ice"', 'amber', 720], ['noisy audio latent x_t', 'mel-VAE', 'orange', 800]];
           var inN, mm, ao, vo, ls;
           /* beat 0: frames of shot S4 and its motion energy; the sync budget */
-          var h0 = head(ctx, G, 80, 185, 'SHOT S4 · impact · frames 315–420 (timeline)');
+          var h0 = head(ctx, G, 80, 185, 'SHOT S4 · 12 frames around the impact (timeline frames 355–366)');
           var fr = [];
           for (var i = 0; i < N; i++) {
             var g = ctx.group({ parent: G });
@@ -939,7 +1040,7 @@
           var mn = note(ctx, G, FX - 8, 320, 'motion', 'lime', 'end', 11);
           var pb = panelBox(ctx, G, 1230, 170, 330, 290, 'orange');
           var hb = head(ctx, G, 1250, 195, 'SYNC BUDGET');
-          var bp = ctx.para(1250, 228, nb(['1 frame @ 24 fps = 41.7 ms', 'audio lead noticed ≈ 45 ms', 'audio lag noticed  ≈ 125 ms', '', 'MMAudio: 8 s clip', 'in ≈ 1.2 s (H100)', '', 'metric: DeSync (s)']), { size: 13, font: 'code', color: 'text', lh: 26, parent: G });
+          var bp = ctx.para(1250, 228, nb(['1 frame @ 24 fps = 41.7 ms', 'audio lead noticed ≈ 45 ms', 'audio lag noticed  ≈ 125 ms', '', 'MMAudio: 8 s clip', 'in ≈ 1.2–2 s (H100)', '', 'metric: DeSync (s)']), { size: 13, font: 'code', color: 'text', lh: 26, parent: G });
           ctx.hud('impact at frame 360 = 15.000 s');
           return Promise.all([ctx.reveal(h0, { delay: 100 }), ctx.reveal(fr, { from: 'down', stagger: 50 }), ctx.reveal([fn, mn], { delay: 700, stagger: 100 }), ctx.reveal(me.curve, { from: 'draw', delay: 600, dur: 900 }), ctx.reveal([pb, hb, bp], { delay: 900, stagger: 100 })]).then(function () { return ctx.beat(1); }).then(function () {
             if (ctx.dead) return;
@@ -986,7 +1087,9 @@
             say: 'Finally, lip sync, one level deeper. LatentSync works in the latent space of an image autoencoder, sixteen frames at a time, and repaints only a masked mouth region in each.',
             card: { tag: 'KEY IDEA', title: 'Video inpainting in latent space', body: 'A 16-frame window of the shot goes through a VAE. The lower face is masked and regenerated by a U-Net with temporal layers.' },
             deep: '<p><b>Input per frame</b> (SD-1.5 VAE, 256² or 512² face crop → 32²/64² × 4 latents). Eight of the sixteen frames of the window are drawn here.</p>' +
-              '<p>Working in the VAE latent space shrinks the problem 64× in area (8× per side), which is what makes a diffusion model on face video affordable; temporal layers make it a video model so neighbouring frames share their mouth shapes and the result does not jitter.</p>'
+              '<p>Working in the VAE latent space shrinks the problem 64× in area (8× per side), which is what makes a diffusion model on face video affordable; temporal layers make it a video model so neighbouring frames share their mouth shapes and the result does not jitter.</p>' +
+              '<details><summary>Go deeper: the size of the problem</summary>' +
+              '<p>A 256² RGB face crop is 196,608 numbers; its latent is 32 × 32 × 4 = 4,096, a 48× reduction. A 16-frame window is therefore 65,536 latent values per tensor, and each denoising step is a U-Net forward over that window. With 20 DDIM steps, the 62 frames of the fox\'s 2.6 s line (four windows) take 80 U-Net passes, which is why lip-sync costs seconds, not minutes. Temporal attention layers inherited from image-animation U-Nets tie the 16 frames together.</p></details>'
           },
           {
             say: 'For every frame, the network sees the noisy latent, the mask, the masked frame and a reference frame of the fox, stacked as thirteen channels.',
@@ -996,15 +1099,17 @@
           },
           {
             say: 'Whisper audio features for a short window around each frame enter through cross attention, so each mouth shape is driven by the sound at that moment.',
-            card: { tag: 'HOW IT WORKS', title: 'Audio through cross attention', body: 'Whisper encoder features at 50 Hz: each video frame attends to plus or minus two audio frames, so lips follow the phonemes.' },
-            deep: '<p><b>Audio</b>: Whisper encoder features at 50 Hz; each video frame attends to a window of ±2 frames of audio embeddings through cross-attention in the U-Net (temporal layers make it a 16-frame video model).</p>' +
-              '<p>Whisper was trained for recognition, so its intermediate features encode phonetic content robustly across speakers and noise. That is why they work better as a lip-sync condition than low-level features such as mel spectrograms.</p>'
+            card: { tag: 'HOW IT WORKS', title: 'Audio through cross attention', body: 'Whisper encoder features at 50 Hz: each video frame attends to a short window of neighbouring audio frames, so lips follow the phonemes.' },
+            deep: '<p><b>Audio</b>: Whisper encoder features at 50 Hz; each video frame attends to a short window of neighbouring audio embeddings (m frames each side, drawn here as ±2) through cross-attention in the U-Net (temporal layers make it a 16-frame video model).</p>' +
+              '<p>Whisper was trained for recognition, so its intermediate features encode phonetic content robustly across speakers and noise. That is one reason to use them as the lip-sync condition rather than low-level features such as mel spectrograms.</p>'
           },
           {
             say: 'Training adds a SyncNet loss on decoded pixels and a temporal consistency loss, so the mouth both matches the sound and does not flicker.',
             card: { tag: 'HOW IT WORKS', title: 'Four training signals', body: 'Denoising MSE, a SyncNet audio-mouth agreement loss, LPIPS for detail, and TREPA to align temporal representations against flicker.' },
             deep: '<p><b>Losses</b>:</p><div class="eq">L = L<sub>simple</sub> + λ<sub>1</sub>·L<sub>SyncNet</sub>(decoded) + λ<sub>2</sub>·L<sub>LPIPS</sub> + λ<sub>3</sub>·L<sub>TREPA</sub></div>' +
-              '<p>SyncNet: contrastively trained audio and 5-frame mouth encoders; as in Wav2Lip, P<sub>sync</sub> = cos(a, v) (post-ReLU embeddings, so ∈ [0, 1]) and L<sub>sync</sub> = −log P<sub>sync</sub>, a binary cross-entropy toward "in sync". TREPA aligns temporal representations of generated and real clips (from a video self-supervised encoder) to suppress flicker.</p>'
+              '<p>SyncNet: contrastively trained audio and 5-frame mouth encoders; as in Wav2Lip, P<sub>sync</sub> = cos(a, v) (post-ReLU embeddings, so ∈ [0, 1]) and L<sub>sync</sub> = −log P<sub>sync</sub>, a binary cross-entropy toward "in sync". TREPA aligns temporal representations of generated and real clips (from a video self-supervised encoder) to suppress flicker.</p>' +
+              '<details><summary>Go deeper: how pixel-space losses reach a latent model</summary>' +
+              '<p>SyncNet and LPIPS take pixels, but the denoiser predicts noise in latent space. From the prediction ε̂ the model forms the clean-latent estimate ẑ<sub>0</sub> = (z<sub>t</sub> − √(1 − ᾱ<sub>t</sub>)·ε̂) / √ᾱ<sub>t</sub>, decodes it with the VAE, and applies the SyncNet, LPIPS and TREPA losses to the decoded frames. That costs a VAE decode with gradients per training step, which is why these losses are added on top of the plain denoising loss rather than replacing it, and why they matter most at low noise levels where ẑ<sub>0</sub> is reliable.</p></details>'
           },
           {
             say: 'The result is pasted back with a feathered mask, and every other pixel of the shot stays untouched. The chamber then hands four stems and the patched shot to the editor agent.',
@@ -1044,7 +1149,7 @@
             ctx.circle(rx0 + 40, 246, 4, { fill: '#10131c', parent: ref });
             ctx.circle(rx0 + 64, 246, 4, { fill: '#10131c', parent: ref });
             ctx.el('ellipse', { cx: rx0 + 52, cy: 282, rx: 10, ry: 1.5, fill: '#1a0508', stroke: '#ffb070', 'stroke-width': 1 }, ref);
-            ctx.para(rx0 + 118, 222, ['x_ref: unmasked', 'reference frame', '(mouth closed)', 'anchors identity,', 'teeth and fur'], { size: 12, font: 'mono', color: 'violet', lh: 19, parent: ref });
+            ctx.para(rx0 + 118, 222, ['x_ref: unmasked', 'reference frame', '(mouth closed)', 'anchors identity,', 'teeth and fur'], { size: 12, font: 'mono', color: tc(ctx, 'violet'), lh: 19, parent: ref });
             var pb = panelBox(ctx, G, 60, 400, 760, 450, 'orange');
             var hh = head(ctx, G, 80, 425, 'U-NET INPUT · 13 latent channels per frame');
             var ch = [['noisy latent z_t', 4, 'orange'], ['mask m', 1, 'magenta'], ['masked frame E(x ⊙ (1−m))', 4, 'cyan'], ['reference frame E(x_ref)', 4, 'violet']];
@@ -1070,14 +1175,14 @@
               var amp = 0.5 + 0.5 * Math.abs(Math.sin(j + 1));
               aw.push(ctx.vector(xa + 22, 344, 5, { horizontal: true, cell: 11, gap: 2, cmap: 'violet', values: function (r0, c0) { return [0.3, 0.6, 1, 0.6, 0.3][c0] * amp; }, parent: G }));
             }
-            var an = note(ctx, G, 90, 374, 'Whisper features, 50 Hz: each frame attends to ±2 audio frames', 'violet');
-            ctx.hud('Whisper 50 Hz · ±2 frames per video frame');
+            var an = note(ctx, G, 90, 374, 'Whisper features, 50 Hz: each frame attends to a short window ±m (drawn: ±2)', 'violet');
+            ctx.hud('Whisper 50 Hz · a short window per video frame');
             return Promise.all([ctx.reveal(aw, { from: 'up', stagger: 60 }), ctx.reveal(an, { delay: 600 })]).then(function () { return ctx.pulse(aw[0], { color: 'violet', times: 1, dur: 500 }); });
           }).then(function () { return ctx.beat(3); }).then(function () {
             if (ctx.dead) return;
             /* beat 3: training signals */
             var pl = panelBox(ctx, G, 860, 400, 700, 450, 'lime');
-            var hl = head(ctx, G, 880, 425, 'TRAINING SIGNALS', 'lime');
+            var hl = head(ctx, G, 880, 425, 'TRAINING SIGNALS · schematic weights', 'lime');
             var loss = [['L_simple', 'denoising MSE', 1], ['L_SyncNet', 'audio–mouth agreement', 0.55], ['L_LPIPS', 'perceptual detail', 0.35], ['L_TREPA', 'temporal consistency', 0.45]];
             var lb = loss.map(function (l, k) {
               var g = ctx.group({ parent: G });

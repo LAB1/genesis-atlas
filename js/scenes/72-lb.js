@@ -143,13 +143,16 @@
   Atlas.register({
     id: 'load-balancing',
     refs: [
-      'Mitzenmacher, <i>The Power of Two Choices in Randomized Load Balancing</i>, IEEE TPDS 2001; Azar, Broder, Karlin &amp; Upfal, <i>Balanced Allocations</i>, SIAM J. Comput. 1999',
+      'Mitzenmacher, <i>The Power of Two Choices in Randomized Load Balancing</i>, IEEE TPDS 2001; Azar, Broder, Karlin &amp; Upfal, <i>Balanced Allocations</i>, SIAM J. Comput. 1999; Berenbrink et al., <i>Balanced Allocations: The Heavily Loaded Case</i>, STOC 2000; Mitzenmacher, <i>How Useful Is Old Information?</i>, IEEE TPDS 2000',
       'Karger et al., <i>Consistent Hashing and Random Trees</i>, STOC 1997',
       'Mirrokni, Thorup &amp; Zadimoghaddam, <i>Consistent Hashing with Bounded Loads</i>, SODA 2018',
       'Zheng et al., <i>SGLang: Efficient Execution of Structured Language Model Programs</i> (RadixAttention), NeurIPS 2024',
-      'Zhong et al., <i>DistServe: Disaggregating Prefill and Decoding for Goodput-optimized LLM Serving</i>, OSDI 2024; Patel et al., <i>Splitwise</i>, ISCA 2024',
-      'Qin et al., <i>Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving</i>, FAST 2025',
-      'NVIDIA <i>Dynamo</i> KV-aware router (2025); <i>llm-d</i> and Kubernetes <i>Gateway API Inference Extension</i> (2025)',
+      'Zhong et al., <i>DistServe: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving</i>, OSDI 2024; Patel et al., <i>Splitwise: Efficient Generative LLM Inference Using Phase Splitting</i>, ISCA 2024',
+      'Qin et al., <i>Mooncake: Trading More Storage for Less Computation — A KVCache-centric Architecture for Serving LLM Chatbot</i>, FAST 2025',
+      'NVIDIA, <i>Dynamo</i> distributed inference framework (KV-aware router, NIXL), 2025',
+      '<i>llm-d</i> and Kubernetes <i>Gateway API Inference Extension</i> (2025)',
+      'Nichols &amp; Jacobson, <i>Controlling Queue Delay</i>, ACM Queue 2012',
+      'Kleppmann, <i>How to do distributed locking</i>, 2016',
       'Harchol-Balter, <i>Performance Modeling and Design of Computer Systems: Queueing Theory in Action</i>, CUP 2013'
     ],
     steps: [
@@ -160,16 +163,16 @@
           {
             say: 'Every agent call becomes a request that some replica must serve, and the router sits right in the data path with well under a millisecond to choose.',
             card: { tag: 'NUMBERS', title: 'Decide in the data path', stat: { v: '< 1 ms', l: 'routing budget: the decision is made on every request, with slightly stale load information' } },
-            deep: '<p>The router is the place to fix imbalance because it sees every request, but it must decide in &lt; 1 ms and with slightly stale information: engines export queue depth, running batch and KV-cache utilisation through metrics endpoints or a KV event bus, typically 10–100 ms behind reality.</p>' +
+            deep: '<p>The router is the place to fix imbalance because it sees every request, but it must decide in &lt; 1 ms and with slightly stale information: engines export queue depth, running batch and KV-cache utilisation through metrics endpoints or a KV event bus, often tens of milliseconds behind reality.</p>' +
               '<p>Six replicas of a 70B model on TP4 (vLLM) serve the trailer\'s agents here. The same logic scales to hundreds of replicas.</p>'
           },
           {
-            say: 'The catch is that LLM requests are wildly unequal. Across the fleet the cost of a request is heavy tailed: the slowest one percent cost about thirteen times the median.',
+            say: 'The catch is that LLM requests are wildly unequal. Production traces are heavy tailed, and for an illustrative log normal fit the slowest one percent of requests cost about thirteen times the median.',
             card: {
               tag: 'NUMBERS', title: 'A heavy tail', stat: { v: '≈ 13×', l: 'p99 over p50 request cost for a log-normal with median 2k tokens and σ = 1.1' },
               more: '<p>The 99th percentile of a standard normal is z = 2.326, so p99/p50 = e<sup>2.326 × 1.1</sup> ≈ 12.9. The top 10% of requests carry 1 − Φ(1.28 − 1.1) ≈ 43% of all tokens, so a handful of requests dominate the work.</p>'
             },
-            deep: '<p>Fleet-wide agent traffic is heavy-tailed: the plotted log-normal (median ≈ 2k tokens, σ ≈ 1.1) has p99 ≈ 26k tokens.</p>' +
+            deep: '<p>Request sizes in production LLM traces are heavy-tailed. The plotted log-normal (median ≈ 2k tokens, σ ≈ 1.1) is an illustrative fit, not a measurement, and has p99 ≈ 26k tokens.</p>' +
               '<div class="eq">p99 / p50 = e<sup>2.33·σ</sup> ≈ e<sup>2.56</sup> ≈ 13</div>' +
               '<p>With such a tail, a small share of requests carries much of the work, so any policy that counts requests instead of cost will be dominated by them.</p>'
           },
@@ -226,7 +229,8 @@
             var mu = Math.log(2000), sg = 1.1, mode = Math.exp(mu - sg * sg);
             function pdf(x) { return x <= 0 ? 0 : Math.exp(-Math.pow(Math.log(x) - mu, 2) / (2 * sg * sg)) / x; }
             var pm = pdf(mode);
-            var pl = ctx.plot(110, 625, 560, 200, function (x) { return pdf(x) / pm; }, { xDomain: [0, 30000], yDomain: [0, 1.1], color: 'amber', sw: 2.2, samples: 240, xLabel: 'tokens per request (in + out)', yLabel: 'density', parent: b });
+            var pl = ctx.plot(110, 625, 560, 200, function (x) { return pdf(x) / pm; }, { xDomain: [0, 30000], yDomain: [0, 1.1], color: 'amber', sw: 2.2, samples: 240, yLabel: 'density', parent: b });
+            ctx.text(390, 864, 'tokens per request (in + out)', { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: b });
             var marks = [];
             [[2000, 'p50 ≈ 2k'], [25800, 'p99 ≈ 26k']].forEach(function (q) {
               var p = pl.toPx(q[0], 0);
@@ -234,6 +238,10 @@
               ctx.line(p.x, 625, p.x, 825, { color: ctx.alpha('white', 0.35), dash: '4 4', parent: mg });
               ctx.text(p.x + 6, 645, q[1], { size: 11, color: 'white', font: 'mono', parent: mg });
               marks.push(mg);
+            });
+            [0, 10000, 20000, 30000].forEach(function (v) {
+              var p = pl.toPx(v, 0);
+              ctx.text(p.x, 842, v ? (v / 1000) + 'k' : '0', { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: b });
             });
             var ratio = ctx.text(400, 760, 'p99 / p50 ≈ 13×', { size: 13, color: 'amber', font: 'mono', weight: 600, anchor: 'middle', parent: b });
             ratio.setAttribute('opacity', 0);
@@ -247,7 +255,7 @@
             var b = S.tailB;
             var g = ctx.group({ parent: b });
             ctx.text(760, 612, 'three trailer calls · seconds on a 70B TP4 replica (illustrative)', { size: 11, color: 'dim', font: 'mono', parent: g });
-            var ex = [['director · plan()', 0.8, 30, '12k in / 1.5k out'], ['critic · judge(frames)', 2, 6, '30k in / 0.3k out'], ['writer · script()', 0.3, 40, '4k in / 2k out']];
+            var ex = [['director · plan()', 1.2, 30, '12k in / 1.5k out'], ['critic · judge(frames)', 3, 6, '30k in / 0.3k out'], ['writer · script()', 0.4, 40, '4k in / 2k out']];
             S.exBars = [];
             ex.forEach(function (e, i) {
               var y = 640 + i * 56;
@@ -281,7 +289,7 @@
             ROLES.forEach(function (r, i) {
               var x = 72 + (i % 2) * 88, y = 430 + Math.floor(i / 2) * 22;
               ctx.rect(x, y - 6, 12, 12, { rx: 2, fill: ctx.alpha(r[1], 0.7), stroke: r[1], sw: 1, parent: S.legend });
-              ctx.text(x + 18, y, r[0], { size: 11, color: r[1], font: 'mono', parent: S.legend });
+              ctx.text(x + 18, y, r[0], { size: 11, color: 'text', font: 'mono', parent: S.legend });
             });
             ctx.text(72, 502, 'color = system-prompt prefix', { size: 11, color: 'dim', font: 'mono', parent: S.legend });
             ctx.text(72, 520, 'width = cost · bar = hit/miss', { size: 11, color: 'dim', font: 'mono', parent: S.legend });
@@ -310,10 +318,11 @@
             say: 'Round robin gives every replica the same number of requests, not the same amount of work. Watch the first twelve arrive.',
             card: { tag: 'KEY IDEA', title: 'Round-robin counts, it does not weigh', body: 'Every replica receives every sixth request. That equalises how many requests each gets, not how much work they carry.' },
             deep: '<p>Round-robin (and random) balance <b>counts</b>. With per-request work X of mean μ and variance σ², a replica receiving m requests has load with standard deviation σ√m, so the relative imbalance ~ (σ/μ)/√m does not vanish at the small m typical of LLM replicas (tens of concurrent requests, not thousands).</p>' +
-              '<p>With a heavy-tailed X, σ/μ is well above 1, so even at m = 4 per replica the busiest replica routinely carries double the mean.</p>'
+              '<p>With a heavy-tailed X, σ/μ is well above 1, so even at m = 4 per replica the busiest replica can easily carry double the mean, as the next beat shows.</p>' +
+              '<details><summary>Go deeper</summary><p>For i.i.d. costs, a replica that receives m requests carries S<sub>m</sub> with mean mμ and standard deviation σ√m, so max/mean ≈ 1 + (σ/μ)·√(2 ln n / m) for n replicas. With σ/μ ≈ 1.5 (the σ<sub>log</sub> = 1.1 log-normal of the previous step), n = 6 and m = 4 this gives 1 + 1.5 · √0.9 ≈ 2.4, only a rough guide because a sum of four heavy-tailed terms is far from Gaussian. The exact draw here is 2.04×. Round-robin equalises the count, not the cost.</p></details>'
           },
           {
-            say: 'Replica one happens to receive both a nine unit call and a seven unit call, and ends up with about twice the average load while others sit nearly idle.',
+            say: 'Replica one happens to receive both a nine unit call and a seven unit call, and ends up with about twice the average load, while two other replicas carry only about half of it.',
             card: {
               tag: 'NUMBERS', title: 'Twice the average on one replica', stat: { v: '2.04×', l: 'max over mean outstanding work: replica 1 holds 18 units, replica 5 only 4' },
               more: '<p>Loads 7, 18, 8, 11, 5 and 4 sum to 53, so the mean is 8.83 and max/mean = 18 / 8.83 = 2.04. The imbalance comes from just two heavy calls (9 and 7 units) landing on the same replica; with heavy-tailed costs, position in the arrival order decides who gets them.</p>'
@@ -393,7 +402,7 @@
             /* beat 3: L4 balancers pin connections */
             var L = ctx.group({ parent: b });
             var OX = 780;
-            title(ctx, L, 870, 610, 'L4 BALANCING PINS CONNECTIONS, NOT REQUESTS');
+            title(ctx, L, 870, 590, 'L4 BALANCING PINS CONNECTIONS, NOT REQUESTS');
             var ag = [['director', 'magenta', 660], ['critic', 'pink', 770]];
             ctx.rect(OX + 330, 670, 130, 90, { rx: 10, fill: 'url(#fx-panel-grad)', stroke: 'blue', sw: 1.3, parent: L });
             ctx.text(OX + 395, 705, 'L4 LB', { size: 14, color: 'white', anchor: 'middle', font: 'display', weight: 600, parent: L });
@@ -433,12 +442,13 @@
           {
             say: 'That tiny change stops the overload from growing with total load. The gap above average stays near log log n, essentially a constant.',
             card: {
-              tag: 'NUMBERS', title: 'A gap that does not grow', stat: { v: '≈ 2', u: 'requests', l: 'gap above the mean with two choices for 64 replicas, however many requests arrive; one choice reaches ~29 at 100 balls per bin' },
-              more: '<p>For n = 64: one choice gives √(2 · 100 · ln 64) ≈ 29 at m/n = 100 and ≈ 91 at m/n = 1000, while two choices give ln ln 64 / ln 2 ≈ 2.1 at every m. The classical result is tight up to constants, and real routers track it as long as their probes see roughly current load.</p>'
+              tag: 'NUMBERS', title: 'A gap that does not grow', stat: { v: '2.1 + O(1)', u: 'requests', l: 'gap above the mean with two choices on 64 replicas, independent of load; one choice already reaches ≈ 29 at 100 requests per replica' },
+              more: '<p>For n = 64: one choice gives √(2 · 100 · ln 64) ≈ 29 at m/n = 100 and ≈ 91 at m/n = 1000, while two choices give ln ln 64 / ln 2 ≈ 2.1 plus a constant, at every m. The classical result is tight up to constants, and real routers track it as long as their probes see roughly current load.</p>'
             },
             deep: '<p>Balls-into-bins with n bins and m balls (Azar et al.; Berenbrink et al. 2000 for m ≫ n):</p>' +
               '<div class="eq">one choice: max − avg = Θ(√((m/n) · ln n))<br>d choices: max − avg = ln ln n / ln d + O(1) &nbsp;(independent of m)</div>' +
-              '<p>At m = n this is the famous drop from ln n / ln ln n to ln ln n / ln 2: an exponential improvement from one extra random probe; a third probe helps only by a constant factor.</p>'
+              '<p>At m = n this is the famous drop from ln n / ln ln n to ln ln n / ln 2: an exponential improvement from one extra random probe; a third probe helps only by a constant factor.</p>' +
+              '<details><summary>Go deeper</summary><p>Layered induction: let β<sub>i</sub> be the fraction of bins with load ≥ i. With two probes a ball reaches a load-(i+1) bin only if <i>both</i> probes hit load-i bins, so β<sub>i+1</sub> ≈ β<sub>i</sub>². Squaring doubles the exponent at every level, and β<sub>i</sub> drops below 1/n after about log<sub>2</sub> ln n levels, which is the ln ln n / ln 2 above. One probe only gives β<sub>i+1</sub> ≈ β<sub>i</sub> / (i+1), a factorial tail that needs ln n / ln ln n levels.</p></details>'
           },
           {
             say: 'Run all twenty four requests through it and the queues stay close to level, with the busiest replica only a quarter above the average.',
@@ -491,7 +501,7 @@
             var pl2 = ctx.plot(130, 625, 560, 200, function () { return Math.log(ln64) / Math.LN2; }, { xDomain: [0, 3], yDomain: [0, 100], color: 'lime', sw: 2.6, axes: false, parent: g });
             ctx.text(560, 660, 'one random choice', { size: 12, color: 'red', font: 'mono', anchor: 'end', parent: g });
             ctx.text(560, 678, '≈ √(2·(m/n)·ln n)', { size: 11, color: 'red', font: 'mono', anchor: 'end', parent: g });
-            ctx.text(690, 800, 'two choices ≈ ln ln n / ln 2 ≈ 2', { size: 12, color: 'lime', font: 'mono', anchor: 'end', parent: g });
+            ctx.text(690, 800, 'two choices ≈ ln ln n / ln 2 + O(1)', { size: 12, color: 'lime', font: 'mono', anchor: 'end', parent: g });
             [0, 1, 2, 3].forEach(function (k) { var p = pl1.toPx(k, 0); ctx.text(p.x, 842, String(Math.pow(10, k)), { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: g }); });
             ctx.text(410, 864, 'balls per bin  m / n  (log scale)', { size: 11, color: 'dim', anchor: 'middle', font: 'mono', parent: g });
             ctx.reveal(g, { dur: 300 });
@@ -518,7 +528,7 @@
           {
             say: 'Consistent hashing maps each prefix to a point on a ring and sends it to the next replica clockwise, so the same agent keeps hitting the same warm cache, and adding a replica moves only a small fraction of keys.',
             card: { tag: 'HOW IT WORKS', title: 'Next replica clockwise', body: 'Replicas and prefixes hash onto one ring. A prefix belongs to the first replica clockwise from it, so its requests keep meeting the same cache.' },
-            deep: '<p><b>Consistent hashing</b> (Karger et al.): replicas and keys hash onto a ring; a key belongs to the first replica clockwise. Adding or removing one of n replicas remaps only ~K/n keys (vs almost all with <code>hash mod n</code>). Virtual nodes (e.g. 100–200 per replica) smooth ownership; Maglev hashing gives near-perfect balance with O(1) lookups.</p>' +
+            deep: '<p><b>Consistent hashing</b> (Karger et al.): replicas and keys hash onto a ring; a key belongs to the first replica clockwise. Adding or removing one of n replicas remaps only ~K/n keys (vs almost all with <code>hash mod n</code>). Virtual nodes (e.g. 100–200 per replica) smooth ownership; Maglev hashing gives nearly even balance with O(1) table lookups.</p>' +
               '<p>For LLMs the key is the prompt prefix (or session id), so affinity ≈ cache hits.</p>'
           },
           {
@@ -530,7 +540,7 @@
             say: 'Bounded loads caps every replica at one plus epsilon times the average, and overflow walks on to the next replica clockwise.',
             card: {
               tag: 'TRADE-OFF', title: 'Bounded loads trade hits for balance', body: 'Max requests per replica falls from 8 to 5, but prefix hits fall from 75% to 50%. Counts are balanced, cost is not: max over mean stays at 1.70×.',
-              more: '<p>With capacity c = ⌈(1 + ε)·m/n⌉ no replica can exceed c by construction, so the maximum count is at most (1 + ε) times the average, rounded up. Mirrokni et al. also show that the expected number of clockwise steps a key needs to find room is O(1/ε²), so lookups stay cheap for constant ε.</p>'
+              more: '<p>With capacity c = ⌈(1 + ε)·m/n⌉ no replica can exceed c by construction, so the maximum count is at most (1 + ε) times the average, rounded up. Mirrokni et al. also prove that adding or removing a key or a replica moves only an expected O(1/ε²) other keys, independent of the total number of keys and replicas, so updates stay cheap for constant ε.</p>'
             },
             deep: '<p><b>Bounded loads</b> (Mirrokni, Thorup, Zadimoghaddam): every replica has capacity</p>' +
               '<div class="eq">c = ⌈(1 + ε) · m / n⌉</div>' +
@@ -619,20 +629,22 @@
           {
             say: 'Modern LLM routers look inside the KV cache itself. The SGLang router, llm-d and NVIDIA Dynamo track which prefixes each replica holds, in a radix tree.',
             card: { tag: 'STATE OF THE ART', title: 'Routers now see the KV cache', body: 'The SGLang router, llm-d and NVIDIA Dynamo keep an approximate radix tree of each replica\'s cached prefixes, or consume its exact KV-block events.' },
-            deep: '<p><b>RadixAttention</b> (SGLang) keeps KV blocks in a radix tree keyed by token ids with LRU eviction; a request reuses the longest cached prefix and only prefills the suffix. The router keeps an <i>approximate</i> tree per worker (or consumes KV-cache events, as Dynamo does).</p>'
+            deep: '<p><b>RadixAttention</b> (SGLang) keeps KV blocks in a radix tree keyed by token ids with LRU eviction; a request reuses the longest cached prefix and only prefills the suffix. The router keeps an <i>approximate</i> tree per worker (or consumes KV-cache events, as Dynamo does).</p>' +
+              '<details><summary>Go deeper</summary><p>In RadixAttention the tree edges hold token sequences, the nodes hold the KV pages, and eviction is LRU over <i>leaves</i>, so a prefix is never evicted before its extensions. SGLang\'s cache-aware scheduler orders waiting requests by matched-prefix length, which approximates a depth-first walk of the tree and maximises reuse for an offline batch. A router that only sees the prompts it routed drifts from the truth as engines evict under memory pressure, which is why exact KV-event feeds (Dynamo, vLLM KV events) are attractive on busy fleets.</p></details>'
           },
           {
             say: 'A request goes to the replica with the longest match, unless that replica is too far above the least loaded one.',
             card: { tag: 'HOW IT WORKS', title: 'Longest match, unless overloaded', body: 'Score = prefix match minus load penalty. The threshold T sets how much extra load a router accepts to keep a cache hit.' },
             deep: '<p>Decision rule used here (SGLang-router style, threshold T in cost units):</p>' +
               '<pre>h = longest-prefix replica\nif h and load[h] &lt;= min(load) + T:\n    route h          # hit\nelse:\n    route argmin(load)  # miss</pre>' +
-              '<p>Scoring variants: llm-d\'s scheduler sums weighted scorers (prefix-cache, KV-utilisation, queue depth); Dynamo computes cost = w·(blocks to prefill) + (decode load).</p>'
+              '<p>Scoring variants: llm-d\'s scheduler ranks endpoints with a weighted set of scorers (for example prefix-cache affinity, KV-cache utilisation and queue depth); Dynamo weighs the KV blocks a worker would still have to prefill against its current decode load.</p>'
           },
           {
             say: 'A hit skips most of prefill: the director\'s nine thousand token system prompt and tool schemas are already computed.',
             card: { tag: 'NUMBERS', title: 'Prefill skipped', stat: { v: '9k → 0.5k', u: 'tokens', l: 'prefill work for a director request whose prefix is already cached on the chosen replica' } },
             deep: '<div class="eq">saved prefill ≈ hits × L<sub>prefix</sub><br>TTFT<sub>hit</sub> ≈ (L − L<sub>prefix</sub>)/R<sub>prefill</sub></div>' +
-              '<p>With ~6k shared tokens per agent prompt (the director\'s is the largest, 9k), a 67% hit rate removes most prefill FLOPs and cuts TTFT for the common case from ~0.6 s to ~0.1 s.</p>'
+              '<p>With ~6k shared tokens per agent prompt (the director\'s is the largest, 9k), a 67% hit rate removes most prefill FLOPs and cuts TTFT for the common case from ~0.6 s to ~0.1 s.</p>' +
+              '<details><summary>Go deeper</summary><p>The director request above: a cold prefill of 9.5k tokens at 10<sup>4</sup> tok/s takes ≈ 0.95 s; with the 9k prefix cached only the 0.5k new tokens are prefilled, ≈ 0.05 s plus one decode step of ~20 ms, so TTFT falls near 0.1 s, a tenfold cut. The saving is linear in the hit length, but the attention reads are not free: the 0.5k new tokens still attend over 9.5k cached keys, so long hits save less than the token counts suggest once the context grows past tens of thousands of tokens.</p></details>'
           },
           {
             say: 'Click the threshold chips on the right to trade cache hits against load balance yourself: zero means pure balance, infinity means pure affinity.',
@@ -672,7 +684,7 @@
           return ctx.wait(1200).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: the longest match wins, unless the replica is overloaded */
             [1, 3].forEach(function (i) { S.treeR[i].setAttribute('stroke', ctx.color('lime')); S.treeR[i].setAttribute('stroke-width', 2.2); });
-            lines(ctx, b, 900, 632, ['router state per replica:', '  approx. radix tree of routed prompts', '  or exact KV-block events (Dynamo)', '', 'score = prefix match − load penalty', 'systems: SGLang router, llm-d,', '  NVIDIA Dynamo, AIBrix, Envoy AI GW'], { lh: 22 });
+            lines(ctx, b, 900, 632, ['router state per replica:', '  approx. radix tree of routed prompts', '  or exact KV-block events (Dynamo)', '', 'score = prefix match − load penalty', 'systems: SGLang router, llm-d,', '  NVIDIA Dynamo, AIBrix, Inference Ext.'], { lh: 22 });
             return ctx.reveal(S.match, { from: 'draw', dur: 1200, delay: 200 });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: a hit skips prefill; all 24 requests flow with T = 6 */
@@ -711,16 +723,27 @@
             card: { tag: 'NUMBERS', title: 'Ten times at ninety percent', stat: { v: '10×', l: 'time in system over service time at 90% utilisation, for exponential service (M/M/1)' } },
             deep: '<p>M/G/1 (Pollaczek–Khinchine), mean response time in units of mean service time S:</p>' +
               '<div class="eq">W / S = 1 + ρ · (1 + C<sub>s</sub><sup>2</sup>) / (2 (1 − ρ))</div>' +
-              '<p>C<sub>s</sub><sup>2</sup> = 1 reduces to M/M/1: W/S = 1/(1−ρ), which is 10 at ρ = 0.9 and 20 at ρ = 0.95. The curve is gentle until about 70% load and then vertical.</p>'
+              '<p>C<sub>s</sub><sup>2</sup> = 1 reduces to M/M/1: W/S = 1/(1−ρ), which is 10 at ρ = 0.9 and 20 at ρ = 0.95. The curve is gentle until about 70% load and then vertical.</p>' +
+              '<details><summary>Go deeper</summary><p>By Little\'s law the mean number in system is L = λW = ρ / (1 − ρ) for M/M/1: 9 requests at ρ = 0.9, 19 at 0.95. An LLM replica is not a textbook server, because continuous batching makes the service rate depend on the batch size and KV occupancy, and admission stops when KV blocks run out. The formula is therefore a guide, but the wall near ρ → 1 survives, which is why fleets are provisioned with headroom at peak instead of being run near 95%.</p></details>'
           },
           {
             say: 'Heavy tailed service makes it much worse. For the same latency budget, the admissible utilization drops by about fourteen points.',
             card: {
-              tag: 'NUMBERS', title: 'Heavy tails cost 14 points', stat: { v: '0.87 → 0.74', l: 'maximum utilisation that keeps W ≤ 8·S, for exponential versus heavy-tailed service (C² = 4)' },
+              tag: 'NUMBERS', title: 'Heavy tails cost 14 points', stat: { v: '0.88 → 0.74', l: 'maximum utilisation that keeps W ≤ 8·S, for exponential versus heavy-tailed service (C² = 4)' },
               more: '<p>Set W/S = 8 and solve. For C² = 1: 1/(1 − ρ) = 8 gives ρ = 0.875. For C² = 4: 1 + 5ρ / (2(1 − ρ)) = 8 gives 5ρ = 14(1 − ρ), so ρ = 14/19 = 0.737. The 13.8-point gap is the utilisation you give up to keep the same latency budget.</p>'
             },
             deep: '<p>For a latency budget of 8·S the admissible utilisation is ρ ≤ 0.875 with C<sub>s</sub><sup>2</sup> = 1 but only ρ ≤ 0.74 with C<sub>s</sub><sup>2</sup> = 4: heavy tails cost ~14 points of utilisation. Kingman generalises to G/G/1:</p>' +
               '<div class="eq">W<sub>q</sub> ≈ (ρ/(1−ρ)) · ((C<sub>a</sub><sup>2</sup>+C<sub>s</sub><sup>2</sup>)/2) · S</div>'
+          },
+          {
+            say: 'Try it yourself. Click a utilization chip and read the response time, in multiples of the service time, for exponential and for heavy tailed service. The gap between the two grows fast as load climbs.',
+            card: { tag: 'TRY IT', title: 'Slide the utilisation', body: 'Click <b>ρ = 0.5, 0.7, 0.85</b> or <b>0.9</b>. The heavy-tailed curve climbs faster: at 0.9 a request spends 23× its service time in the system, against 10× for exponential service.' },
+            deep: '<table><tr><th>ρ</th><th>M/M/1</th><th>C² = 4</th></tr>' +
+              '<tr><td>0.50</td><td>2.0</td><td>3.5</td></tr>' +
+              '<tr><td>0.70</td><td>3.3</td><td>6.8</td></tr>' +
+              '<tr><td>0.85</td><td>6.7</td><td>15.2</td></tr>' +
+              '<tr><td>0.90</td><td>10.0</td><td>23.5</td></tr></table>' +
+              '<p>Values are W/S. Relative to M/M/1 the heavy tail multiplies only the <i>queueing</i> part, by (1 + C<sub>s</sub><sup>2</sup>)/2 = 2.5: at ρ = 0.9 the M/M/1 queueing term is 9, the heavy-tailed one 22.5, and the one unit of service time is unchanged (1 + 22.5 = 23.5).</p>'
           },
           {
             say: 'So the router enforces service level objectives. It predicts time to first token from each replica\'s queued prefill work.',
@@ -733,7 +756,8 @@
             say: 'When no replica can meet the target, it sheds or defers the request instead of letting everyone miss. Here a retry from the critic gets a polite four twenty nine.',
             card: { tag: 'TRADE-OFF', title: 'Shed early, protect the SLO', body: 'A fast 429 with Retry-After costs one caller a moment. Admitting everything makes every caller miss the target together.' },
             deep: '<p>The metric that matters is <b>goodput</b>: requests per second that meet both TTFT and TPOT SLOs (DistServe). Optimising raw throughput would admit everything and let latency blow up; optimising goodput sheds the marginal request to save the rest.</p>' +
-              '<p>Priorities help: interactive creator-facing calls pre-empt batch critic retries.</p>'
+              '<p>Priorities help: interactive creator-facing calls pre-empt batch critic retries.</p>' +
+              '<details><summary>Go deeper</summary><p>A fixed queue limit is the wrong tool, because the right limit moves with request cost. Adaptive schemes track the delay itself: CoDel (Nichols and Jacobson, 2012) starts dropping when the <i>sojourn time</i> stays above a small target for a whole interval, and gradient-based concurrency limiters (Netflix concurrency-limits, Envoy\'s adaptive concurrency filter) shrink the allowed in-flight count when latency rises. For LLMs the natural signal is the predicted TTFT above, with a Retry-After that reflects the current backlog, so shed clients back off instead of hammering.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -749,7 +773,7 @@
           var q10 = p1.toPx(0.9, 10);
           var m10 = ctx.group({ parent: b });
           ctx.circle(q10.x, q10.y, 5, { fill: 'cyan', parent: m10 });
-          ctx.text(q10.x + 12, q10.y + 8, '10× at ρ = 0.9', { size: 11, color: 'cyan', font: 'mono', parent: m10 });
+          ctx.text(q10.x + 12, q10.y - 4, '10× at ρ = 0.9', { size: 11, color: 'cyan', font: 'mono', parent: m10 });
           m10.setAttribute('opacity', 0);
           swapBottom(ctx, S, b);
           /* beat 0: the M/M/1 curve */
@@ -764,20 +788,57 @@
             ctx.text(136, slo.y - 10, 'SLO: W ≤ 8·S', { size: 11, color: 'pink', font: 'mono', parent: g });
             ctx.circle(q1.x, q1.y, 5, { fill: 'cyan', parent: g });
             ctx.circle(q2.x, q2.y, 5, { fill: 'red', parent: g });
-            ctx.text(q2.x - 8, q2.y + 22, 'ρ ≤ 0.74', { size: 11, color: 'red', anchor: 'end', font: 'mono', parent: g });
-            ctx.text(q1.x + 6, q1.y + 22, 'ρ ≤ 0.87', { size: 11, color: 'cyan', font: 'mono', parent: g });
+            ctx.text(q2.x - 8, q2.y - 12, 'ρ ≤ 0.74', { size: 11, color: 'red', anchor: 'end', font: 'mono', parent: g });
+            ctx.text(q1.x + 6, q1.y + 22, 'ρ ≤ 0.875', { size: 11, color: 'cyan', font: 'mono', parent: g });
             ctx.text(330, 660, 'C²=1 (M/M/1) cyan · C²=4 (heavy tail) red', { size: 11, color: 'dim', font: 'mono', parent: g });
             ctx.reveal(g, { dur: 400, delay: 800 });
             return ctx.reveal(p2.curve, { from: 'draw', dur: 1200, delay: 200 });
           }).then(function () { return ctx.beat(2); }).then(function () {
-            /* beat 2: the SLO gate and the admission estimate */
+            /* beat 2 (TRY IT): read both curves at a utilisation of your choice */
+            var g = ctx.group({ parent: b });
+            var guide = ctx.path('M0,0 L0,0', { stroke: ctx.alpha('white', 0.4), sw: 1.2, dash: '3 4', parent: g });
+            var mA = ctx.circle(0, 0, 5.5, { fill: 'cyan', stroke: 'white', sw: 1.2, parent: g });
+            var mB = ctx.circle(0, 0, 5.5, { fill: 'red', stroke: 'white', sw: 1.2, parent: g });
+            var tR = ctx.text(800, 830, '', { size: 12, color: 'white', font: 'mono', weight: 600, parent: g });
+            var tA = ctx.text(892, 830, '', { size: 12, color: 'cyan', font: 'mono', weight: 600, parent: g });
+            var tB = ctx.text(1012, 830, '', { size: 12, color: 'red', font: 'mono', weight: 600, parent: g });
+            S.rho = 0.5;
+            function setRho(rho) {
+              var y1 = w(rho, 1), y2 = w(rho, 4), a = p1.toPx(rho, y1), c = p1.toPx(rho, y2);
+              mA.setAttribute('cx', a.x); mA.setAttribute('cy', a.y);
+              mB.setAttribute('cx', c.x); mB.setAttribute('cy', c.y);
+              guide.setAttribute('d', 'M' + a.x + ',825 L' + c.x + ',' + c.y);
+              tR.textContent = 'ρ = ' + rho.toFixed(2);
+              tA.textContent = 'M/M/1  ' + y1.toFixed(1) + '×';
+              tB.textContent = 'heavy tail  ' + y2.toFixed(1) + '×';
+              S.rho = rho;
+            }
+            function moveTo(target, animate) {
+              var r0 = S.rho;
+              S.rhoChips.forEach(function (c) { c.el.setAttribute('opacity', c.v === target ? 1 : 0.45); });
+              if (!animate) { setRho(target); return Promise.resolve(); }
+              S.rhoBusy = true;
+              return ctx.tween(600, function (t) { setRho(r0 + (target - r0) * t); }, 'inOut').then(function () { setRho(target); S.rhoBusy = false; });
+            }
+            S.rhoChips = [0.5, 0.7, 0.85, 0.9].map(function (v, i) {
+              var l = ctx.label(842 + i * 76, 864, 'ρ = ' + v, { color: 'cyan', size: 12, w: 68, parent: g });
+              l.style.cursor = 'pointer';
+              l.addEventListener('click', function () { if (!ctx.dead && !S.rhoBusy && S.rho !== v) moveTo(v, true); });
+              return { el: l, v: v };
+            });
+            S.rhoChips.forEach(function (c) { c.el.setAttribute('opacity', c.v === 0.5 ? 1 : 0.45); });
+            setRho(0.5);
+            ctx.reveal(g, { dur: 400 });
+            return ctx.wait(900).then(function () { return moveTo(0.9, true); });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            /* beat 3: the SLO gate and the admission estimate */
             S.gate = ctx.group({ parent: S.main });
             ctx.rect(578, 330, 12, 60, { rx: 3, fill: ctx.alpha('pink', 0.3), stroke: 'pink', sw: 1.5, parent: S.gate });
             ctx.label(600, 300, 'SLO gate', { color: 'pink', size: 11, parent: S.gate });
             lines(ctx, b, 800, 640, ['admission at the router:', '  ttft_hat = queued_prefill / R_prefill', '           + uncached_prompt / R_prefill', '  if min_r ttft_hat > SLO → 429 / spill', '', 'optimise GOODPUT, not throughput:', '  req/s meeting TTFT and TPOT SLOs'], { lh: 22 });
             return ctx.reveal(S.gate, { from: 'scale', dur: 500 }).then(function () { return ctx.pulse(S.gate, { color: 'pink', dur: 600 }); });
-          }).then(function () { return ctx.beat(3); }).then(function () {
-            /* beat 3: shed a request instead of missing every SLO */
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: shed a request instead of missing every SLO */
             S.rej = ctx.label(470, 470, '429 · Retry-After: 2 s', { color: 'pink', size: 12, parent: S.main });
             ctx.reveal(S.rej, { from: 'scale', delay: 1500 });
             return ctx.packet(S.inLink, { color: 'pink', dur: 600, r: 6, label: 'critic retry' }).then(function () {
@@ -795,7 +856,8 @@
           {
             say: 'Large deployments split each request in two. Prefill is compute bound, decode is memory bandwidth bound, and mixing them on one GPU makes decoding stutter whenever a big prompt arrives.',
             card: { tag: 'KEY IDEA', title: 'Two phases, two bottlenecks', body: 'Prefill wants FLOPs and runs in bursts. Decode wants HBM bandwidth and runs steadily. Separate pools let each pick its own parallelism and GPU type.' },
-            deep: '<p><b>Why split</b>: a 30k-token prefill occupies the GPU for ~2 s; co-located decodes in the same batch see their TPOT spike (interference). Disaggregation lets each pool pick its own parallelism, batch size and even GPU type (compute-rich for prefill, HBM-rich for decode).</p>'
+            deep: '<p><b>Why split</b>: a 30k-token prefill occupies the GPU for ~3 s at 10<sup>4</sup> tok/s; co-located decodes in the same batch see their TPOT spike (interference). Disaggregation lets each pool pick its own parallelism, batch size and even GPU type (compute-rich for prefill, HBM-rich for decode).</p>' +
+              '<details><summary>Go deeper</summary><p>Interference arithmetic: without chunking, every decode stream sharing the GPU stalls for the whole prefill, so one iteration of its TPOT jumps from ~30 ms to L / R<sub>prefill</sub> = 30k / 10<sup>4</sup> = 3 s. Chunked prefill with a chunk of 2,048 tokens bounds that stall to about 0.2 s, at the price of a longer TTFT and repeated KV reads. Disaggregation removes the coupling instead of bounding it, and the two pools then scale on different signals.</p></details>'
           },
           {
             say: 'With disaggregation the router makes two decisions. It picks a prefill worker by queued compute, then a decode worker by free KV cache memory.',
@@ -809,14 +871,15 @@
               tag: 'NUMBERS', title: 'The KV transfer bill', stat: { v: '2.7 GB', l: 'KV cache of an 8k-token prompt (70B, GQA, BF16): about 54 ms at 50 GB/s, overlapped layer by layer' },
               more: '<p>A Llama-70B-class model has 80 layers and 8 KV heads of dimension 128 in BF16 (2 bytes): 2 (K and V) × 80 × 8 × 128 × 2 B = 327,680 B ≈ 320 KB per token. For 8,192 tokens that is 2.68 GB, and a 400 Gb/s link moves 50 GB/s, so an unpipelined copy would take ≈ 54 ms.</p>'
             },
-            deep: '<div class="eq">KV bytes = L · 2 · n<sub>layers</sub> · n<sub>kv</sub> · d<sub>head</sub> · b = 8192 · 2·80·8·128·2 B ≈ 2.7 GB<br>t<sub>xfer</sub> ≈ 2.7 GB / 50 GB/s ≈ 54 ms &nbsp;(pipelined layer-by-layer, mostly hidden)</div>' +
+            deep: '<div class="eq">KV bytes = L<sub>in</sub> · 2 · n<sub>layers</sub> · n<sub>kv</sub> · d<sub>head</sub> · b = 8192 · 2·80·8·128·2 B ≈ 2.7 GB<br>t<sub>xfer</sub> ≈ 2.7 GB / 50 GB/s ≈ 54 ms &nbsp;(pipelined layer-by-layer, mostly hidden)</div>' +
               '<p>Because layer l\'s KV can leave as soon as layer l has been computed, the transfer overlaps with the rest of prefill and adds little to TTFT when the link is fast enough. The decode worker can even start allocating blocks while prefill is still running, so only the last layer\'s KV sits on the critical path.</p>'
           },
           {
             say: 'The decode worker then streams tokens to the agent. Short prompts and cache hits skip the split entirely, because the transfer would cost more than it saves.',
             card: { tag: 'TRADE-OFF', title: 'Skip the split when it costs more', body: 'Conditional disaggregation prefills short prompts and cache hits locally on the decode worker. The transfer only pays for long, cold prompts.' },
-            deep: '<p><b>Conditional disaggregation</b> (Dynamo, vLLM) prefills short prompts or high-hit requests locally on the decode worker, because the transfer would cost more than it saves.</p>' +
-              '<p>Systems: DistServe, Splitwise, Mooncake (KV-centric, with a distributed KV store over RDMA), NVIDIA Dynamo with NIXL transfers, llm-d P/D, SGLang PD.</p>'
+            deep: '<p><b>Conditional disaggregation</b> (as in NVIDIA Dynamo) prefills short prompts or high-hit requests locally on the decode worker, because the transfer would cost more than it saves.</p>' +
+              '<p>Systems: DistServe, Splitwise, Mooncake (KV-centric, with a distributed KV store over RDMA), NVIDIA Dynamo with NIXL transfers, llm-d P/D, SGLang PD.</p>' +
+              '<details><summary>Go deeper</summary><p>A simple decision rule: prefill remotely only if the uncached prompt length ℓ satisfies ℓ/R<sub>local</sub> · (1 + φ) &gt; q<sub>pf</sub> + ℓ/R<sub>pf</sub> + t<sub>xfer</sub>(ℓ). R<sub>local</sub> is the prefill rate the decode worker can spare, φ the interference penalty on its running streams, q<sub>pf</sub> the wait at the prefill pool, and t<sub>xfer</sub> = ℓ · 320 KB / B, about 6.5 µs per token at 50 GB/s. Short prompts, cache hits and a saturated prefill queue all push the inequality the other way.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -829,7 +892,7 @@
           ctx.focus([S.pd, S.met], 0.12);
           var b = ctx.group();
           title(ctx, b, 80, 600, 'WHY SPLIT · WHAT IT COSTS', 'cyan');
-          lines(ctx, b, 80, 636, ['prefill: FLOP-bound, bursty, long (0.1–2 s)', 'decode : HBM-bound, steady, 20–50 ms/token', 'mixing both → TPOT spikes when prompts arrive', '', 'P/D: tune TP, batch, GPU type per phase'], { lh: 22 });
+          lines(ctx, b, 80, 636, ['prefill: FLOP-bound, bursty, long (0.1–3 s)', 'decode : HBM-bound, steady, 20–50 ms/token', 'mixing both → TPOT spikes when prompts arrive', '', 'P/D: tune TP, batch, GPU type per phase'], { lh: 22 });
           swapBottom(ctx, S, b);
           /* beat 0: two pools */
           ctx.reveal(S.pd, { from: 'scale', s0: 0.94 });
@@ -860,9 +923,12 @@
             S.cl = ctx.node({ x: 1190, y: 370, w: 120, h: 60, title: 'Agent', sub: 'SSE', icon: 'agent', color: 'magenta', titleSize: 14, parent: S.pd });
             S.out = ctx.link(S.dc[1], S.cl, { color: 'amber', parent: S.pd });
             lines(ctx, b, 760, 636 + 4 * 25.08, ['skip it when prompt is short or cache-hit', '  (conditional disaggregation)'], { lh: 22 });
-            return Promise.all([ctx.reveal(S.cl, { from: 'right' }), ctx.reveal(S.out, { from: 'draw', delay: 300 })]).then(function () {
+            /* the bypass: short prompts and cache hits are prefilled on the decode worker itself */
+            S.skip = ctx.path('M160,335 C160,235 250,205 420,205 L900,205 L900,215', { stroke: 'amber', sw: 1.6, dash: '5 5', arrow: true, parent: S.pd });
+            S.skipLbl = ctx.label(575, 205, 'short or cached prompt: prefill locally', { color: 'amber', size: 11, bg: '#060a14', parent: S.pd });
+            return Promise.all([ctx.reveal(S.cl, { from: 'right' }), ctx.reveal(S.out, { from: 'draw', delay: 300 }), ctx.reveal(S.skip, { from: 'draw', delay: 600, dur: 900 }), ctx.reveal(S.skipLbl, { delay: 1300 })]).then(function () {
               S.outStream = ctx.stream(S.out, { color: 'amber', count: 5, period: 900, r: 3 });
-              return ctx.wait(1300);
+              return ctx.packet(S.skip, { color: 'amber', dur: 1300, r: 4 });
             });
           });
         }
@@ -884,20 +950,21 @@
           {
             say: 'Instead, jobs wait in a durable broker, and workers pull the next job only when they are truly free. Pull is work conserving: no job waits while a gang idles.',
             card: { tag: 'HOW IT WORKS', title: 'Idle workers ask for work', body: 'An idle gang leases the next job from a durable queue. Backpressure is natural: busy workers simply do not ask.' },
-            deep: '<p>Pull = <b>work-conserving</b> by construction: a job never waits in a busy worker\'s local queue while another gang idles (the "join-idle-queue" idea). Broker options: Redis Streams / SQS / Pub/Sub with visibility timeouts, or the workflow engine\'s task queue (Temporal task queues are pull-based).</p>' +
+            deep: '<p>Pull = <b>work-conserving</b> by construction: a job never waits in a busy worker\'s local queue while another gang idles (the "join-idle-queue" idea). Broker options: Redis Streams, SQS or Pub/Sub, which redeliver unacknowledged messages after a visibility timeout or ack deadline, or the workflow engine\'s task queue (Temporal workers poll their task queues).</p>' +
               '<p>Priority = multiple queues (interactive previews before batch), and "fetch" can be topology-aware: a GB200 gang pulls only jobs that need ≥ 16 GPUs.</p>'
           },
           {
             say: 'Each pull takes a lease that the worker keeps alive with heartbeats. If a worker dies, the lease expires and the shot is redelivered.',
             card: { tag: 'KEY IDEA', title: 'Leases turn crashes into retries', body: 'The broker never trusts a worker. No heartbeat for 30 seconds and the job goes back into the queue for another gang.' },
-            deep: '<pre>loop:\n  job = broker.lease("video", ttl=30)\n  heartbeat every 10 s (extend lease)\n  out = render(job)   # ckpt latents\n  store.put(job.idem_key, out)\n  broker.ack(job)</pre>' +
-              '<p>The lease TTL is a trade-off: short means fast failover but false expiry on a slow heartbeat, long means a dead worker holds a job hostage.</p>'
+            deep: '<pre>loop:\n  job = broker.lease("video", 30)\n  heartbeat(job) every 10 s\n  out = render(job)  # ckpt latents\n  store.put(job.idem_key, out)\n  broker.ack(job)</pre>' +
+              '<p>The lease TTL is a trade-off: short means fast failover but false expiry on a slow heartbeat, long means a dead worker holds a job hostage.</p>' +
+              '<details><summary>Go deeper</summary><p>A lease alone does not make a job exclusive. A worker that stalls (a long pause, a hung NCCL collective, a network partition) can wake up after its lease expired and the job was redelivered, and then write a stale result. The standard remedy is a <i>fencing token</i>: the broker hands out an increasing number with every lease, and the output store rejects any write that carries an older token than the newest it has seen (Kleppmann, 2016). Heartbeat at TTL/3, so that one lost heartbeat is tolerated and a retry still lands before the lease is declared dead.</p></details>'
           },
           {
             say: 'Idempotent job keys make sure the trailer never pays for the same shot twice, and checkpointed latents let a retried shot resume mid denoise instead of starting over.',
             card: { tag: 'HOW IT WORKS', title: 'At-least-once plus idempotency', body: 'Delivery is at least once. A key on the output makes duplicate work harmless, which gives an exactly-once effect.' },
             deep: '<p><b>Exactly-once effect = at-least-once delivery + an idempotency key on the output.</b> The output store rejects a second write for the same <code>job.idem_key</code>, so a redelivered shot that finishes twice is billed and stored once.</p>' +
-              '<p>Checkpointing latents every N steps means a retry resumes mid-denoise: it loses at most N of the 40 steps instead of the whole ~95 s.</p>'
+              '<p>Checkpointing latents every N steps means a retry resumes mid-denoise: it loses at most N of the 50 steps instead of the whole ~95 s.</p>'
           }
         ],
         run: function (ctx) {
@@ -907,13 +974,13 @@
           S.vq = ctx.group();
           ctx.rect(40, 160, 1240, 405, { rx: 14, fill: 'rgba(5,9,18,0.96)', stroke: 'lime', sw: 1.2, parent: S.vq, glow: true });
           S.vqT = title(ctx, S.vq, 64, 186, 'VIDEO JOBS: GANG WORKERS', 'lime');
-          var st = [['gang A · 8×B200', 'busy · step 31/40', 'lime'], ['gang B · 8×B200', 'idle', 'cyan'], ['gang C · 8×H100', 'busy · step 9/40', 'lime']];
+          var st = [['gang A · 8×B200', 'busy · step 39/50', 'lime'], ['gang B · 8×B200', 'idle', 'cyan'], ['gang C · 8×H100', 'busy · step 11/50', 'lime']];
           S.wk = st.map(function (w, i) {
             return ctx.node({ x: 930, y: 250 + i * 120, w: 280, h: 70, title: w[0], sub: w[1], icon: 'gpu', color: w[2], parent: S.vq });
           });
           S.pushSrc = ctx.node({ x: 250, y: 300, w: 190, h: 54, title: 'Router', sub: 'push per request', icon: 'net', color: 'red', parent: S.vq });
           var pushLine = ctx.line(345, 300, 790, 250, { color: 'red', dash: '5 5', sw: 1.6, parent: S.vq });
-          S.push = ctx.label(560, 262, 'shot5 pushed: waits behind step 31/40', { color: 'red', size: 11, parent: S.vq });
+          S.push = ctx.label(560, 262, 'shot5 pushed: waits behind step 39/50', { color: 'red', size: 11, parent: S.vq });
           ctx.focus([S.vq, S.met], 0.12);
           var b = ctx.group();
           title(ctx, b, 80, 600, 'PUSH vs PULL', 'lime');
@@ -933,7 +1000,7 @@
             S.br = ctx.node({ x: 300, y: 370, w: 280, h: 300, kind: 'ghost', color: 'lime', parent: S.vq });
             S.brT = ctx.text(300, 240, 'broker · queue "video"', { size: 13, color: 'lime', anchor: 'middle', font: 'mono', weight: 600, parent: S.vq });
             /* the trailer's last two shots, the critic's re-render of shot 3, and another tenant's NVL72 job */
-            S.jobs = [['shot5', '8 GPU · 40 steps', 'hi'], ['shot6', '8 GPU · 40 steps', 'hi'], ['shot3 redo', '8 GPU · critic', 'hi'], ['tenant-B', '16 GPU · NVL72', 'lo']].map(function (jb, i) {
+            S.jobs = [['shot5', '8 GPU · 50 steps', 'hi'], ['shot6', '8 GPU · 50 steps', 'hi'], ['shot3 redo', '8 GPU · critic', 'hi'], ['tenant-B', '16 GPU · NVL72', 'lo']].map(function (jb, i) {
               var g = ctx.group({ parent: S.vq });
               ctx.rect(190, 270 + i * 64, 220, 48, { rx: 8, fill: ctx.alpha('lime', 0.14), stroke: 'lime', sw: 1.2, parent: g });
               ctx.text(206, 288 + i * 64, jb[0] + ' · ' + jb[1], { size: 12, color: 'white', font: 'mono', parent: g });
@@ -950,7 +1017,7 @@
               return ctx.transform(j, { x: bx.l - 422, y: bx.cy - 294 }, 900, 'inOut');
             }).then(function () {
               ctx.fadeOut(S.jobs[0], 400, true);
-              S.wk[1].subEl.textContent = 'busy · shot5 · step 1/40';
+              S.wk[1].subEl.textContent = 'busy · shot5 · step 1/50';
               S.wk[1].body.setAttribute('stroke', ctx.color('lime'));
               return ctx.pulse(S.wk[1], { color: 'lime', dur: 600 });
             });

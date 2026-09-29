@@ -102,14 +102,17 @@
     id: 'attention',
     refs: [
       'Vaswani et al., <i>Attention Is All You Need</i>, NeurIPS 2017',
-      'Shazeer, <i>Fast Transformer Decoding: One Write-Head is All You Need</i> (MQA), 2019; Ainslie et al., <i>GQA: Training Generalized Multi-Query Transformer Models</i>, EMNLP 2023',
-      'DeepSeek-AI, <i>DeepSeek-V2</i> (Multi-head Latent Attention), 2024; <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Shazeer, <i>Fast Transformer Decoding: One Write-Head is All You Need</i> (MQA), 2019',
+      'Ainslie et al., <i>GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints</i>, EMNLP 2023',
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'DeepSeek-AI, <i>DeepSeek-V2: A Strong, Economical, and Efficient Mixture-of-Experts Language Model</i>, 2024',
       'Dao et al., <i>FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness</i>, NeurIPS 2022',
-      'Kwon et al., <i>Efficient Memory Management for LLM Serving with PagedAttention</i>, SOSP 2023',
+      'Kwon et al., <i>Efficient Memory Management for Large Language Model Serving with PagedAttention</i>, SOSP 2023',
       'Xiao et al., <i>Efficient Streaming Language Models with Attention Sinks</i>, ICLR 2024',
       'Yang et al., <i>Gated Delta Networks: Improving Mamba2 with Delta Rule</i>, ICLR 2025; Gemma Team, <i>Gemma 3 Technical Report</i>, 2025',
-      'Elhage et al., <i>A Mathematical Framework for Transformer Circuits</i>, 2021; Olsson et al., <i>In-context Learning and Induction Heads</i>, 2022',
-      'Su et al., <i>RoFormer: Enhanced Transformer with Rotary Position Embedding</i>, 2021; Peng et al., <i>YaRN: Efficient Context Window Extension of LLMs</i>, ICLR 2024'
+      'Elhage et al., <i>A Mathematical Framework for Transformer Circuits</i>, Transformer Circuits 2021',
+      'Olsson et al., <i>In-context Learning and Induction Heads</i>, 2022',
+      'Su et al., <i>RoFormer: Enhanced Transformer with Rotary Position Embedding</i>, 2021; Peng et al., <i>YaRN: Efficient Context Window Extension of Large Language Models</i>, ICLR 2024'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -177,8 +180,19 @@
             /* weight pill sits ON the arc (t = 0.5 of the quadratic), opaque so no line runs through the digits */
             ctx.label((x1 + x2) / 2, 113 + 0.5 * cy, P[5][j].toFixed(2), { color: 'amber', size: 11, bg: '#0d1a33', w: 46, parent: S.arcs });
           }
-          ctx.text(720, 196, 'query', { size: 11, font: 'mono', color: 'amber', anchor: 'middle', parent: S.arcs });
+          ctx.text(720, 190, 'query', { size: 11, font: 'mono', color: 'amber', anchor: 'middle', parent: S.arcs });
           hide(S.arcs);
+
+          /* the same six weights as bars: they are one softmax row, so they sum to one (replaced by the equation in beat 2) */
+          S.reads = card(ctx, null, 880, 170, 660, 214, 'amber', 'WHAT "ice" READS · one softmax row');
+          TOK.forEach(function (t, j) {
+            var y = 214 + j * 25;
+            ctx.text(950, y, t, { size: 12, font: 'mono', color: j === 5 ? 'amber' : 'text', anchor: 'end', parent: S.reads });
+            ctx.rect(962, y - 8, P[5][j] * 1100, 16, { rx: 3, fill: ctx.alpha('amber', 0.55), stroke: 'amber', sw: 1, parent: S.reads });
+            ctx.text(962 + P[5][j] * 1100 + 10, y, P[5][j].toFixed(2), { size: 12, font: 'mono', color: 'white', parent: S.reads });
+          });
+          ctx.text(900, 366, 'weights sum to 1.00: a convex blend of the six value vectors', { size: 12, font: 'mono', color: 'dim', parent: S.reads });
+          hide(S.reads);
 
           S.eq = ctx.group();
           ctx.rect(880, 160, 660, 110, { rx: 12, fill: 'rgba(8,14,28,0.92)', stroke: ctx.alpha('amber', 0.6), parent: S.eq, glow: true });
@@ -218,13 +232,15 @@
             /* beat 1: ice looks back at every earlier token */
             ctx.pulse(S.chips[5], { color: 'amber', dur: 700 });
             return ctx.reveal(S.arcs, { dur: 700 }).then(function () {
+              ctx.reveal(S.reads, { from: 'right', dur: 500 });
               return Promise.all(S.arcEls.map(function (a, i) { return ctx.packet(a, { color: 'amber', dur: 900 + i * 60, r: 4 }); }));
             });
           }).then(function () {
             return ctx.beat(2);
           }).then(function () {
-            /* beat 2: the one-line equation */
-            return ctx.reveal(S.eq, { from: 'right', dur: 700 }).then(function () { return ctx.pulse(S.eq, { color: 'amber', dur: 800 }); });
+            /* beat 2: the one-line equation replaces the bar list */
+            ctx.remove(S.reads, 350);
+            return ctx.reveal(S.eq, { from: 'right', dur: 700, delay: 200 }).then(function () { return ctx.pulse(S.eq, { color: 'amber', dur: 800 }); });
           }).then(function () {
             return ctx.beat(3);
           }).then(function () {
@@ -1358,7 +1374,7 @@
             card: { tag: 'NUMBERS', title: 'The Llama compromise', stat: { v: '8×', l: 'smaller cache than MHA in Llama 3 70B: 8 KV heads serve 64 query heads' } },
             deep: '<table><tr><th>Scheme</th><th>Elements / token / layer</th><th>70B-class, 80 L, BF16</th></tr>' +
               '<tr><td>GQA-8</td><td>2·8·128 = 2,048</td><td>320 KiB</td></tr></table>' +
-              '<p>GQA interpolates between MHA and MQA: g groups, each sharing one K and V head. Ainslie et al. showed quality close to MHA with speed close to MQA, and that an MHA checkpoint can be <i>up-trained</i> into GQA by mean-pooling K/V heads with ~5% of pre-training compute. Llama 3, Qwen, Mistral and Gemma all use it.</p>'
+              '<p>GQA interpolates between MHA and MQA: g groups, each sharing one K and V head. Ainslie et al. showed quality close to MHA with speed close to MQA, and that an MHA checkpoint can be <i>up-trained</i> into GQA by mean-pooling K/V heads with ~5% of pre-training compute. Llama 3, Qwen, Mistral and Gemma 2 and 3 all use it.</p>'
           },
           {
             say: 'DeepSeek\'s multi head latent attention goes further. It caches one small latent vector per token and reconstructs every head\'s keys and values from it, folding the up projections into the query and output weights.',

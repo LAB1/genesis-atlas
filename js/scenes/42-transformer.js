@@ -49,14 +49,19 @@
   Atlas.register({
     id: 'transformer',
     refs: [
-      'Vaswani et al., <i>Attention Is All You Need</i>, NeurIPS 2017; Xiong et al., <i>On Layer Normalization in the Transformer Architecture</i> (pre-LN), ICML 2020; Veit, Wilber &amp; Belongie, <i>Residual Networks Behave Like Ensembles of Relatively Shallow Networks</i>, NeurIPS 2016',
-      'Zhang &amp; Sennrich, <i>Root Mean Square Layer Normalization</i>, NeurIPS 2019; Sun et al., <i>Massive Activations in Large Language Models</i>, 2024',
-      'Shazeer, <i>GLU Variants Improve Transformer</i>, 2020; Kaplan et al., <i>Scaling Laws for Neural Language Models</i>, 2020',
-      'Su et al., <i>RoFormer: Enhanced Transformer with Rotary Position Embedding</i>, 2021; Peng et al., <i>YaRN: Efficient Context Window Extension of LLMs</i>, ICLR 2024; Barbero et al., <i>Round and Round We Go! What Makes Rotary Positional Encodings Useful?</i>, ICLR 2025',
-      'Ainslie et al., <i>GQA: Training Generalized Multi-Query Transformer Models</i>, EMNLP 2023; Shazeer, <i>Fast Transformer Decoding: One Write-Head is All You Need</i> (MQA), 2019; Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
-      'Fedus, Zoph &amp; Shazeer, <i>Switch Transformers</i>, JMLR 2022; DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
-      'Elhage et al., <i>A Mathematical Framework for Transformer Circuits</i>, 2021; Olsson et al., <i>In-context Learning and Induction Heads</i>, 2022',
-      'Geva et al., <i>Transformer Feed-Forward Layers Are Key-Value Memories</i>, EMNLP 2021'
+      'Vaswani et al., <i>Attention Is All You Need</i>, NeurIPS 2017',
+      'Xiong et al., <i>On Layer Normalization in the Transformer Architecture</i> (pre-LN), ICML 2020; Veit, Wilber &amp; Belongie, <i>Residual Networks Behave Like Ensembles of Relatively Shallow Networks</i>, NeurIPS 2016',
+      'Zhang &amp; Sennrich, <i>Root Mean Square Layer Normalization</i>, NeurIPS 2019; Sun et al., <i>Massive Activations in Large Language Models</i>, COLM 2024',
+      'Kaplan et al., <i>Scaling Laws for Neural Language Models</i>, 2020',
+      'Shazeer, <i>GLU Variants Improve Transformer</i>, 2020; Geva et al., <i>Transformer Feed-Forward Layers Are Key-Value Memories</i>, EMNLP 2021',
+      'Su et al., <i>RoFormer: Enhanced Transformer with Rotary Position Embedding</i>, 2021; Peng et al., <i>YaRN: Efficient Context Window Extension of Large Language Models</i>, ICLR 2024',
+      'Ainslie et al., <i>GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints</i>, EMNLP 2023',
+      'Shazeer, <i>Fast Transformer Decoding: One Write-Head is All You Need</i> (MQA), 2019',
+      'Llama Team, Meta AI, <i>The Llama 3 Herd of Models</i>, 2024',
+      'Fedus, Zoph &amp; Shazeer, <i>Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity</i>, JMLR 2022',
+      'DeepSeek-AI, <i>DeepSeek-V3 Technical Report</i>, 2024',
+      'Elhage et al., <i>A Mathematical Framework for Transformer Circuits</i>, Transformer Circuits 2021',
+      'Olsson et al., <i>In-context Learning and Induction Heads</i>, 2022'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 */
@@ -73,7 +78,7 @@
             say: 'Two sublayers branch off it. Attention reads a normalised copy of the vector, mixes information across positions, and adds its result back to the stream. Watch the vector for the token ice pick up its first update.',
             card: { tag: 'HOW IT WORKS', title: 'Read, mix, add back', body: 'Norm, then attention across positions, then add. The stream itself is never replaced.' },
             deep: '<div class="eq">h = x + Attn(RMSNorm(x))</div>' +
-              '<ul><li><b>Pre-norm</b> (norm inside the branch) keeps an unnormalised identity path from input to output: gradients reach early layers without passing through any normalisation, so 80–120-layer stacks train stably and are far less sensitive to learning-rate warm-up than post-norm (Xiong et al. 2020). The price: the stream norm grows with depth, so a final RMSNorm precedes the unembedding.</li>' +
+              '<ul><li><b>Pre-norm</b> (norm inside the branch) keeps an unnormalised identity path from input to output: gradients reach early layers without passing through any normalisation, so very deep stacks train stably and Pre-LN models can drop the learning-rate warm-up that post-norm needs (Xiong et al. 2020). The price: the stream norm grows with depth, so a final RMSNorm precedes the unembedding.</li>' +
               '<li>Attention is the only op that moves information <i>between</i> positions; everything else is position-wise.</li></ul>'
           },
           {
@@ -240,8 +245,8 @@
           },
           {
             say: 'Notice the outlier dimension. Large models develop a few huge activations. They dominate the root mean square, so normalising shrinks every other coordinate, and they are the main headache for low precision quantisation.',
-            card: { tag: 'PITFALL', title: 'Massive activations', body: 'A few coordinates can be 10⁴× the median. They inflate the rms and break INT8 and FP8 activation quantisation.' },
-            deep: '<ul><li><b>Massive activations</b> (Sun et al. 2024): a few activations, at fixed dimensions and specific tokens such as BOS or the first delimiter, are orders of magnitude (up to ~10⁴×) larger than the median. They inflate rms(x), so every other coordinate is scaled down; they act as implicit biases that create attention sinks, and together with channel outliers they are the main headache for INT8/FP8 activation quantisation.</li>' +
+            card: { tag: 'PITFALL', title: 'Massive activations', body: 'A few coordinates can be up to 10⁵× the median. They inflate the rms and make INT8 and FP8 activation quantisation hard.' },
+            deep: '<ul><li><b>Massive activations</b> (Sun et al. 2024): a few activations, at fixed dimensions and specific tokens such as BOS or the first delimiter, are orders of magnitude larger than the median (the paper’s abstract cites, for example, 100,000×). They inflate rms(x), so every other coordinate is scaled down; they act as implicit biases that create attention sinks, and together with channel outliers they are the main headache for INT8/FP8 activation quantisation.</li>' +
               '<li>Mitigations: per-channel or rotated activation quantisation (SmoothQuant, QuaRot), keeping the outlier channels in higher precision, or attention-sink tokens with explicit biases.</li></ul>'
           }
         ],
@@ -269,6 +274,9 @@
           S.rmsLbl = ctx.text(800, BY - rms * SC - 11, 'rms = ' + rms.toFixed(2), { size: 12, font: 'mono', color: 'amber', anchor: 'end', parent: g });
           S.phase = ctx.text(100, 624, '', { size: 15, font: 'mono', weight: 700, color: 'white', parent: g });
           S.outTxt = ctx.text(104 + 12 * 44 + 17, 850, 'outlier dim', { size: 11, font: 'mono', color: 'pink', anchor: 'middle', parent: g, opacity: 0 });
+          var outShare = Math.round(100 * X[12] * X[12] / X.reduce(function (a, v) { return a + v * v; }, 0));
+          S.outLbl = ctx.label(880, 640, 'holds ' + outShare + '% of Σx²', { size: 12, color: 'pink', anchor: 'end', parent: g, opacity: 0 });
+          S.outBox = ctx.rect(104 + 12 * 44 - 5, 596, bw + 10, 174, { rx: 6, stroke: 'pink', sw: 1.6, dash: '5 4', parent: g, opacity: 0 });
           function setBars(vals) {
             vals.forEach(function (v, i) {
               var h = Math.min(Math.abs(v) * SC, 165);
@@ -311,7 +319,7 @@
             return morph(Xn, Xg, 900);
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: the outlier dimension */
-            ctx.reveal(S.outTxt, { from: 'up', dur: 400 });
+            ctx.reveal([S.outTxt, S.outLbl, S.outBox], { from: 'up', dur: 400 });
             return ctx.pulse(S.nbars[12], { color: 'pink', times: 3, dur: 600 });
           });
         }
@@ -440,17 +448,17 @@
               '<p>Rotations are orthogonal, so R<sub>m</sub>ᵀR<sub>n</sub> = R<sub>n−m</sub>: the absolute positions cancel and only the offset survives. There are no position parameters to learn, and the scheme extrapolates naturally to any offset the frequencies can represent. The catch is that offsets beyond the training length produce angles the model has never seen, which is what the last beat repairs.</p>'
           },
           {
-            say: 'Now try it yourself. Click an offset chip and watch the three planes. The fast pair reacts to a shift of a few tokens, while the slowest pair only notices offsets in the thousands.',
+            say: 'Now try it yourself. Click an offset chip and watch the three planes. The fast pair reacts to a shift of a few tokens, while the slow pair barely moves until offsets reach the tens of thousands.',
             card: { tag: 'TRY IT', title: 'Click an offset', body: 'Δ = m − n turns q relative to k by Δ·θ in each plane. Fast planes wrap around for small Δ; slow planes barely move.' },
             deep: '<p>The angle between q and k in plane i is the base angle plus Δ·θ<sub>i</sub>. For Δ = 50: plane 0 turns 50 rad (about 8 full turns), plane 16 turns 1.9 rad (108°), plane 48 turns 0.003 rad. At Δ = 500 the middle plane has gone round 3 times and plane 48 has moved just 1.5°.</p>' +
-              '<p>So a head can read <i>near</i> offsets from the fast planes and <i>far</i> offsets from the slow ones. Plane 48 needs Δ ≈ 19,000 tokens to turn by one radian and the slowest pair about 400,000, so those planes are almost constant over any context; Barbero et al. (2024) find that models use them as channels for position-independent, semantic matching.</p>'
+              '<p>So a head can read <i>near</i> offsets from the fast planes and <i>far</i> offsets from the slow ones. Plane 48 needs Δ ≈ 19,000 tokens to turn by one radian and the slowest pair about 400,000, so those planes are almost constant over any context, which makes them usable as channels for position-independent, semantic matching.</p>'
           },
           {
             say: 'To reach long context, Llama three point one rescales the slow frequencies by a factor of eight and leaves the fast ones alone. Continued training on long sequences then stretches the window from eight thousand to one hundred twenty eight thousand tokens.',
             card: { tag: 'STATE OF THE ART', title: 'Stretching the clock', body: 'Scale slow pairs by 8×, keep fast ones, ramp in between. About 800B tokens of long-sequence training then cover 128k.' },
             deep: '<p><b>Context extension</b>: pairs whose wavelength exceeds the training length never completed a rotation, so unseen angles appear at longer contexts. Fixes rescale frequencies:</p>' +
               '<ul><li><b>Position interpolation</b>: θ<sub>i</sub>/s for all i (blurs local order).</li>' +
-              '<li><b>NTK-aware</b> scaling raises the base b, stretching low frequencies most and high ones least; <b>YaRN</b> ("NTK-by-parts") leaves high-frequency pairs untouched, fully interpolates low-frequency ones with a ramp between, and adds an attention temperature; it needs only a few hundred fine-tuning steps.</li>' +
+              '<li><b>NTK-aware</b> scaling raises the base b, stretching low frequencies most and high ones least; <b>YaRN</b> ("NTK-by-parts") leaves high-frequency pairs untouched, fully interpolates low-frequency ones with a ramp between, and adds an attention temperature; it needs only a few hundred fine-tuning steps (400 for a 16× extension in the paper).</li>' +
               '<li><b>Llama 3.1</b>: factor 8 on pairs with λ &gt; 8,192, untouched below λ = 2,048, smooth ramp between, followed by continued pretraining on long sequences (≈ 800 B tokens, context raised in six stages from 8k to 128k).</li></ul>'
           }
         ],
@@ -472,11 +480,12 @@
             var q = ctx.line(cx, cy, cx + R, cy, { color: 'amber', sw: 2.6, arrow: true, parent: pg });
             var k = ctx.line(cx, cy, cx + R, cy, { color: 'cyan', sw: 2.6, arrow: true, parent: pg });
             var arc = ctx.path('', { stroke: 'white', sw: 1.2, parent: pg });
-            return { cx: cx, cy: cy, R: R, th: th, q: q, k: k, arc: arc, q0: 0.35, k0: 1.25 };
+            var angT = ctx.text(cx, 822, '', { size: 11, font: 'mono', color: 'white', anchor: 'middle', parent: pg });
+            return { cx: cx, cy: cy, R: R, th: th, q: q, k: k, arc: arc, angT: angT, q0: 0.35, k0: 1.25 };
           });
-          ctx.text(90, 850, 'amber = q at position m     cyan = k at position n', { size: 12, font: 'mono', color: 'dim', parent: planeG });
+          ctx.text(90, 850, 'amber = q at position m  ·  cyan = k at position n', { size: 12, font: 'mono', color: 'dim', parent: planeG });
           S.posTxt = ctx.text(450, 850, '', { size: 13, font: 'mono', weight: 700, color: 'white', parent: g, opacity: 0 });
-          function setPos(m, n) {
+          function setPos(m, n, offMode) {
             planes.forEach(function (p) {
               var aq = p.q0 + m * p.th, ak = p.k0 + n * p.th;
               p.q.setAttribute('x2', p.cx + p.R * Math.cos(aq)); p.q.setAttribute('y2', p.cy - p.R * Math.sin(aq));
@@ -485,10 +494,30 @@
               var sx = p.cx + r * Math.cos(aq), sy = p.cy - r * Math.sin(aq), ex = p.cx + r * Math.cos(ak), ey = p.cy - r * Math.sin(ak);
               var dd = ((ak - aq) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
               p.arc.setAttribute('d', 'M' + sx.toFixed(1) + ',' + sy.toFixed(1) + ' A' + r + ',' + r + ' 0 ' + (dd > Math.PI ? 1 : 0) + ' 0 ' + ex.toFixed(1) + ',' + ey.toFixed(1));
+              p.angT.textContent = 'q to k: ' + Math.round(dd * 180 / Math.PI) + '°';
             });
-            S.posTxt.textContent = 'm = ' + Math.round(m) + '   n = ' + Math.round(n) + '   m − n = ' + Math.round(m - n) + '   fixed angle';
+            S.posTxt.textContent = offMode ? 'm = ' + Math.round(m) + '   n = ' + Math.round(n) + '   Δ = m − n = ' + Math.round(m - n)
+              : 'm = ' + Math.round(m) + '   n = ' + Math.round(n) + '   m − n = ' + Math.round(m - n) + '   fixed angle';
           }
           setPos(5, 0);
+          /* offset chips (beat 3): a fixed q position, k moved back by Δ */
+          var offG = ctx.group({ parent: g, opacity: 0 });
+          ctx.text(712, 668, 'Δ = m − n', { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: offG });
+          var OFFS = [0, 5, 50, 500];
+          S.offChips = OFFS.map(function (d, i) {
+            var c = ctx.label(712, 700 + i * 34, 'Δ = ' + d, { color: 'cyan', size: 11, w: 84, parent: offG });
+            c.style.cursor = 'pointer';
+            c.addEventListener('click', function (ev) { ev.stopPropagation(); S.setOffset(d, 700); });
+            return c;
+          });
+          S.curD = 5;
+          S.setOffset = function (d, ms) {
+            if (!S.offReady) return Promise.resolve();
+            S.offChips.forEach(function (c, i) { c.firstChild.setAttribute('fill', ctx.alpha('cyan', OFFS[i] === d ? 0.45 : 0.14)); });
+            var from = S.curD;
+            S.curD = d;
+            return ctx.tween(ms, function (t) { var dv = from + (d - from) * t; setPos(500, 500 - dv, true); }, 'inOut');
+          };
 
           /* wavelength plot (beat 1) with the Llama 3.1 rescaling (beat 3) */
           var WX = 800, WY = 612, WW = 680, WH = 200;
@@ -533,7 +562,14 @@
               return ctx.tween(4200, function (t) { var m = 5 + t * 55; setPos(m, m - 5); }, 'inOut');
             }).then(function () { return ctx.camera(null, null, null, 800); });
           }).then(function () { return ctx.beat(3); }).then(function () {
-            /* beat 3: Llama 3.1 rescales the slow pairs */
+            /* beat 3: try offsets: q stays put, k moves back by Δ; fast planes react first */
+            ctx.reveal(offG, { from: 'left', dur: 400 });
+            S.offReady = true;
+            return ctx.tween(700, function (t) { setPos(60 + 440 * t, 55 + 440 * t, true); }, 'inOut').then(function () {
+              return S.setOffset(50, 1400);
+            });
+          }).then(function () { return ctx.beat(4); }).then(function () {
+            /* beat 4: Llama 3.1 rescales the slow pairs */
             ctx.reveal(wg2, { dur: 300 });
             return ctx.reveal(S.w2, { from: 'draw', dur: 1200, delay: 200 });
           });
@@ -546,7 +582,7 @@
         beats: [
           {
             say: 'Now the MLP, which holds about four fifths of the block parameters. Its hidden layer has twenty eight thousand six hundred seventy two neurons, three and a half times the stream width.',
-            card: { tag: 'NUMBERS', title: 'Where the parameters are', more: '<p>Parameter parity with a classic MLP: two matrices of size d × 4d = 8d². Three matrices of size d × d<sub>ff</sub> = 3·d·d<sub>ff</sub>; equating gives d<sub>ff</sub> = 8/3·d ≈ 2.67 d. Llama 3 70B picks 3.5 d (28,672) to spend what GQA saved on attention.</p>', stat: { v: '705 M', l: 'parameters per MLP: 3·d·d_ff, about 82% of the block, with d_ff = 28,672 = 3.5 d' } },
+            card: { tag: 'NUMBERS', title: 'Where the parameters are', more: '<p>Parameter parity with a classic MLP: two matrices of size d × 4d = 8d². Three matrices of size d × d<sub>ff</sub> = 3·d·d<sub>ff</sub>; equating gives d<sub>ff</sub> = 8/3·d ≈ 2.67 d. Llama 3 70B uses 3.5 d (28,672), wider than that parity point.</p>', stat: { v: '705 M', l: 'parameters per MLP: 3·d·d_ff, about 82% of the block, with d_ff = 28,672 = 3.5 d' } },
             deep: '<div class="eq">MLP(x) = (SiLU(xW<sub>1</sub>) ⊙ xW<sub>3</sub>) W<sub>2</sub>, &nbsp; SiLU(z) = z·σ(z)</div>' +
               '<p>W<sub>1</sub>, W<sub>3</sub> ∈ ℝ<sup>d×d<sub>ff</sub></sup>, W<sub>2</sub> ∈ ℝ<sup>d<sub>ff</sub>×d</sup>: <b>3·d·d<sub>ff</sub></b> parameters. With d<sub>ff</sub> = 8/3·d the count matches a classic 4d GELU MLP (2 matrices × 4d²); Llama 3 70B uses d<sub>ff</sub> = 28,672 = 3.5 d → 705 M params, ≈ 1.4 GFLOP per token.</p>'
           },
@@ -711,7 +747,7 @@
               '<li><b>Load balancing</b> is the crux: auxiliary losses (Switch/GShard), or DeepSeek-V3’s aux-loss-free bias terms added to routing scores, prevent expert collapse.</li>' +
               '<li><b>Systems cost</b>: experts live on other GPUs, so every layer pays two all-to-all exchanges, and capacity factors cap per-expert batches.</li>' +
               '<li>Granularity trend: a few large experts (Mixtral 8×7B, top-2) → many fine-grained experts (DeepSeek-V3: 256 routed + 1 shared, top-8; Qwen3-235B-A22B: 128, top-8; Kimi K2: 384 + 1 shared, top-8).</li></ul>' +
-              '<details><summary>Go deeper</summary><p><b>Switch / GShard loss</b>: add α·N·Σ<sub>i</sub> f<sub>i</sub>P<sub>i</sub>, with f<sub>i</sub> the fraction of tokens sent to expert i and P<sub>i</sub> its mean router probability; it is smallest (α) when both are uniform. DeepSeek-V3 drops that competing gradient for a per-expert bias, added to the scores only when picking the top-k and nudged down for overloaded experts, up for idle ones.</p></details>'
+              '<details><summary>Go deeper</summary><p><b>Switch / GShard loss</b>: add α·N·Σ<sub>i</sub> f<sub>i</sub>P<sub>i</sub>, with f<sub>i</sub> the fraction of tokens sent to expert i and P<sub>i</sub> its mean router probability; it is smallest (α) when both are uniform. DeepSeek-V3 largely avoids that competing gradient: a per-expert bias, added to the scores only when picking the top-k, is nudged down for overloaded experts and up for idle ones (a tiny sequence-level balance loss remains as a safeguard).</p></details>'
           }
         ],
         run: function (ctx) {

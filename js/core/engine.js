@@ -281,18 +281,100 @@
    * nodes is cloned as a static SVG and shown dimmed behind the "Play this topic" prompt.
    * ================================================================ */
   Engine._posters = {};
-  function layerScore(layer) {
-    var s = 0;
-    Array.prototype.forEach.call(layer.querySelectorAll('text'), function (t) {
-      if (!(t.textContent || '').trim()) return;
-      var o = 1;
-      for (var n = t; n && n !== layer.parentNode; n = n.parentNode) {
-        var a = n.getAttribute && n.getAttribute('opacity');
-        if (a !== null && a !== undefined && a !== '') o *= parseFloat(a);
+  Engine._posterInfo = {};
+
+  /* Opacity a node really has on screen: the product of the opacity attributes / inline opacity up to the scene layer;
+   * 0 for anything hidden. (Scenes dim and fade with `opacity` attributes: ctx.focus, ctx.fade, reveal.) */
+  function effOpacity(n, root) {
+    var o = 1, v;
+    for (; n && n.nodeType === 1; n = n.parentNode) {
+      var a = n.getAttribute('opacity');
+      if (a !== null && a !== '') { v = parseFloat(a); if (!isNaN(v)) o *= v; }
+      if (n.style && n.style.opacity !== '') { v = parseFloat(n.style.opacity); if (!isNaN(v)) o *= v; }
+      if (n.getAttribute('display') === 'none' || n.getAttribute('visibility') === 'hidden' || (n.style && (n.style.display === 'none' || n.style.visibility === 'hidden'))) return 0;
+      if (o < 0.01) return 0;
+      if (n === root) break;
+    }
+    return o;
+  }
+
+  /* How complete a picture the layer shows right now. Counts what a viewer would see at full strength (groups faded
+   * below 50 % are ignored): text, nodes, shapes, and how much of the 1600 x 900 canvas the visible content covers
+   * (a full diagram spreads over the canvas, a fragment or a zoomed close-up does not). Returns the parts too. */
+  var POSTER_CELL = 40;
+  function layerStats(layer) {
+    var svgR = Engine.svg.getBoundingClientRect(), k = W / (svgR.width || W);
+    var saved = layer.getAttribute('transform');
+    layer.removeAttribute('transform');                 /* judge the un-zoomed picture: a poster never keeps a ctx.camera close-up */
+    var cols = Math.ceil(W / POSTER_CELL), rows = Math.ceil(H / POSTER_CELL), seen = {}, cells = 0, nText = 0, nShape = 0, nNode = 0, off = 0, faded = 0;
+    Array.prototype.forEach.call(layer.querySelectorAll('text, rect, circle, ellipse, path, line, polygon, polyline, image'), function (el) {
+      if (el.closest('defs, clipPath, mask, marker, pattern, filter, symbol')) return;
+      if (el.classList && (el.classList.contains('hotspot-hint') || el.classList.contains('hotspot-ripple'))) return;
+      var isText = el.tagName === 'text';
+      if (isText && !(el.textContent || '').trim()) return;
+      var eo = effOpacity(el, layer);
+      if (eo < 0.5) { if (isText && eo >= 0.04) faded++; return; }
+      if (el.tagName !== 'text' && el.getAttribute('fill') === 'none' && (el.getAttribute('stroke') || 'none') === 'none') return;   /* invisible */
+      var r = el.getBoundingClientRect();
+      if (r.width < 1 && r.height < 1) return;
+      var x = (r.left - svgR.left) * k, y = (r.top - svgR.top) * k, w = r.width * k, h = r.height * k;
+      if (x + w < -20 || y + h < -20 || x > W + 20 || y > H + 20) { off++; return; }
+      if (isText) nText++; else nShape++;
+      if (w * h > 0.35 * W * H) return;                   /* a backdrop panel says nothing about how much is drawn */
+      var x0 = Math.max(0, Math.floor(x / POSTER_CELL)), x1 = Math.min(cols - 1, Math.floor((x + w) / POSTER_CELL));
+      var y0 = Math.max(0, Math.floor(y / POSTER_CELL)), y1 = Math.min(rows - 1, Math.floor((y + h) / POSTER_CELL));
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 60 && !isText) { /* a big frame: count only its outline cells */
+        for (var cx = x0; cx <= x1; cx++) { mark(cx, y0); mark(cx, y1); }
+        for (var cy = y0; cy <= y1; cy++) { mark(x0, cy); mark(x1, cy); }
+        return;
       }
-      if (o > 0.4) s++;
+      for (var yy = y0; yy <= y1; yy++) for (var xx = x0; xx <= x1; xx++) mark(xx, yy);
     });
-    return s + layer.querySelectorAll('g.node').length * 2;
+    function mark(cx, cy) { var key = cy * cols + cx; if (!seen[key]) { seen[key] = 1; cells++; } }
+    Array.prototype.forEach.call(layer.querySelectorAll('g.node'), function (g) { if (effOpacity(g, layer) >= 0.5) nNode++; });
+    var targets = {};
+    Array.prototype.forEach.call(layer.querySelectorAll('.hotspot[data-target]'), function (g) { if (effOpacity(g, layer) >= 0.5) targets[g.getAttribute('data-target')] = 1; });
+    if (saved !== null) layer.setAttribute('transform', saved);
+    return { text: nText, nodes: nNode, shapes: nShape, cells: cells, off: off, faded: faded, hot: Object.keys(targets).length };
+  }
+  Engine._layerStats = layerStats;
+
+  /* Which step makes the best poster? The complete SYSTEM diagram: spread over the canvas (coverage), made of nodes and
+   * shapes rather than paragraphs, with every sub-component the chamber can zoom into visible at once (hotspots).
+   * Every term saturates, so a text-dense detail step (tables, code, math) cannot beat a clean overview just by having
+   * more words; step 1 (which by contract frames the chamber) and the last step (the summary) get a nudge that decides
+   * close calls (a mid-chamber step that zooms into one mechanism would otherwise win by a point or two). */
+  function posterScore(s, step, nSteps, nKids) {
+    var cov = Math.min(s.cells, 420) / 420 * 45;
+    var nod = Math.min(s.nodes, 10) / 10 * 20;
+    var txt = Math.min(s.text, 80) / 80 * 20 - Math.max(0, s.text - 140) * 0.15;
+    var shp = Math.min(s.shapes, 150) / 150 * 10;
+    var hot = nKids ? Math.min(s.hot, nKids) / nKids * 25 : 0;
+    var bias = 0;                                                   /* (framing / summary preference is applied in makePoster) */
+    var raw = (s.text + 2 * s.nodes + 0.15 * s.shapes + 0.6 * s.cells) * 0.01;      /* tie-break */
+    /* a 2D canvas overlay (ctx.canvas) is a separate element that a cloned SVG layer cannot carry, and its loops do not run
+     * while the poster is built: a step that draws on one would show an empty box */
+    var cvs = s.canvas ? 12 : 0;
+    /* text that is on stage but dimmed (a focus / fade in progress) makes a half-lit, cluttered picture */
+    var dim = Math.min(25, (s.faded || 0) * 0.5);
+    return cov + nod + txt + shp + hot + bias + raw - Math.min(20, s.off * 2) - cvs - dim;
+  }
+  Engine._posterScore = posterScore;
+
+  /* the clone shown behind the prompt: drop what the viewer would not see (faded-out groups, hover hints, decorations
+   * that only make sense live) and everything that could take keyboard focus */
+  function cleanPoster(node, acc) {
+    Array.prototype.slice.call(node.children).forEach(function (c) {
+      var tag = c.tagName.toLowerCase();
+      if (tag === 'defs' || tag === 'clippath' || tag === 'mask' || tag === 'marker' || tag === 'pattern' || tag === 'filter') return;
+      var o = acc, a = c.getAttribute('opacity'), v;
+      if (a !== null && a !== '') { v = parseFloat(a); if (!isNaN(v)) o *= v; }
+      if (c.style && c.style.opacity !== '') { v = parseFloat(c.style.opacity); if (!isNaN(v)) o *= v; }
+      if (tag === 'title' || o < 0.4 || c.getAttribute('display') === 'none' || c.getAttribute('visibility') === 'hidden' ||
+          (c.classList && (c.classList.contains('hotspot-hint') || c.classList.contains('hotspot-ripple')))) { node.removeChild(c); return; }
+      c.removeAttribute('tabindex'); c.removeAttribute('role'); c.removeAttribute('aria-label');
+      cleanPoster(c, o);
+    });
   }
 
   Engine.makePoster = function (id) {
@@ -302,20 +384,37 @@
     Engine._noHud = true;
     return Engine._build(id, 0).then(function (s) {
       s.wrap.setAttribute('visibility', 'hidden');
-      var best = null, bestScore = -1, chain = Promise.resolve();
-      steps.forEach(function (st) {
+      var best = null, bestIdx = -1, stats = [], clones = [], chain = Promise.resolve();
+      steps.forEach(function (st, si) {
         chain = chain.then(function () { s.ctx.instant = true; s.ctx._bt = null; return st.run ? st.run(s.ctx) : null; })
           .catch(function () { /* a glitching step just contributes nothing */ })
           .then(function () {
-            var sc = layerScore(s.ctx.layer);
-            if (sc >= bestScore) { bestScore = sc; best = s.ctx.layer.cloneNode(true); }
+            var stt = layerStats(s.ctx.layer);
+            stt.step = si + 1;
+            stt.canvas = !!s.ctx._canvas;
+            stt.score = posterScore(stt, si + 1, steps.length, Engine.children(id).length);
+            stats.push(stt);
+            clones[si] = s.ctx.layer.cloneNode(true);
           });
       });
       return chain.then(function () {
         teardown(s);
         Engine._noHud = false;
-        if (best) { best.removeAttribute('transform'); best.removeAttribute('class'); }
+        /* Best-scoring step, except that by the authoring contract step 1 frames the chamber and the last step summarises it:
+         * when either is within 5 % of the best, it is the better poster (a mid-chamber step usually zooms into one mechanism:
+         * a table, a chart, one stage of a pipeline). */
+        var raw = stats.map(function (t) { return t.score; }), top = 0, n = raw.length;
+        raw.forEach(function (v, i) { if (v > raw[top]) top = i; });
+        bestIdx = top;
+        if (n && raw[0] >= 0.95 * raw[top]) bestIdx = 0;
+        else if (n > 1 && raw[n - 1] >= 0.95 * raw[top]) bestIdx = n - 1;
+        /* an author can pin the poster: `Atlas.register({ ..., poster: 6 })` uses the picture at the end of step 6 (1-based) */
+        var pin = Engine.impl(id).poster;
+        if (pin >= 1 && pin <= n) bestIdx = Math.floor(pin) - 1;
+        best = bestIdx >= 0 ? clones[bestIdx] : null;
+        if (best) { best.removeAttribute('transform'); best.removeAttribute('class'); cleanPoster(best, 1); }
         Engine._posters[id] = best;
+        Engine._posterInfo[id] = { pick: bestIdx + 1, stats: stats };
         return best;
       });
     }).catch(function (err) { Engine._noHud = false; console.error('poster', err); return null; });
@@ -461,9 +560,10 @@
 
   function openProgress() {
     toggleZoomMenu(false);
-    $('#settings').classList.add('hidden');
+    toggleSettings(false);
     $('#prog').classList.remove('hidden');
     $('#btn-progress').classList.add('on');
+    $('#btn-progress').setAttribute('aria-expanded', 'true');
     progRender();
     var el = $('#prog .ps.cur') || $('#prog .pc.cur');
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
@@ -472,7 +572,7 @@
     var p = $('#prog');
     if (p) p.classList.add('hidden');
     var b = $('#btn-progress');
-    if (b) b.classList.remove('on');
+    if (b) { b.classList.remove('on'); b.setAttribute('aria-expanded', 'false'); }
   }
   function toggleProgress(force) {
     var open = force === undefined ? $('#prog').classList.contains('hidden') : force;
@@ -512,6 +612,7 @@
       for (var i = 0; i <= b; i++) showBeat(cur, bs, i, true);
       setNarration(bs[b].say);
       $$('span', Engine.subEl).forEach(function (sp) { sp.classList.add('past'); });
+      Engine.subEl.style.scrollBehavior = 'auto'; Engine.subEl.scrollTop = Engine.subEl.scrollHeight; Engine.subEl.style.scrollBehavior = ''; narrCue();   /* a restored point rests on the end of its text */
       var last = Engine.blocksEl.lastElementChild;
       if (last && last.scrollIntoView) last.scrollIntoView({ block: 'nearest' });
       bt.entered = b; cur.beatIdx = b;
@@ -537,14 +638,18 @@
    * ================================================================ */
   Engine.home = function () {
     closeMap(true); closeProgress(); toggleZoomMenu(false);
-    $('#settings').classList.add('hidden');
+    toggleSettings(false);
     if (Engine.cur && Engine.isPlaying()) Engine.pausePlayback();
     $('#intro-resume').style.display = Engine.cur ? '' : 'none';
     $('#intro').classList.remove('hidden');
+    /* the start page is modal: keyboard focus moves onto its main button */
+    var first = $('#intro-resume').style.display === 'none' ? $('#intro-tour') : $('#intro-resume');
+    if (first) setTimeout(function () { first.focus(); }, 60);
   };
   function leaveHome() {
     $('#intro').classList.add('hidden');
     if (Engine.cur && Engine.voicePaused) Engine.resumePlayback();
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   /* keys drive the atlas again */
   }
 
   Engine.setMuted = function (on) {
@@ -557,6 +662,7 @@
 
   function transition(prev, next, kind, box, backBox) {
     var bg = Engine.bgEl;
+    if (Engine.reduceMotion && prev) kind = 'none';        /* no zooming / sliding between chambers for people who asked for less motion */
     if (!prev || kind === 'none') {
       return etween(prev ? 10 : 700, function (t) { setWrapTf(next.wrap, W / 2, H / 2, 0.96 + 0.04 * t, t); }, X.Ease.out);
     }
@@ -600,6 +706,7 @@
   }
 
   function flash(col) {
+    if (Engine.reduceMotion) return;
     var f = Engine.flashEl;
     f.style.background = 'radial-gradient(circle at 50% 50%, ' + X.hexA(col, 0.3) + ', transparent 60%)';
     f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
@@ -1005,7 +1112,7 @@
     b.classList.toggle('on', playing);
     b.classList.toggle('paused', Engine.voicePaused);
     b.classList.toggle('waiting', waiting);
-    b.title = waiting ? 'Play this topic (Space)' : (playing ? 'Pause narration (Space)' : (Engine.voicePaused ? 'Resume narration (Space)' : 'Play this point again'));
+    setTip(b, waiting ? 'Play this topic (Space)' : (playing ? 'Pause narration (Space)' : (Engine.voicePaused ? 'Resume narration (Space)' : 'Play this point again')));
   }
   N.onState = updatePlayBtn;
 
@@ -1022,8 +1129,24 @@
     var muted = s.voiceMode === 'off', mb = $('#btn-mute');
     mb.innerHTML = muted ? ICON_SPK_OFF : ICON_SPK_ON;
     mb.classList.toggle('muted', muted);
-    mb.title = muted ? 'Reading mode: narration is muted. Click to turn the voice back on (V)' : 'Mute narration and read instead (V)';
+    setTip(mb, muted ? 'Reading mode: narration is muted. Click to turn the voice back on (V)' : 'Mute narration and read instead (V)');
+    /* toggle buttons announce their state */
+    function pressed(el, on) { if (el) el.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    pressed(mb, muted); pressed($('#btn-cc'), s.captions); pressed($('#btn-rails'), !s.rails);
+    $$('#mode-seg button, #set-mode button, #intro-mode-seg button, #set-theme button').forEach(function (b) { pressed(b, b.classList.contains('on')); });
     updatePlayBtn();
+  }
+  /* a title (hover tip) that is also the accessible name: icon-only buttons have no other name */
+  function setTip(el, text) { if (!el) return; el.title = text; el.setAttribute('aria-label', text); }
+  function initA11y() {
+    $$('#topbar button[title], #topbar .brand[title]').forEach(function (b) { if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', b.title); });
+    $('#btn-zoom').setAttribute('aria-haspopup', 'menu'); $('#btn-zoom').setAttribute('aria-expanded', 'false');
+    $('#btn-settings').setAttribute('aria-haspopup', 'dialog'); $('#btn-settings').setAttribute('aria-expanded', 'false');
+    $('#btn-progress').setAttribute('aria-haspopup', 'dialog'); $('#btn-progress').setAttribute('aria-expanded', 'false');
+    $('#btn-map').setAttribute('aria-haspopup', 'dialog');
+    $('#btn-deep').setAttribute('aria-controls', 'rail-right');
+    var t = $('#btn-theme'); if (t) t.setAttribute('aria-label', 'Switch between dark and light theme (T)');
+    $$('#mode-seg button, #set-mode button').forEach(function (b) { b.setAttribute('aria-label', { step: 'Step mode: one point per press', topic: 'Topic mode: press Play once and the topic plays through', auto: 'Auto mode: plays everything and opens topics by itself' }[b.getAttribute('data-v')]); });
   }
 
   /* ---------------- narration box (fixed callout in the left panel) ---------------- */
@@ -1034,14 +1157,49 @@
   function setNarration(text) {
     var sentences = text ? N.splitSentences(text) : [];
     Engine.subEl.innerHTML = sentences.map(function (s, i) { return '<span data-i="' + i + '">' + esc(s) + ' </span>'; }).join('');
+    ++narrToken;                                     /* a creep in progress belongs to the old text */
+    Engine.subEl.style.scrollBehavior = '';
     Engine.subEl.scrollTop = 0;
     Engine.captionEl.classList.toggle('empty', !sentences.length);
+    narrCue();
   }
-  N.onSentence = function (i) {
+  /* fades at the top / bottom edge of the narration box tell the reader there is more text to scroll to */
+  function narrCue() {
+    var b = Engine.subEl, c = Engine.captionEl;
+    if (!b || !c) return;
+    var can = b.scrollHeight > b.clientHeight + 2;
+    c.classList.toggle('more-below', can && b.scrollTop + b.clientHeight < b.scrollHeight - 3);
+    c.classList.toggle('more-above', can && b.scrollTop > 3);
+  }
+  /* As each sentence starts, bring it to the top of the box. A sentence longer than the whole box (the left column is
+   * narrow) is then scrolled slowly while it is spoken, so its end is reached by the time the voice gets there. */
+  var narrToken = 0;
+  N.onSentence = function (i, sentences) {
     var spans = Engine.subEl.querySelectorAll('span');
     for (var k = 0; k < spans.length; k++) { spans[k].classList.toggle('now', k === i); spans[k].classList.toggle('past', k < i); }
     var el = spans[i];
-    if (el) Engine.subEl.scrollTop = Math.max(0, el.offsetTop - Engine.subEl.offsetTop - 6);
+    var box = Engine.subEl, tok = ++narrToken;
+    if (!el) return;
+    var br = box.getBoundingClientRect(), r = el.getBoundingClientRect();
+    var sTop = r.top - br.top + box.scrollTop, sH = r.height, vis = box.clientHeight;
+    var from = Math.max(0, sTop - 6);
+    Engine._narrCreep = null;
+    if (sH <= vis - 12) {
+      box.style.scrollBehavior = '';                 /* the stylesheet's smooth scrolling */
+      box.scrollTop = from;
+    } else {
+      box.style.scrollBehavior = 'auto';
+      box.scrollTop = from;
+      var to = Math.min(box.scrollHeight - vis, sTop + sH - vis + 8);
+      var words = sentences && sentences[i] ? sentences[i].split(/\s+/).length : 16;
+      var ms = clamp(words / (2.55 * (N.rate || 0.9)) * 1000 * 0.8, 500, 25000);
+      Engine._narrCreep = { from: from, to: to, ms: ms };
+      etween(ms, function (t) {
+        if (tok !== narrToken) return;
+        box.scrollTop = from + (to - from) * t;
+      }, function (p) { return clamp((p - 0.1) / 0.8, 0, 1); }).then(function () { if (tok === narrToken) { box.style.scrollBehavior = ''; narrCue(); } });
+    }
+    narrCue();
   };
 
   /* ---------------- chrome (HUD, top bar, rails) ---------------- */
@@ -1084,8 +1242,41 @@
     var open = force === undefined ? m.classList.contains('hidden') : force;
     m.classList.toggle('hidden', !open);
     $('#btn-zoom').classList.toggle('on', open);
+    $('#btn-zoom').setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) $('#btn-zoom').classList.remove('attention');
   }
+
+  /* ---- panels: one place that knows what is open and how to close it (Escape closes the topmost) ---- */
+  function isOpen(sel) { var e = $(sel); return !!e && !e.classList.contains('hidden'); }
+  function toggleSettings(force) {
+    var pan = $('#settings');
+    var open = force === undefined ? pan.classList.contains('hidden') : force;
+    if (open) { toggleZoomMenu(false); closeProgress(); }
+    pan.classList.toggle('hidden', !open);
+    $('#btn-settings').classList.toggle('on', open);
+    $('#btn-settings').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  /* keyboard users open a panel with Enter / Space on its button: put the focus inside so Tab continues there */
+  function focusInto(sel) {
+    var e = $(sel + ' button, ' + sel + ' select, ' + sel + ' input');
+    if (e && e.focus) setTimeout(function () { e.focus(); }, 30);
+  }
+  function giveFocusBack(panelSel, btnSel) {
+    var a = document.activeElement, p = $(panelSel);
+    if (!a || a === document.body || (p && p.contains(a))) { var b = $(btnSel); if (b && b.offsetParent !== null) b.focus(); }
+  }
+  function closeTopmost() {
+    var pop = $('#pop');
+    if (pop && pop.classList.contains('show')) { pop.classList.remove('show'); return true; }
+    if (isOpen('#intro')) { if (Engine.cur) leaveHome(); return true; }
+    if (isOpen('#zoom-menu')) { giveFocusBack('#zoom-menu', '#btn-zoom'); toggleZoomMenu(false); return true; }
+    if (isOpen('#settings')) { giveFocusBack('#settings', '#btn-settings'); toggleSettings(false); return true; }
+    if (isOpen('#map')) { giveFocusBack('#map', '#btn-map'); closeMap(); return true; }
+    if (isOpen('#prog')) { giveFocusBack('#prog', '#btn-progress'); closeProgress(); return true; }
+    if (document.body.classList.contains('deep-open')) { giveFocusBack('#rail-right', '#btn-deep'); setDeep(false); return true; }
+    return false;
+  }
+  Engine.closeTopmost = closeTopmost;
 
   function updateChrome() {
     var cur = Engine.cur, meta = cur.meta;
@@ -1105,7 +1296,8 @@
     renderZoomMenu(cur);
     var pm = meta.parent ? Engine.meta(meta.parent) : null;
     $('#up-label').textContent = pm ? 'Back' : 'Start';
-    $('#btn-up').title = pm ? 'Back to the level above: ' + pm.title + ' (Esc)' : 'Back to the start page';
+    setTip($('#btn-up'), pm ? 'Back to the level above: ' + pm.title + ' (Esc)' : 'Back to the start page');
+    $('#svg').setAttribute('aria-label', meta.title + ': animated diagram');
     var tl = Engine.timelineEl;
     tl.innerHTML = '';
     (cur.impl.steps || []).forEach(function (st, i) {
@@ -1161,7 +1353,7 @@
     var pips = $('#pips');
     pips.innerHTML = '';
     bs.forEach(function (b, i) {
-      var p = h('button', 'pip'); p.title = 'Point ' + (i + 1) + ' of ' + bs.length;
+      var p = h('button', 'pip'); setTip(p, 'Go to point ' + (i + 1) + ' of ' + bs.length);
       p.onclick = function () { if (Engine.cur && Engine.cur.beatIdx !== i) Engine.seekBeat(i); };
       pips.appendChild(p);
     });
@@ -1172,7 +1364,7 @@
 
   function showBeat(cur, bs, j, instant) {
     var b = bs[j];
-    $$('.pip', $('#pips')).forEach(function (p, i) { p.classList.toggle('done', i < j); p.classList.toggle('cur', i === j); });
+    $$('.pip', $('#pips')).forEach(function (p, i) { p.classList.toggle('done', i < j); p.classList.toggle('cur', i === j); if (i === j) p.setAttribute('aria-current', 'step'); else p.removeAttribute('aria-current'); });
     if (!instant) setNarration(b.say);
     if (b.card) addCard(b.card, j, instant);
     $$('.blk', Engine.blocksEl).forEach(function (e) { e.classList.remove('now'); });
@@ -1187,7 +1379,12 @@
       blk.appendChild(body);
       decorateBlock(body);
       Engine.blocksEl.appendChild(blk);
-      if (!instant) setTimeout(function () { blk.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 60);
+      if (!instant) setTimeout(function () {
+        /* a block taller than the panel is shown from its top (not its tail); otherwise scroll only as far as needed */
+        var pr = $('#deep').getBoundingClientRect();
+        var tall = blk.getBoundingClientRect().height > pr.height - 40;
+        blk.scrollIntoView({ block: tall ? 'start' : 'nearest', behavior: Engine.reduceMotion ? 'auto' : 'smooth' });
+      }, 60);
     }
   }
 
@@ -1203,7 +1400,12 @@
     if (c.more) html += '<button class="more-btn">Go deeper</button><div class="more"><div>' + c.more + '</div></div>';
     el.innerHTML = html;
     var mb = $('.more-btn', el);
-    if (mb) mb.onclick = function () { el.classList.toggle('open'); };
+    if (mb) mb.onclick = function () {
+      el.classList.toggle('open');
+      mb.setAttribute('aria-expanded', el.classList.contains('open') ? 'true' : 'false');
+      /* the extra text grows the card; keep the card in view once the panel has finished opening */
+      if (el.classList.contains('open')) setTimeout(function () { el.scrollIntoView({ block: 'nearest', behavior: Engine.reduceMotion ? 'auto' : 'smooth' }); }, 480);
+    };
     el.addEventListener('dblclick', function () { if (Engine.cur && Engine.cur.beatIdx !== j) Engine.seekBeat(j); });
     /* the newest card owns the top slot in full; the previous one folds into "Earlier points" */
     var slot = $('#card-new'), prevCard = slot.firstElementChild;
@@ -1215,7 +1417,8 @@
     }
     slot.appendChild(el);
     updateHistSummary();
-    if (!instant) { Engine.cardsHost.scrollTop = 0; }
+    /* the newest card is always shown from its top (on narrow windows the whole left column scrolls, not just the cards) */
+    if (!instant) { Engine.cardsHost.scrollTop = 0; var rl = $('#rail-left'); if (rl && document.body.classList.contains('narrow')) rl.scrollTop = 0; }
   }
 
   function updateHistSummary() {
@@ -1374,6 +1577,7 @@
 
   /* the map covers the stage, so narration pauses while it is open */
   function openMap() {
+    toggleSettings(false); toggleZoomMenu(false); closeProgress();
     if (!Engine._held) { Engine._held = true; if (Engine.isPlaying()) { Engine._heldWasPlaying = true; Engine.pausePlayback(); } else Engine._heldWasPlaying = false; }
     renderMap(); $('#map').classList.remove('hidden'); setTimeout(function () { $('#map-filter').focus(); }, 60);
   }
@@ -1407,6 +1611,9 @@
   var MIN_STAGE_WITH_DEEP = 1180;
   function fit() {
     var main = $('#main'), st = $('#stage'), body = document.body;
+    /* the top bar wraps onto a second row on narrow windows; the fixed panels hang from its measured bottom edge */
+    var tbH = Math.ceil($('#topbar').getBoundingClientRect().height);
+    if (tbH > 0) document.documentElement.style.setProperty('--topbar-h', tbH + 'px');
     var cs = getComputedStyle(main);
     var padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight), padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
     var innerW = main.clientWidth - padX, innerH = main.clientHeight - padY;
@@ -1420,9 +1627,11 @@
     if (focus) {
       w = Math.min(innerW, maxW);
       cols = '1fr';
+      Engine._deepOpen = false;                         /* focus mode hides every panel (D leaves it and opens the deep dive) */
     } else if (narrow) {
       w = Math.min(innerW, innerH * 0.62 * 16 / 9);
       cols = '1fr';
+      Engine._deepOpen = Engine.settings.deep === true; /* narrow windows: the deep dive is a drawer the reader opens (it used to stay stuck closed) */
     } else {
       var wBoth = Math.min(innerW - L - Rw - 2 * gap, maxW);
       var fits = wBoth >= MIN_STAGE_WITH_DEEP;
@@ -1445,6 +1654,9 @@
     body.classList.toggle('deep-inline', inline);
     body.classList.toggle('deep-open', !focus && !inline && !!Engine._deepOpen);
     body.classList.toggle('layout-focus', focus);
+    /* a parked (closed) drawer must not take keyboard focus; `inert` also hides it from screen readers */
+    var rr = $('#rail-right');
+    if (rr) { var closed = !inline && !(!focus && !!Engine._deepOpen); if ('inert' in rr) rr.inert = closed; rr.setAttribute('aria-hidden', closed ? 'true' : 'false'); }
     st.style.width = Math.floor(w) + 'px';
     st.style.height = Math.floor(w * 9 / 16) + 'px';
     main.style.gridTemplateColumns = cols;
@@ -1501,10 +1713,9 @@
 
   function bindSettings() {
     var pan = $('#settings');
-    function toggle(force) { var open = force === undefined ? pan.classList.contains('hidden') : force; pan.classList.toggle('hidden', !open); $('#btn-settings').classList.toggle('on', open); }
-    $('#btn-settings').onclick = function (e) { e.stopPropagation(); toggleZoomMenu(false); closeProgress(); toggle(); };
+    $('#btn-settings').onclick = function (e) { e.stopPropagation(); toggleSettings(); if (e.detail === 0 && isOpen('#settings')) focusInto('#settings'); };
     document.addEventListener('click', function (e) {
-      if (!pan.classList.contains('hidden') && !e.target.closest('#settings') && !e.target.closest('#btn-settings')) toggle(false);
+      if (!pan.classList.contains('hidden') && !e.target.closest('#settings') && !e.target.closest('#btn-settings')) toggleSettings(false);
       if (!$('#zoom-menu').classList.contains('hidden') && !e.target.closest('#zoom-menu') && !e.target.closest('#btn-zoom')) toggleZoomMenu(false);
     });
     $$('#set-mode button, #intro-mode-seg button, #mode-seg button').forEach(function (b) {
@@ -1543,7 +1754,7 @@
     $('#btn-prev').onclick = Engine.prev;
     $('#btn-next').onclick = Engine.next;
     $('#btn-replay').onclick = Engine.replay;
-    $('#btn-zoom').onclick = function (e) { e.stopPropagation(); $('#settings').classList.add('hidden'); toggleZoomMenu(); };
+    $('#btn-zoom').onclick = function (e) { e.stopPropagation(); toggleSettings(false); toggleZoomMenu(); if (e.detail === 0 && isOpen('#zoom-menu')) focusInto('#zoom-menu'); };
     $('#btn-cc').onclick = function () { Engine.setCaptions(!Engine.settings.captions); };
     $('#btn-map').onclick = openMap;
     $('#map-close').onclick = function () { closeMap(); };
@@ -1557,8 +1768,9 @@
     $('#btn-restart').onclick = Engine.restart;
     $('#btn-up').onclick = function () { Engine.tour = null; var m = Engine.cur && Engine.meta(Engine.cur.id); if (m && m.parent) Engine.up(); else Engine.home(); };
     $('.brand').onclick = Engine.home;
+    $('.brand').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Engine.home(); } });
     $('#btn-mute').onclick = function () { Engine.setMuted(Engine.settings.voiceMode !== 'off'); };
-    $('#btn-progress').onclick = function (ev) { ev.stopPropagation(); toggleProgress(); };
+    $('#btn-progress').onclick = function (ev) { ev.stopPropagation(); toggleProgress(); if (ev.detail === 0 && isOpen('#prog')) focusInto('#prog'); };
     $('#prog-close').onclick = closeProgress;
     $('#prog-map').onclick = function () { closeProgress(); openMap(); };
     $('#map-progress-btn').onclick = function () { closeMap(true); openProgress(); };
@@ -1571,18 +1783,28 @@
     $('#btn-deep').onclick = function () { if (!Engine.settings.rails) Engine.settings.rails = true; setDeep(!Engine._deepOpen); };
     $('#deep-close').onclick = function () { setDeep(false); };
     $('#btn-theme').onclick = function () { setTheme(Engine.settings.theme === 'dark' ? 'light' : 'dark'); };
+    /* Escape closes the topmost thing that is open, in stacking order; only when nothing is open does it zoom out */
     window.addEventListener('keydown', function (e) {
       var tg = e.target && e.target.tagName;
-      if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') { if (e.key === 'Escape') closeMap(); return; }
+      var typing = tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA';
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        if (closeTopmost()) { e.preventDefault(); return; }
+        if (typing) return;
+      } else if (typing) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       var k = e.key;
-      if (!$('#intro').classList.contains('hidden')) { if (k === 'Escape' && Engine.cur) leaveHome(); return; }
-      if (k === 'Escape' && !$('#prog').classList.contains('hidden')) { closeProgress(); return; }
+      if (!$('#intro').classList.contains('hidden')) return;
       var mapOpen = !$('#map').classList.contains('hidden');
-      if (k === 'Escape' && mapOpen) { closeMap(); return; }
-      if (k === 'Escape' && !$('#zoom-menu').classList.contains('hidden')) { toggleZoomMenu(false); return; }
       if (k === 'm' || k === 'M') { mapOpen ? closeMap() : openMap(); e.preventDefault(); return; }
       if (mapOpen) return;
+      /* keys with a native meaning on the focused control keep it: Space / Enter on a button, link or summary, the
+       * paging and arrow keys inside a scrolling text panel (the panels are focusable so they can be scrolled by keyboard) */
+      var onControl = e.target && e.target.closest && e.target.closest('button, a[href], summary, [role="button"]');
+      var inText = e.target && e.target.closest && e.target.closest('#deep, #cards-host, #narr-text, #prog-scroll, #settings, #zoom-menu');
+      var inWide = e.target && e.target.closest && e.target.closest('pre, .eq, table');
+      if (k === ' ' && onControl) return;
+      if ((k === 'PageDown' || k === 'PageUp' || k === 'ArrowUp' || k === 'Backspace') && (inText || onControl)) return;
+      if ((k === 'ArrowRight' || k === 'ArrowLeft') && inWide) return;
       if (k === 'ArrowRight' || k === 'PageDown') { Engine.next(); e.preventDefault(); }
       else if (k === 'ArrowLeft' || k === 'PageUp') { Engine.prev(); e.preventDefault(); }
       else if (k === ' ') { if (Engine.settings.mode === 'auto' || (Engine.cur && Engine.cur.pending)) Engine.togglePlay(); else Engine.next(); e.preventDefault(); }
@@ -1639,8 +1861,31 @@
     applyVoiceSettings();
     applyCaptionSettings();
     bindUi();
+    initA11y();
     syncControls();
     fit();
+    /* the top bar can change height (it wraps on narrow windows) when fonts arrive or its buttons appear / disappear */
+    if (window.ResizeObserver) {
+      var tbLast = 0;
+      new ResizeObserver(function () { var hh = $('#topbar').offsetHeight; if (hh !== tbLast) { tbLast = hh; fit(); } }).observe($('#topbar'));
+    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { fit(); narrCue(); });
+    Engine.subEl.addEventListener('scroll', narrCue);
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function (ev) {
+      Engine.subEl.addEventListener(ev, function () { ++narrToken; Engine.subEl.style.scrollBehavior = ''; }, { passive: true });   /* the reader takes over the scrolling */
+    });
+    window.addEventListener('resize', narrCue);
+    /* a mouse click must not leave keyboard focus parked on a button: Space / arrows keep driving the atlas afterwards
+     * (keyboard activation has detail 0 and keeps its focus) */
+    document.addEventListener('click', function (e) {
+      if (e.detail > 0 && e.target.closest) { var bb = e.target.closest('button, summary, .brand'); if (bb && bb.blur) bb.blur(); }
+    }, true);
+    if (window.matchMedia) {
+      var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      Engine.reduceMotion = mq.matches;
+      var onMq = function () { Engine.reduceMotion = mq.matches; };
+      if (mq.addEventListener) mq.addEventListener('change', onMq); else if (mq.addListener) mq.addListener(onMq);
+    }
     var missing = Engine.order.filter(function (m) { return !Engine.scenes[m.id]; }).map(function (m) { return m.id; });
     if (missing.length) console.info('[atlas] placeholder scenes:', missing.join(', '));
     $('#intro-count').textContent = Engine.order.length;
@@ -1655,6 +1900,9 @@
     $('#intro-map').onclick = function () { start(function () { Engine.go('overview').then(function () { openMap(); }); }); };
     $('#start-btn').onclick = function () { Engine.startPending(); };
   };
+
+  /* test hooks (tools/smoke.js): drive the left / right panels without running a scene */
+  Engine._ui = { renderStepStart: renderStepStart, showBeat: showBeat, setNarration: setNarration, updateChrome: updateChrome, fit: fit };
 
   window.Atlas = {
     register: Engine.register,

@@ -123,7 +123,7 @@
           {
             say: 'The sixth member is the critic, a vision language model that judges every clip against a rubric. It never made the clip, so its verdict is an independent check.',
             card: { tag: 'WHY IT MATTERS', title: 'Generator and judge stay apart', body: 'A model tends to approve its own work. A separate critic, with its own prompt and no view of the maker\'s reasoning, catches what the maker cannot see.',
-              more: '<p>LLM judges show <b>self-preference</b>, position and verbosity biases (Zheng et al., 2023). Where budget allows, run the critic on a different model family from the generator, and calibrate its thresholds against human-labelled clips.</p>' },
+              more: '<p>LLM judges show <b>self-enhancement</b>, position and verbosity biases (Zheng et al., 2023). Where budget allows, run the critic on a different model family from the generator, and calibrate its thresholds against human-labelled clips.</p>' },
             deep: '<p><b>Critic (VLM)</b>: tools <code>frames</code>, <code>embed</code>, <code>score</code>; output a structured <code>verdict</code>. It samples frames, embeds character crops, compares them with the shared bible and scores a rubric (step 6).</p>' +
               '<p>Independence is the design goal: separate prompt, separate context, ideally a different model family, because judges favour their own generations. Steps 6 and 7 show what the critic buys and what it costs.</p>'
           },
@@ -218,8 +218,8 @@
           },
           {
             say: 'And debate, or critique, pits proposers against each other in front of a judge. An independent check finds errors an author would miss, at two to three times the tokens for a critic, and more for a full debate.',
-            card: { tag: 'NUMBERS', title: 'The price of a second opinion', stat: { v: '2–3×', l: 'tokens per decision with a critic; a full debate costs n × r (6× here)' },
-              more: '<p>Cost model: <i>n</i> agents × <i>r</i> rounds mean <i>n·r</i> generations, and in each later round every agent also reads the other <i>n−1</i> answers, so prompt tokens grow roughly as <i>n·(n−1)·r·L</i> for answer length <i>L</i>. Du et al. use 3 agents and 2 rounds by default; more rounds mostly converge on the majority answer.</p>' },
+            card: { tag: 'NUMBERS', title: 'The price of a second opinion', stat: { v: '2–3×', l: 'tokens per decision with a critic (rule of thumb); a full debate costs n × r (6× here)' },
+              more: '<p>Cost model: <i>n</i> agents × <i>r</i> rounds mean <i>n·r</i> generations, and in every round after the first each agent also reads the other <i>n−1</i> answers, so the extra prompt tokens grow roughly as <i>n·(n−1)·(r−1)·L</i> for answer length <i>L</i>. Du et al. mainly use 3 agents and 2 rounds; in their study accuracy rises with more rounds and plateaus at about four.</p>' },
             deep: '<p><b>Debate</b> (Du et al., 2024): <i>n</i> agents × <i>r</i> rounds cost about <i>n·r</i> generations and improve factuality and arithmetic reasoning. Context flows as exchanged arguments; the judge decides with evidence.</p>' +
               '<p>In media pipelines the cheaper variant usually wins: <b>generate → critique → targeted redo</b>. Caveat: judges share biases with the proposers, so agreement is weaker evidence than it looks.</p>'
           },
@@ -362,17 +362,17 @@
               '<li><b>Scoped access</b>: agents receive short-TTL pre-signed GETs, never bucket credentials.</li></ul>'
           },
           {
-            say: 'Only a reference travels onward: a URI, a content hash, a duration and a one line summary. The whole message is about ninety tokens.',
-            card: { tag: 'NUMBERS', title: 'A whole clip in one line', stat: { v: '≈ 90', u: 'tokens', l: 'the whole artifact_ref: URI, hash, MIME, duration, thumbnail, summary' } },
-            deep: '<p>The <code>artifact_ref</code> JSON on the stage is roughly 90 tokens with the hash abbreviated as shown (a full 64-character sha256 adds about 30); URIs and hashes tokenize poorly, so do not expect fewer. It carries everything a downstream LLM needs to <i>reason about</i> the clip without seeing it: what it is, who made it, how long it is, a one-line summary and a thumbnail URI.</p>' +
+            say: 'Only a reference travels onward: a URI, a content hash, a duration and a one line summary. The whole message is roughly a hundred tokens.',
+            card: { tag: 'NUMBERS', title: 'A whole clip in one line', stat: { v: '≈ 100', u: 'tokens', l: 'the whole artifact_ref: URI, hash, MIME, duration, thumbnail, summary' } },
+            deep: '<p>The <code>artifact_ref</code> JSON on the stage is roughly 100 tokens with the hash abbreviated as shown (an estimate; the exact count depends on the tokenizer, and a full 64-character sha256 adds about 30); URIs and hashes tokenize poorly, so do not expect fewer. It carries everything a downstream LLM needs to <i>reason about</i> the clip without seeing it: what it is, who made it, how long it is, a one-line summary and a thumbnail URI.</p>' +
               '<p>Workflow engines enforce the same discipline: Temporal caps a payload at about 2&nbsp;MB, so activities must return references anyway.</p>'
           },
           {
             say: 'Pasting the same clip into context as base sixty four text would cost millions of tokens, and even as sampled video frames it costs tens of thousands, paid again on every turn.',
-            card: { tag: 'PITFALL', title: 'Bytes in context are a recurring bill', body: 'Base64 is <b>about 3 M tokens</b>, larger than any window. Even sampled frames cost 30,960 at 24 fps, and an agent loop re-sends them every turn.',
-              more: '<p>Base64 packs 3 bytes into 4 characters, so 6&nbsp;MB becomes 8 M characters. Tokenizers see near-random strings and merge them poorly, at roughly 2 to 3 characters per token: 2.7 to 4 M tokens against a 200k to 1 M window. A clip is simply not representable as text.</p>' },
+            card: { tag: 'PITFALL', title: 'Bytes in context are a recurring bill', body: 'Base64 is <b>at least ~3 M tokens</b>, far beyond typical windows. Even sampled frames cost 30,960 at 24 fps, and an agent loop re-sends them every turn.',
+              more: '<p>Base64 packs 3 bytes into 4 characters, so 6&nbsp;MB becomes 8 M characters. Tokenizers see near-random strings and merge them poorly: even at a generous 2 to 3 characters per token that is 2.7 to 4 M tokens, and real tokenizers usually do worse, against a typical 200k to 1 M window. A clip is simply not representable as text.</p>' },
             deep: '<div class="eq">C<sub>vis</sub> = f<sub>s</sub> · T · t<sub>frame</sub> &nbsp;⇒&nbsp; 24 fps · 5 s · 258 = 30,960 tokens</div>' +
-              '<p>258 tokens per frame is Gemini’s default per-frame rate; sampling at 1&nbsp;fps gives 1,290. As base64 text, a 6&nbsp;MB clip becomes 8&nbsp;MB of characters, and base64 tokenizes at only 2 to 3 characters per token: about 3 M tokens, beyond any context window.</p>' +
+              '<p>258 tokens per frame is the Gemini API’s default per-frame rate (66 at low media resolution); sampling at 1&nbsp;fps gives 1,290. As base64 text, a 6&nbsp;MB clip becomes 8&nbsp;MB of characters, and even at a generous 2 to 3 characters per token that is at least about 3 M tokens, far beyond typical context windows.</p>' +
               '<p>Worse, an agent loop re-sends its context every turn, so prompt cost grows as Σ<sub>turns</sub>|context| unless a prefix cache absorbs it.</p>'
           },
           {
@@ -396,7 +396,7 @@
           panel(ctx, 36, 165, 590, 235, 'teal', bars);
           head(ctx, 56, 190, 'TOKENS TO PUT ONE 5 s CLIP IN CONTEXT', 'teal', bars);
           ctx.text(606, 190, 'log scale', { size: 11, font: 'mono', color: 'dim', anchor: 'end', parent: bars });
-          var rows = [['base64 bytes in JSON', 3.0e6, 'red', '~3,000,000'], ['frames @24 fps × 258', 30960, 'amber', '30,960'], ['frames @1 fps × 258', 1290, 'violet', '1,290'], ['artifact_ref (JSON)', 90, 'teal', '~90']];
+          var rows = [['base64 bytes in JSON', 3.0e6, 'red', '≥ 3,000,000'], ['frames @24 fps × 258', 30960, 'amber', '30,960'], ['frames @1 fps × 258', 1290, 'violet', '1,290'], ['artifact_ref (JSON)', 100, 'teal', '~100']];
           S.refBars = []; S.refVals = [];
           rows.forEach(function (r, k) {
             var y = 228 + k * 42;
@@ -430,7 +430,7 @@
             return S.refJson.typeAll().then(function () {
               return ctx.packet(S.dl[2], { color: 'teal', r: 4, dur: 800, reverse: true, label: 'ref' });
             }).then(function () {
-              return ctx.packet(S.dl[5], { color: 'teal', r: 4, dur: 800, label: 'ref · ~90 tok' });
+              return ctx.packet(S.dl[5], { color: 'teal', r: 4, dur: 800, label: 'ref · ~100 tok' });
             });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: what pixels would cost */
@@ -476,9 +476,9 @@
             say: 'The first request writes the cache, and the next five read it at a fraction of the cost and latency.',
             card: { tag: 'NUMBERS', title: 'Six workers, one cache write', stat: { v: '−71%', l: 'prefix cost: 1.25P + 5 × 0.1P = 1.75P instead of 6P' },
               more: '<p><b>Fan-out gotcha</b>: a cache entry is usable only after the first request has written it. Six requests fired in the same instant can all miss. Send worker 1 first (or a 1-token warm-up), then fan out, and route all six to the same replica on self-hosted engines.</p>' },
-            deep: '<p>Cost with Anthropic-style pricing (cache write 1.25×, cache read 0.1× the input price) for a prefix of P = 3.1k tokens across 6 workers:</p>' +
+            deep: '<p>Cost with Anthropic-style pricing (5-minute cache write 1.25×, cache read 0.1× the input price) for a prefix of P = 3.1k tokens across 6 workers:</p>' +
               '<div class="eq">1.25P + 5 · 0.1P = 1.75P &nbsp;vs&nbsp; 6P &nbsp;⇒&nbsp; −71% prefix cost</div>' +
-              '<p>Cached prefixes also cut time-to-first-token, because prefill of those blocks is skipped. Other providers discount cached input by roughly 50–90%.</p>' +
+              '<p>Cached prefixes also cut time-to-first-token, because prefill of those blocks is skipped. Other providers discount cached input by roughly 50–90%. A prefix must also exceed the model’s minimum cacheable length (512 to 4,096 tokens depending on the Claude model), so a 3.1k prefix qualifies on most models but not on all.</p>' +
               '<p><b>Fan-out gotcha</b>: send worker 1 first, then fan out (the stagger in the animation). Self-hosted engines with a shared radix cache behave the same way within one replica, so use prefix-aware load balancing.</p>'
           }
         ],
@@ -734,7 +734,7 @@
               '<li><b>Aesthetics and adherence</b>: VLM scores against the prompt and the bible, on a fixed rubric with anchored examples.</li></ul>'
           },
           {
-            say: "Shot three fails. The fox's visor came out amber instead of teal, so identity scores only point four one, and the missing mission patch drags continuity down to point five five.",
+            say: "Shot three fails. Between three point one and three point six seconds the fox's visor flips from teal to amber and the mission patch vanishes, so identity scores only point four one and continuity point five five.",
             card: { tag: 'NUMBERS', title: 'Identity fails the shot', stat: { v: '0.41', l: 'identity score on shot 3: the weighted total is 0.66, below the 0.75 gate' },
               more: '<p>Had identity scored 0.88 like its neighbours, the total would be 0.80 and the shot would pass. Identity carries weight 0.30, the largest, because a wrong face is the failure viewers notice first, and a wrong face cannot be fixed in the edit.</p>' },
             deep: '<p>Shot 3 v1: s = 0.2·0.81 + 0.3·0.41 + 0.15·0.82 + 0.1·0.84 + 0.15·0.55 + 0.1·0.83 = <b>0.66</b> → reject.</p>' +
@@ -743,15 +743,15 @@
           {
             say: 'The critic returns structured feedback, not prose: which criteria failed, why, and what to change in the prompt and the references.',
             card: { tag: 'KEY IDEA', title: 'Feedback is data, not prose', body: 'A JSON verdict with failed criteria and a <code>fix</code> object lets the director act mechanically, with no re-interpretation of a paragraph.' },
-            deep: '<ul><li><b>Judge hygiene</b>: LLM and VLM judges show position, verbosity and self-preference biases (Zheng et al.). Calibrate thresholds on human-labelled clips (report Spearman ρ), and use pairwise v1-versus-v2 comparison for re-renders.</li>' +
+            deep: '<ul><li><b>Judge hygiene</b>: LLM and VLM judges show position, verbosity and self-enhancement biases (Zheng et al.). Calibrate thresholds on human-labelled clips (report Spearman ρ), and use pairwise v1-versus-v2 comparison for re-renders.</li>' +
               '<li>The verdict schema is enforced with constrained decoding, so the director can parse it without a retry loop.</li>' +
               '<li>Include evidence (score plus the observed and expected attribute), so a human reviewing the escalation can audit the call.</li></ul>'
           },
           {
-            say: 'The director re-renders only shot three, with the character sheet attached as a reference, and the other five shots are never touched.',
-            card: { tag: 'TRADE-OFF', title: 'Targeted redo, not a full rerun', body: 'One shot costs one sixth of the batch, about <b>17% extra GPU time</b>, instead of 100%. Budget: at most two redos per shot, then escalate to a human.' },
-            deep: '<p>The redo is a new durable activity with the critic’s <code>fix</code> object merged in: the character sheet as an extra reference image, a prompt delta (<code>+teal visor +ARGO-7 patch</code>), and a new seed.</p>' +
-              '<ul><li><b>Budget</b>: max 2 targeted re-renders per shot, then escalate to the human.</li><li>Cost: 1 of 6 shots re-rendered ≈ 17% extra GPU time, against 100% for a blind full rerun.</li></ul>'
+            say: 'The director regenerates only the failing window of shot three, with the character sheet attached as a reference, and the other five shots are never touched.',
+            card: { tag: 'TRADE-OFF', title: 'Targeted redo, not a full rerun', body: 'Only one window of one shot is regenerated: about <b>5% extra GPU time</b>, instead of 100%. Budget: at most two redos per shot, then escalate to a human.' },
+            deep: '<p>The redo is a new durable activity with the critic’s <code>fix</code> object merged in: the character sheet as an extra reference image, a prompt delta (<code>+teal visor +ARGO-7 patch</code>), and a new seed. The critic localised the defect to 3.1–3.6 s, so only a window of about 1.5 s around it is regenerated, with the neighbouring latent frames frozen as context: about 30 s on 8 GPUs, 240 GPU-seconds.</p>' +
+              '<ul><li><b>Budget</b>: max 2 targeted re-renders per shot, then escalate to the human.</li><li>Cost: one window of one shot ≈ 5% extra GPU time (240 of 4,560 GPU-seconds), against 100% for a blind full rerun; regenerating the whole shot would cost 17%.</li></ul>'
           },
           {
             say: 'The critic re-scores version two: it passes, the shot is unlocked, and the join can finally close.',
@@ -789,7 +789,7 @@
           ctx.text(CX + 6 * CS + CW / 2, 712, 'pass ≥ 0.75', { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: S.rub });
           S.fb = ctx.code({ x: 36, y: 724, w: 540, title: 'verdict.json · critic → director', lang: 'json', size: 12, color: 'violet', typing: true, maxLines: 6, parent: S.fan, lines: nb([
             '{"shot": 3, "verdict": "reject", "score": 0.66,',
-            ' "fail": ["identity 0.41: visor amber, bible=teal",',
+            ' "fail": ["identity 0.41: visor amber @3.1-3.6 s",',
             '          "continuity 0.55: ARGO-7 patch missing"],',
             ' "fix": {"ref_images": ["vega_sheet_v3"],',
             '         "prompt_delta": "+teal visor +ARGO-7 patch",',
@@ -850,7 +850,7 @@
               }));
             }).then(function () {
               S.redoTag = ctx.label(1220, 350, 'S3 v2 · was 0.66 ✕', { color: 'amber', size: 11, parent: S.fan });
-              ctx.hud('re-render cost: 1 of 6 shots (≈17% GPU)');
+              ctx.hud('window re-render: 240 GPU-s (≈5% GPU)');
               return ctx.reveal(S.redoTag, { from: 'scale', dur: 350 });
             });
           });
@@ -892,7 +892,7 @@
             say: 'So use many agents for broad, parallel, read-heavy work, and a single thread for tightly coupled decisions.',
             card: { tag: 'TRADE-OFF', title: 'Breadth versus coherence', body: 'Parallel, read-heavy research favors many agents. Tightly coupled, write-heavy work, like one shot\'s lighting and camera, wants a single decision-maker.' },
             deep: '<p><b>Counter-evidence (Cognition, 2025)</b>: “actions carry implicit decisions”. Parallel sub-agents that cannot see each other’s traces make conflicting choices (two shots lit differently). Principle: share full context, or keep the task single-threaded.</p>' +
-              '<div class="note">In video, the LLM overhead is usually small next to GPU cost (about 200k tokens ≈ $1 versus about 76 GPU-minutes ≈ $3–4). The expensive failure is a coordination error that triggers extra renders, so spend tokens on the critic and the bible.</div>'
+              '<div class="note">In video, the LLM overhead is usually small next to GPU cost (about 212k tokens ≈ $0.6 versus about 76 GPU-minutes ≈ $3.2, at the illustrative prices used across the atlas: LLM input $3 and output $15 per million tokens, GPU $2.5 per H100-hour). The expensive failure is a coordination error that triggers extra renders, so spend tokens on the critic and the bible.</div>'
           }
         ],
         run: function (ctx) {
@@ -1037,8 +1037,9 @@
         beats: [
           {
             say: 'Sometimes a crew member lives in another company. The Agent to Agent protocol, A2A, lets our director hire an external foley studio agent without seeing its internals.',
-            card: { tag: 'STATE OF THE ART', title: 'An open standard for agents', body: 'Launched by Google in April 2025, now under the Linux Foundation; v0.3 adds gRPC and signed cards. The studio stays <b>opaque</b>: only tasks, messages and artifacts cross.' },
-            deep: '<p><b>A2A</b> (Google, April 2025; donated to the Linux Foundation in June 2025; spec v0.3 adds gRPC and signed agent cards). Transport: JSON-RPC 2.0 over HTTPS, SSE for streaming, webhooks for push notifications.</p>' +
+            card: { tag: 'STATE OF THE ART', title: 'An open standard for agents', body: 'Launched by Google in April 2025, hosted by the Linux Foundation. v0.3 added gRPC and signed cards; v1.0 (March 2026) is the first stable spec. The studio stays <b>opaque</b>: only tasks, messages and artifacts cross.' },
+            deep: '<p><b>A2A</b> (Google, April 2025; donated to the Linux Foundation in June 2025 and, since August 2026, hosted in its Agentic AI Foundation alongside MCP). Spec v0.3 added gRPC and signed agent cards. Transport: JSON-RPC 2.0 over HTTPS, SSE for streaming, webhooks for push notifications.</p>' +
+              '<p><span class="muted">The wire names on the stage follow v0.3. The first stable spec, v1.0 (March 2026), renames the methods (<code>SendMessage</code>, <code>SendStreamingMessage</code>), merges the part types into one <code>Part</code> and drops the <code>final</code> flag.</span></p>' +
               '<div class="note">The remote agent never sees our bible or tools: pass it a <code>FilePart</code> URI to the locked cut and a <code>DataPart</code> with BPM and mood constraints.</div>'
           },
           {
@@ -1052,20 +1053,20 @@
             say: 'It then sends a message that creates a task, and the studio streams status updates back over server sent events.',
             card: { tag: 'HOW IT WORKS', title: 'A task with a lifecycle', body: '<code>message/stream</code> creates a task with an id; SSE events report state changes and artifacts while the work runs.' },
             deep: '<ul><li><b>Methods</b>: <code>message/send</code>, <code>message/stream</code>, <code>tasks/get</code>, <code>tasks/cancel</code>, <code>tasks/resubscribe</code>, <code>tasks/pushNotificationConfig/set</code>.</li>' +
-              '<li><b>Task states</b>: submitted, working, input-required, auth-required, completed, canceled, failed, rejected.</li>' +
+              '<li><b>Task states</b>: submitted, working, input-required, auth-required, completed, canceled, failed, rejected (plus unknown).</li>' +
               '<li><b>Message</b> = role + <code>parts[]</code>: TextPart, FilePart (uri or bytes + mimeType) or DataPart (JSON).</li></ul>'
           },
           {
             say: 'When the studio needs a decision, the task becomes input required, and the director answers with a follow-up message on the same task.',
-            card: { tag: 'KEY IDEA', title: 'Interrupted, not failed', body: '<b>input-required</b> pauses the task and closes the stream; the reply carries the same <code>taskId</code> and <code>contextId</code>.' },
-            deep: '<p><i>input-required</i> is an <b>interrupted</b> state: the status event arrives with <code>final: true</code>, the SSE stream closes, and the client answers with a new <code>message/stream</code> carrying the same <code>taskId</code> (and <code>contextId</code>). The task then returns to <i>working</i>.</p>' +
+            card: { tag: 'KEY IDEA', title: 'Interrupted, not failed', body: '<b>input-required</b> pauses the task, and servers typically end the stream; the reply carries the same <code>taskId</code> and <code>contextId</code>.' },
+            deep: '<p><i>input-required</i> is an <b>interrupted</b> state, not a terminal one. Servers typically mark that status event <code>final: true</code>, meaning the last event of this stream, so the SSE stream closes; the client answers with a new message carrying the same <code>taskId</code> (and <code>contextId</code>). The task then returns to <i>working</i>.</p>' +
               '<p>This is what makes multi-turn negotiation with an opaque agent possible without sharing any internal state.</p>'
           },
           {
             say: 'Finally the score arrives as an artifact and the task completes. MCP connects agents to tools. A2A connects agents to agents.',
             card: { tag: 'KEY IDEA', title: 'Tools versus peers', body: '<b>MCP</b>: schema-typed calls to tools and data. <b>A2A</b>: long-running tasks between opaque agents. They compose: an A2A agent uses MCP inside.' },
             deep: '<p>Results come back as <b>Artifacts</b> via <code>TaskArtifactUpdateEvent</code>; the final status event carries <code>final: true</code>.</p>' +
-              '<table><tr><th></th><th>MCP</th><th>A2A</th></tr><tr><td>Peer</td><td>tool / resource server</td><td>opaque agent</td></tr><tr><td>Unit</td><td>tool call (JSON-Schema)</td><td>long-running task</td></tr><tr><td>State</td><td>mostly request/response (async tasks are experimental in the 2025-11 spec)</td><td>task + contextId, multi-turn</td></tr></table>'
+              '<table><tr><th></th><th>MCP</th><th>A2A</th></tr><tr><td>Peer</td><td>tool / resource server</td><td>opaque agent</td></tr><tr><td>Unit</td><td>tool call (JSON-Schema)</td><td>long-running task</td></tr><tr><td>State</td><td>mostly request/response (long-running Tasks were experimental in the 2025-11 spec and are an official extension since 2026-07)</td><td>task + contextId, multi-turn</td></tr></table>'
           }
         ],
         run: function (ctx) {
@@ -1175,19 +1176,19 @@
           {
             say: 'Everything they make lands in the store and travels by reference, and one bible keeps the fox looking like the same fox in every shot.',
             card: { tag: 'HOW IT WORKS', title: 'References plus one bible', body: 'URIs, hashes and summaries in context; bytes in the store. One byte-stable bible gives consistency <b>and</b> cache hits.' },
-            deep: '<ol start="3"><li><b>Reference, don’t embed.</b> URIs + hashes + summaries in context; bytes in the store. A 90-token <code>artifact_ref</code> stands in for a clip that would cost about 3 M tokens as base64.</li>' +
+            deep: '<ol start="3"><li><b>Reference, don’t embed.</b> URIs + hashes + summaries in context; bytes in the store. A roughly 100-token <code>artifact_ref</code> stands in for a clip that would cost at least about 3 M tokens as base64.</li>' +
               '<li><b>One bible, byte-stable prefix.</b> Consistency and prompt-cache hits come from the same design decision: six workers share one 3.1k-token prefix and pay 1.75 P instead of 6 P. Every edit is a new version (<code>bible/v4</code>), never an in-place change, so caches and audit trails stay valid.</li></ol>'
           },
           {
             say: 'The critic gates every clip, so only failures are re-rendered, and every agent runs under a budget that the supervisor enforces.',
             card: { tag: 'WHY IT MATTERS', title: 'Gate and budget', body: 'A calibrated critic turns a full rerun into <b>one targeted redo</b>. Per-agent token caps and GPU-second budgets keep the crew from running away.' },
-            deep: '<ol start="5"><li><b>Calibrated critic with a budget.</b> Rubric + metrics, threshold tuned on human labels, at most 2 redos and then escalate. One targeted redo costs about 17% extra GPU time; a blind rerun costs 100%.</li>' +
+            deep: '<ol start="5"><li><b>Calibrated critic with a budget.</b> Rubric + metrics, threshold tuned on human labels, at most 2 redos and then escalate. One targeted redo of the failing window costs about 5% extra GPU time (a whole-shot redo 17%); a blind rerun costs 100%. Production critics also keep a hard floor per dimension (identity ≥ 0.75), because a weighted average can hide a flicker behind good composition.</li>' +
               '<li><b>Budgets everywhere.</b> Per-agent token caps, per-job GPU-seconds, wall-clock deadlines; the supervisor enforces them, and a breached budget is an event the director must handle, not an exception that vanishes.</li></ol>'
           },
           {
             say: 'And when a crew member lives outside, A2A gives it a clean contract. Next door in the orchestration plane, durable execution makes this whole graph survive crashes.',
             card: { tag: 'KEY IDEA', title: 'Add an agent only for a reason', body: 'Buy parallelism, isolation of a noisy context, or an independent check. Otherwise it is one more hop that can lose information.' },
-            deep: '<ol start="7"><li><b>Trace everything.</b> One span per agent turn and tool call (OpenTelemetry GenAI conventions), so cost and failure modes are attributable.</li></ol>' +
+            deep: '<ol start="7"><li><b>Trace everything.</b> One span per agent turn and tool call (OpenTelemetry GenAI semantic conventions, still marked Development), so cost and failure modes are attributable.</li></ol>' +
               '<div class="note">Rule of thumb: add an agent only when it buys parallelism, isolation of a noisy context, or an independent check. Otherwise, it is just another hop that can lose information.</div>'
           }
         ],

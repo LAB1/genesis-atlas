@@ -189,9 +189,9 @@
       'Kim et al., <i>An LLM Compiler for Parallel Function Calling</i> (LLMCompiler), ICML 2024',
       'Shen et al., <i>HuggingGPT: Solving AI Tasks with ChatGPT and its Friends in Hugging Face</i>, NeurIPS 2023',
       'Madaan et al., <i>Self-Refine: Iterative Refinement with Self-Feedback</i>, NeurIPS 2023',
-      'Anthropic, <i>How we built our multi-agent research system</i>, 2025',
+      'Anthropic Engineering, <i>How we built our multi-agent research system</i>, June 2025',
       'Kreps, Narkhede &amp; Rao, <i>Kafka: a Distributed Messaging System for Log Processing</i>, NetDB 2011',
-      'Temporal Technologies, <i>Temporal durable execution</i> documentation (workflows, activities, signals), 2020–2025',
+      'Temporal Technologies, <i>Temporal documentation: Workflows, Activities, Signals, Event History, Retry Policies, Versioning</i>, 2024–2025',
       'Moritz et al., <i>Ray: A Distributed Framework for Emerging AI Applications</i>, OSDI 2018'
     ],
     steps: [
@@ -203,7 +203,7 @@
             say: 'Zoom into the orchestration plane, the control brain of the system. It never renders a pixel itself. Instead it decides what must happen, in what order, and on whose budget, and makes sure it actually happens.',
             card: { tag: 'KEY IDEA', title: 'Control plane, not data plane', body: 'Small messages, strong consistency, modest compute. The GPUs that move the pixels live on the other side, and each side scales, fails and is priced on its own.' },
             deep: '<p>The orchestration plane is a <b>control plane</b>: small messages, strong consistency, modest compute. The <b>data plane</b> (encoders, diffusion transformers, codecs) moves gigabytes and burns GPU-hours. Separating them lets each scale, fail and be priced independently.</p>' +
-              '<p>It is the same split Kubernetes makes: controllers reconcile desired state held in the API server, while kubelets and accelerators do the work. A task message is roughly 10<sup>3</sup> bytes; the media it triggers is 10<sup>7</sup> bytes or more.</p>' +
+              '<p>It is the same split Kubernetes makes: controllers reconcile desired state held in the API server, while kubelets on the nodes run the workloads. A task message is roughly 10<sup>3</sup> bytes; the media it triggers is 10<sup>7</sup> bytes or more.</p>' +
               '<div class="note">Design rule: LLMs make <i>decisions</i>; deterministic code owns <i>side effects</i>, retries and accounting.</div>' +
               '<details><summary>Go deeper</summary><p>A control plane is a <b>reconciliation loop</b>: observe actual state, diff it against desired state, act, repeat. Because it is <i>level-triggered</i> (it reads the state, not a stream of edge events), a missed event or a restarted controller only delays convergence. The workflow engine below applies the same idea to a task graph: desired state is the DAG, actual state is the event history, and the diff is the set of ready tasks.</p></details>'
           },
@@ -213,7 +213,7 @@
             deep: '<table><tr><th>Component</th><th>Job</th><th>Typical tech</th></tr>' +
               '<tr><td>Planner</td><td>intent → task DAG</td><td>frontier reasoning LLM + JSON Schema</td></tr>' +
               '<tr><td>Agent crew</td><td>one narrow role per task</td><td>LLM + role prompt + a small tool set</td></tr></table>' +
-              '<p>Narrow agents are easier to evaluate and to bound in cost, and each starts from a clean context window. Anthropic reports that a lead agent delegating to parallel sub-agents beat a single agent by about 90% on its internal research eval, at roughly 15× the tokens of a chat.</p>' +
+              '<p>Narrow agents are easier to evaluate and to bound in cost, and each starts from a clean context window. Anthropic reports that a lead agent (Claude Opus 4) delegating to parallel sub-agents (Claude Sonnet 4) beat a single Opus 4 agent by about 90% on its internal research eval, while multi-agent runs used roughly 15× the tokens of a chat.</p>' +
               '<details><summary>Go deeper</summary><p>The six roles on stage are the long-lived crew; the plan can also name utility workers such as a vision worker (reference analysis) or an audio worker (voice and music). What matters is the contract: each role is a <b>(system prompt, tool subset, output schema, budget)</b> tuple, so swapping the model behind one role never changes the graph.</p></details>'
           },
           {
@@ -346,7 +346,7 @@
             say: 'Compiled, the plan becomes a directed acyclic graph: analyze the references, write the script, storyboard it, wait for approval, fan out six shots in parallel while voice and music are produced, then edit and critique.',
             card: { tag: 'NUMBERS', title: 'Plan v1', stat: { v: '13', u: 'tasks', l: 'six shots and the audio branch run side by side' } },
             deep: '<div class="eq">ready(v) ⇔ ∀ (u,v) ∈ E : state(u) = done</div>' +
-              '<ul><li><b>Explicit parallelism</b>: the width of the DAG (6 shots + audio) is visible to the scheduler. LLMCompiler-style planners cut latency by issuing independent calls concurrently instead of one ReAct step at a time (reported up to 3.7× faster).</li>' +
+              '<ul><li><b>Explicit parallelism</b>: the width of the DAG (6 shots + audio) is visible to the scheduler. LLMCompiler-style planners cut latency by issuing independent calls concurrently instead of one ReAct step at a time (reported latency speedups of up to 3.7× over ReAct).</li>' +
               '<li><b>Estimates before spending</b>: T ≥ Σ<sub>v∈critical path</sub> t<sub>v</sub> and cost = Σ<sub>v∈V</sub> ĉ<sub>v</sub> are computable before a single GPU is booked.</li>' +
               '<li><b>Lineage</b>: the plan-then-dispatch shape follows HuggingGPT (Shen et al., 2023), where an LLM parses a request into tasks, selects expert models and runs them.</li></ul>' +
               '<div class="note">The plan is <i>dynamic</i>: the critic can add nodes later, so the orchestrator re-plans, it does not merely execute.</div>'
@@ -573,7 +573,7 @@
             card: { tag: 'KEY IDEA', title: 'Workers lease, never own', body: 'A lease with heartbeats means a dead pod costs one retry, not a lost job. Workers hold no state the engine cannot rebuild.', more: '<p>Delivery is at-least-once, so a task can run twice after a timeout. Idempotency keys make the duplicate harmless: the second side effect is recognised and skipped.</p>' },
             deep: '<ul><li><b>Leases</b>: a worker holds a task with heartbeats (for example every 10 s, 30 s timeout). A dead pod means one retry, not a lost job.</li>' +
               '<li><b>At-least-once + idempotency</b>: delivery can repeat, so every side-effecting tool call carries an idempotency key <code>(job, task, attempt)</code>.</li>' +
-              '<li><b>Stateless</b>: the worker rebuilds its context from the task payload and artifact URIs, so autoscaling and preemption are safe. Ray (Moritz et al., OSDI 2018) offers the same lease-and-retry contract for ML tasks and actors, with a different state model.</li></ul>'
+              '<li><b>Stateless</b>: the worker rebuilds its context from the task payload and artifact URIs, so autoscaling and preemption are safe. Ray (Moritz et al., OSDI 2018) offers a comparable fault-tolerance contract for ML tasks and actors: lost work is re-executed from recorded lineage, a different state model.</li></ul>'
           },
           {
             say: 'Every state change is published to an append only event bus. Consumers build the current state, stream progress to the client and charge the budget.',
@@ -682,7 +682,7 @@
           {
             say: 'Before spending real GPU money, the plan contains a human checkpoint. The graph reaches the approval gate and stops there.',
             card: { tag: 'KEY IDEA', title: 'A gate before the money', body: 'The approval node sits right before the most expensive fan-out. It is a normal node in the DAG, with a status like any other.' },
-            deep: '<p>Placement is economic: the gate sits right <i>before</i> the most expensive fan-out. Reviewing 6 keyframes costs about 50 GPU-s; rejecting 6 rendered shots would waste about 4,500.</p>' +
+            deep: '<p>Placement is economic: the gate sits right <i>before</i> the most expensive fan-out. Reviewing 6 keyframes costs about 50 GPU-s; rejecting 6 rendered shots would waste about 4,560.</p>' +
               '<p>Other gates worth a human: irreversible side effects (publishing, spending above a threshold), the use of a real person\'s likeness, policy-borderline prompts.</p>'
           },
           {
@@ -781,7 +781,7 @@
           },
           {
             say: 'The six jobs run in parallel on the video pool, each spread across eight GPUs. Watch the GPU seconds meter: this fan out is where most of the bill is spent.',
-            card: { tag: 'WHY IT MATTERS', title: 'Where the bill is', body: 'Six shots cost about 4,560 of the 5,520 GPU-seconds in the whole job. Every other stage is small change beside them.' },
+            card: { tag: 'WHY IT MATTERS', title: 'Where the bill is', body: 'Six shots cost about 4,560 of the 5,000 GPU-seconds in the whole job. Every other stage is small change beside them.' },
             deep: '<ul><li><b>Gang scheduling</b>: the GPU scheduler places an 8-GPU job only when all 8 are free, so partial allocations cannot deadlock.</li>' +
               '<li><b>Stragglers</b>: a slow tail shot can be hedged with a duplicate at lower priority; the first result wins, and the loser is cancelled and refunded (the tail-at-scale playbook).</li></ul>' +
               '<p>Wall-clock is set by the slowest shot; cost is set by the sum. Speeding up the median shot saves money, speeding up the slowest shot saves time.</p>' +
@@ -860,10 +860,10 @@
         title: 'Critic & replanning',
         beats: [
           {
-            say: 'The critic, a vision language model with scoring rubrics, watches the cut. Shot three fails: the helmet and the fur pattern of the fox drifted away from the character sheet.',
-            card: { tag: 'NUMBERS', title: 'A failure a machine can read', stat: { v: '0.61', u: 'identity', l: 'below the 0.75 threshold, so shot 3 fails while style and continuity pass' } },
+            say: 'The critic, a vision language model with scoring rubrics, watches the cut. Shot three fails: for half a second the fox\'s visor flips from teal to amber and the mission patch vanishes, so the fox drifts away from the character sheet.',
+            card: { tag: 'NUMBERS', title: 'A failure a machine can read', stat: { v: '0.41', u: 'identity', l: 'below the 0.75 threshold, so shot 3 fails; the flaw is local, between 3.1 and 3.6 seconds' } },
             deep: '<p><b>Evaluator–optimizer</b> at graph level. The critic returns structured, thresholded scores rather than prose:</p>' +
-              '<pre>{"shot":3, "identity":0.61,\n "style":0.82, "continuity":0.79,\n "min":{"identity":0.75},\n "fix":"add ref; lock seed"}</pre>' +
+              '<pre>{"shot":3, "identity":0.41,\n "style":0.83, "continuity":0.55,\n "window_s":[3.1,3.6],\n "fix":"add ref; regen window"}</pre>' +
               '<p>Identity can be scored as mean cosine similarity between an embedding of the reference character and per-frame crops:</p>' +
               '<div class="eq">s<sub>id</sub> = (1/F) Σ<sub>f</sub> cos(e<sub>ref</sub>, e<sub>f</sub>)</div>'
           },
@@ -875,19 +875,19 @@
               '<li>Verbal feedback into the next attempt is the Reflexion / Self-Refine idea, lifted from token level to task-graph level.</li></ul>'
           },
           {
-            say: 'The patch adds a new version of shot three with the character sheet as a reference image and a locked seed, then runs the edit and the critic again. The budget controller reserves the extra GPU seconds first.',
+            say: 'The patch adds a new version of shot three that regenerates only the failing window, with the character sheet as a reference image, then runs the edit and the critic again. The budget controller reserves the worst-case GPU seconds first.',
             card: { tag: 'HOW IT WORKS', title: 'A graph patch, applied atomically', body: 'Three tasks are added, one edge is superseded, and 760 GPU-seconds are reserved before the new shot may start.', more: '<p>Atomicity matters: the engine applies the patch as one event, so a crash cannot leave the graph with the new shot but without its downstream edit.</p>' },
             deep: '<p><b>Dynamic replanning</b> is a graph patch applied atomically by the engine:</p>' +
               '<pre>G\' = G ∪ {shot_3.v2,\n          edit.v2, critic.v2}\n       − {shot_3 → edit}</pre>' +
               '<p class="muted">The removed edge is superseded, not deleted: the history keeps it.</p>' +
-              '<p>The reservation (8 GPUs × 95 s = 760 GPU-s) is admitted against the remaining budget before the task is enqueued; if the cap would be exceeded, the engine degrades (draft resolution, fewer steps) or escalates to the human.</p>'
+              '<p>The reservation (8 GPUs × 95 s = 760 GPU-s) is the worst case, a whole shot, and is admitted against the remaining budget before the task is enqueued; if the cap would be exceeded, the engine degrades (draft resolution, fewer steps) or escalates to the human. The actual repair is smaller (see the next beat), and the difference is refunded on commit.</p>'
           },
           {
-            say: 'Everything else is reused. Shot three is rendered again, the edit and the critic run again, and this time the identity score clears the bar.',
-            card: { tag: 'NUMBERS', title: 'Price of the fix', stat: { v: '17%', l: 'of the original shot cost: 760 of 4,560 GPU-seconds to repair one shot' } },
-            deep: '<ul><li>Completed nodes keep their artifacts (memoised by content hash): only 1/6 of the fan-out is recomputed.</li>' +
+            say: 'Everything else is reused. Only the failing window of shot three is regenerated, the edit and the critic run again, and this time the identity score clears the bar.',
+            card: { tag: 'NUMBERS', title: 'Price of the fix', stat: { v: '5%', l: 'extra GPU time: 240 of 4,560 GPU-seconds, one 30 second window regenerated on eight GPUs' } },
+            deep: '<ul><li>Completed nodes keep their artifacts (memoised by content hash): one shot of six is touched, and only its failing window (about 30 s on eight GPUs) is regenerated.</li>' +
               '<li>Loops are bounded: <code>max_revisions = 2</code> per shot, then escalate to the human.</li>' +
-              '<li>Net cost of the repair: shot 760 + edit 30 GPU-s ≈ $0.55, plus about 67k tokens of critique, replanning and re-checking ≈ $0.19, so roughly $0.75 against $3.17 for the whole first fan-out.</li></ul>' +
+              '<li>Net cost of the repair: window 240 + edit 30 GPU-s ≈ $0.19, plus about 67k tokens of critique, replanning and re-checking ≈ $0.19, so roughly $0.38 against $3.17 for the whole first fan-out. The 760 GPU-s reserved are committed at 240 and the other 520 are refunded.</li></ul>' +
               '<div class="note">Self-correction only helps when the critic is a better judge than the generator is a generator; scored, thresholded rubrics keep it honest.</div>'
           }
         ],
@@ -898,7 +898,7 @@
           var P = S.cp = ctx.group();
           ctx.rect(1140, 428, 255, 140, { rx: 10, fill: 'rgba(6,12,24,0.95)', stroke: ctx.alpha('magenta', 0.6), parent: P });
           S.critTitle = ctx.text(1155, 448, 'CRITIC · shot 3 rubric', { size: 12, font: 'mono', weight: 600, color: lite(ctx, 'magenta'), parent: P });
-          S.crit = [['identity', 0.61, 0.75], ['style', 0.82, 0.7], ['continuity', 0.79, 0.7]].map(function (m, i) {
+          S.crit = [['identity', 0.41, 0.75], ['style', 0.83, 0.7], ['continuity', 0.55, 0.7]].map(function (m, i) {
             var y = 478 + i * 30;
             ctx.text(1155, y, m[0], { size: 12, font: 'mono', color: 'text', parent: P });
             ctx.rect(1240, y - 6, 110, 12, { rx: 3, fill: 'rgba(255,255,255,0.06)', parent: P });
@@ -928,9 +928,9 @@
             });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: the graph patch and the reservation */
-            ctx.hud('replan: 1 of 6 shots recomputed');
+            ctx.hud('replan: one window of one shot');
             setEng(S, 'plan v2 · patch +3 tasks');
-            S.n.s3v2 = dagNode(ctx, S.gDag, DX.edit, 265, 'Shot 3 v2', 'ref + seed', { w: 120 });
+            S.n.s3v2 = dagNode(ctx, S.gDag, DX.edit, 265, 'Shot 3 v2', 'ref + window', { w: 120 });
             S.e.old = S.e.se[2];
             S.e.old.setAttribute('stroke', ctx.alpha('red', 0.35));
             S.e.old.setAttribute('stroke-dasharray', '3 5');
@@ -954,19 +954,22 @@
             setSt(ctx, S.n.critic, 'pending');
             S.n.edit.titleEl.textContent = 'Edit v2';
             S.n.critic.titleEl.textContent = 'Critic v2';
-            return Promise.all([runTask(ctx, S.n.s3v2, 1400), setBudget(ctx, S, { gpu: 5490, res: 0, tok: 184000 }, 1400)]).then(function () {
-              ledger(ctx, S, '+760 GPU-s shot 3 v2', 'lime');
+            return Promise.all([runTask(ctx, S.n.s3v2, 1400), setBudget(ctx, S, { gpu: 4970, res: 0, tok: 184000 }, 1400)]).then(function () {
+              ledger(ctx, S, '+240 GPU-s shot 3 v2', 'lime');
               return runTask(ctx, S.n.edit, 700);
             }).then(function () {
-              setBudget(ctx, S, { gpu: 5520, tok: 212000 }, 900);
+              setBudget(ctx, S, { gpu: 5000, tok: 212000 }, 900);
               return runTask(ctx, S.n.critic, 900);
             }).then(function () {
               S.crit[0].bar.setAttribute('fill', ctx.C.lime);
               S.crit[0].v.setAttribute('fill', ctx.C.lime);
               S.crit[0].v.textContent = '0.88';
+              S.crit[2].bar.setAttribute('fill', ctx.C.lime);
+              S.crit[2].v.setAttribute('fill', ctx.C.lime);
+              S.crit[2].v.textContent = '0.87';
               S.critTitle.textContent = 'CRITIC · shot 3 v2 rubric';
               setEng(S, 'completed ✓ · 2 plan versions');
-              return Promise.all([ctx.animate(S.crit[0].bar, { width: [110 * 0.61, 110 * 0.88] }, 600, 'out'), busEvent(ctx, S, 1235, 1420, 'job.completed', 'lime')]);
+              return Promise.all([ctx.animate(S.crit[0].bar, { width: [110 * 0.41, 110 * 0.88] }, 600, 'out'), ctx.animate(S.crit[2].bar, { width: [110 * 0.55, 110 * 0.87] }, 600, 'out'), busEvent(ctx, S, 1235, 1420, 'job.completed', 'lime')]);
             });
           });
         }
@@ -977,7 +980,7 @@
         beats: [
           {
             say: 'Every action has a price, so the orchestrator keeps books in three currencies: language model tokens, GPU seconds and dollars, converted at known rates.',
-            card: { tag: 'KEY IDEA', title: 'Three currencies', body: 'Tokens and GPU-seconds are metered separately and converted to dollars at published rates, so a bill can be explained and not just paid.' },
+            card: { tag: 'KEY IDEA', title: 'Three currencies', body: 'Tokens and GPU-seconds are metered separately and converted to dollars at fixed unit rates, so a bill can be explained and not just paid.' },
             deep: '<p>Two physical meters, one accounting currency:</p>' +
               '<div class="eq">USD = Σ n<sub>tok</sub> · p<sub>tok</sub> + Σ t<sub>GPU</sub> · p<sub>GPU</sub></div>' +
               '<p class="muted">Illustrative prices: p<sub>GPU</sub> = $2.50 per H100-hour = $0.00069 per GPU-s; LLM input $3 / M, cached input $0.30 / M, output $15 / M tokens. Blended over a 60% cache-hit input mix this job comes to about $2.8 per million tokens.</p>' +
@@ -992,25 +995,25 @@
               '<li><b>Attribution</b>: every charge carries <code>(tenant, job, task, span_id)</code> so cost shows up in traces, not just invoices.</li></ul>'
           },
           {
-            say: 'Look at the shape of the bill. All the thinking done by every agent costs well under a dollar, while the pixels cost nearly four.',
-            card: { tag: 'NUMBERS', title: 'One trailer, one bill', stat: { v: '$4.43', l: '212k tokens and 5,520 GPU-seconds, including one re-rendered shot' }, more: '<p>The LLM line: 190k input tokens of which 60% are cache hits, plus 22k output. (76k × $3 + 114k × $0.30) / 1M = $0.26, and 22k × $15 / 1M = $0.33, so $0.59 in total. Output tokens are 10% of the volume but more than half the LLM cost.</p>' },
+            say: 'Look at the shape of the bill. All the thinking done by every agent costs well under a dollar, while the pixels cost about three and a half.',
+            card: { tag: 'NUMBERS', title: 'One trailer, one bill', stat: { v: '$4.07', l: '212k tokens and 5,000 GPU-seconds, including one repaired shot' }, more: '<p>The LLM line: 190k input tokens of which 60% are cache hits, plus 22k output. (76k × $3 + 114k × $0.30) / 1M = $0.26, and 22k × $15 / 1M = $0.33, so $0.59 in total. Output tokens are 10% of the volume but more than half the LLM cost.</p>' },
             deep: '<table><tr><th>Line item</th><th>Quantity</th><th>Cost</th></tr>' +
               '<tr><td>LLM, all agents</td><td>190k in (60% cached) + 22k out</td><td>$0.59</td></tr>' +
               '<tr><td>Ref encoding + keyframes</td><td>60 GPU-s</td><td>$0.04</td></tr>' +
               '<tr><td>Voice + music</td><td>80 GPU-s</td><td>$0.06</td></tr>' +
               '<tr><td>Shots v1 (6 × 8 GPU × 95 s)</td><td>4,560 GPU-s</td><td>$3.17</td></tr>' +
-              '<tr><td>Shot 3 v2</td><td>760 GPU-s</td><td>$0.53</td></tr>' +
+              '<tr><td>Shot 3 v2 (failing window)</td><td>240 GPU-s</td><td>$0.17</td></tr>' +
               '<tr><td>Edit + encode (×2)</td><td>60 GPU-s</td><td>$0.04</td></tr>' +
-              '<tr><th>Total</th><th>212k tok · 5,520 GPU-s</th><th>≈ $4.43</th></tr></table>'
+              '<tr><th>Total</th><th>212k tok · 5,000 GPU-s</th><th>≈ $4.07</th></tr></table>'
           },
           {
             say: 'That is why cheap planning, early human checkpoints and targeted renders of a single shot matter far more than shaving prompt tokens.',
-            card: { tag: 'WHY IT MATTERS', title: 'Optimise the pixels', body: 'Agent thinking is about 13 percent of the bill, the GPUs about 87. Halving every prompt saves 7 percent; distilling the shots saves far more.', more: '<p>If shot time scales with denoising steps, going from 50 to 8 steps cuts 4,560 GPU-s to about 730 GPU-s, saving roughly $2.66 of $4.43.</p>' },
+            card: { tag: 'WHY IT MATTERS', title: 'Optimise the pixels', body: 'Agent thinking is about 15 percent of the bill, the GPUs about 85. Halving every prompt saves 7 percent; distilling the shots saves far more.', more: '<p>If shot time scales with denoising steps, going from 50 to 8 steps cuts 4,560 GPU-s to about 730 GPU-s, saving roughly $2.66 of $4.07.</p>' },
             deep: '<p>Where the levers are, in dollars for this trailer:</p>' +
               '<table><tr><th>Lever</th><th>Saves</th></tr>' +
               '<tr><td>Halve all LLM tokens</td><td>≈ $0.30 (7%)</td></tr>' +
               '<tr><td>Human gate before the fan-out</td><td>avoids ≈ $3 per rejected board</td></tr>' +
-              '<tr><td>Re-render 1 shot, not 6</td><td>≈ $2.64 vs a full redo</td></tr>' +
+              '<tr><td>Repair one window, not redo six shots</td><td>≈ $3.00 vs a full redo</td></tr>' +
               '<tr><td>Step distillation 50 → 8</td><td>up to ≈ $2.7</td></tr></table>'
           }
         ],
@@ -1024,8 +1027,8 @@
           /* beat 0: three currencies and how they convert */
           var cur = ctx.group({ parent: O, opacity: 0 });
           var tk = ctx.node({ x: 440, y: 340, w: 210, h: 76, title: 'LLM tokens', sub: '212k this job', icon: 'brain', color: 'amber', titleSize: 16, glow: false, parent: cur });
-          var us = ctx.node({ x: 850, y: 340, w: 210, h: 76, title: 'Dollars', sub: '$4.43 this job', icon: 'chart', color: 'magenta', titleSize: 16, glow: false, parent: cur });
-          var gp = ctx.node({ x: 1260, y: 340, w: 210, h: 76, title: 'GPU-seconds', sub: '5,520 this job', icon: 'gpu', color: 'lime', titleSize: 16, glow: false, parent: cur });
+          var us = ctx.node({ x: 850, y: 340, w: 210, h: 76, title: 'Dollars', sub: '$4.07 this job', icon: 'chart', color: 'magenta', titleSize: 16, glow: false, parent: cur });
+          var gp = ctx.node({ x: 1260, y: 340, w: 210, h: 76, title: 'GPU-seconds', sub: '5,000 this job', icon: 'gpu', color: 'lime', titleSize: 16, glow: false, parent: cur });
           var l1 = ctx.link(tk, us, { color: 'amber', straight: true, label: '≈ $2.8 per million tokens', labelDy: -26, parent: cur });
           var l2 = ctx.link(gp, us, { color: 'lime', straight: true, label: '$2.50 per H100-hour', labelDy: -26, parent: cur });
           return ctx.reveal(O, { from: 'scale', s0: 0.94, dur: 500 }).then(function () {
@@ -1053,9 +1056,9 @@
             /* beat 2: the bill, line by line */
             ctx.fadeOut(cur, 400, true);
             S.total = ctx.text(1366, 218, '$0.00', { size: 24, font: 'mono', weight: 700, color: 'magenta', anchor: 'end', parent: O });
-            ctx.text(1250, 218, '212k tok · 5,520 GPU-s', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: O });
+            ctx.text(1250, 218, '212k tok · 5,000 GPU-s', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: O });
             var rows = [['LLM · all agents', 0.59, 'amber', '212k tokens'], ['refs + keyframes', 0.04, 'violet', '60 GPU-s'], ['voice + music', 0.06, 'orange', '80 GPU-s'],
-              ['shots v1 ×6', 3.17, 'lime', '4,560 GPU-s'], ['shot 3 v2', 0.53, 'red', '760 GPU-s'], ['edit + encode', 0.04, 'cyan', '60 GPU-s']];
+              ['shots v1 ×6', 3.17, 'lime', '4,560 GPU-s'], ['shot 3 window', 0.17, 'red', '240 GPU-s'], ['edit + encode', 0.04, 'cyan', '60 GPU-s']];
             var sc = 560 / 3.17;
             var anims = [];
             S.billBars = [];
@@ -1071,12 +1074,12 @@
               if (555 + w + 10 > 1000) { t.setAttribute('x', 555 + w - 10); t.setAttribute('text-anchor', 'end'); t.setAttribute('fill', ctx.C.white); }
               anims.push(ctx.reveal(t, { delay: 800 + i * 150 }));
             });
-            anims.push(ctx.counter(S.total, 0, 4.43, 1600, function (v) { return '$' + v.toFixed(2); }));
+            anims.push(ctx.counter(S.total, 0, 4.07, 1600, function (v) { return '$' + v.toFixed(2); }));
             return Promise.all(anims);
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: where the money is */
-            ctx.hud('bill ≈ $4.43 · GPUs 87%');
-            var note = ctx.text(1366, 566, 'agent thinking ≈ 13% of the bill', { size: 13, font: 'mono', weight: 600, color: 'amber', anchor: 'end', parent: O, opacity: 0 });
+            ctx.hud('bill ≈ $4.07 · GPUs 85%');
+            var note = ctx.text(1366, 566, 'agent thinking ≈ 15% of the bill', { size: 13, font: 'mono', weight: 600, color: 'amber', anchor: 'end', parent: O, opacity: 0 });
             return Promise.all([ctx.reveal(note, { from: 'up' }), ctx.pulse(S.billBars[0], { color: 'amber', dur: 700 })]).then(function () {
               return ctx.pulse(S.billBars[3], { color: 'lime', times: 2, dur: 700 });
             });
@@ -1101,7 +1104,7 @@
             say: 'Four chambers go deeper from here. The first is the agent loop, where a language model becomes an agent. The second is tool calling and the Model Context Protocol.',
             card: { tag: 'TRY IT', title: 'Open the agent loop or tools', body: 'Click Agent Runtime to see how sampling, tool calls and context management turn an LLM into an agent. Click Tool Registry for schemas and MCP.' },
             deep: '<ul><li><b>The Agent Loop</b>: how sampling, tool calls and context management turn an LLM into an agent. Chat templates, context assembly, the loop itself, reasoning patterns, context budgeting, RL post-training on trajectories, failure modes and a complete harness in fifteen lines.</li>' +
-              '<li><b>Tool Calling &amp; MCP</b>: tools as JSON Schema contracts, how a <code>tool_use</code> block is emitted, grammar-constrained decoding, parallel calls and errors, the Model Context Protocol (handshake, primitives, transports), tool search at scale, sandboxes and policy, and the full latency budget of one call.</li></ul>'
+              '<li><b>Tool Calling &amp; MCP</b>: tools as JSON Schema contracts, how a <code>tool_use</code> block is emitted, grammar-constrained decoding, parallel calls and errors, the Model Context Protocol (the 2025 handshake, primitives, transports and the stateless 2026 revision), tool search at scale, sandboxes and policy, and the full latency budget of one call.</li></ul>'
           },
           {
             say: 'The third is multi agent collaboration inside the crew. The fourth is durable execution, which guarantees the film survives crashes. Click any of them to zoom in.',

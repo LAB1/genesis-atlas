@@ -47,8 +47,10 @@
   function tint(ctx, c, col) {
     c.childNodes[0].setAttribute('stroke', ctx.C[col]);
     c.childNodes[0].setAttribute('fill', ctx.alpha(col, 0.14));
-    c.childNodes[1].setAttribute('fill', ctx.C[col]);
+    /* red and magenta text washes out in the light theme, so those states are coded by border and fill only */
+    c.childNodes[1].setAttribute('fill', (col === 'red' || col === 'magenta') ? ctx.C.white : ctx.C[col]);
   }
+  function tcol(col) { return col === 'magenta' ? 'white' : col; }
   function tintAll(ctx, chips, col, gap) {
     return chips.reduce(function (p, c) { return p.then(function () { tint(ctx, c, col); return ctx.wait(gap || 120); }); }, Promise.resolve());
   }
@@ -65,7 +67,7 @@
     var r = ctx.rng(20 + k);
     for (var i = 0; i < 4; i++) ctx.circle(x + 8 + r() * (w - 16), y + 6 + r() * h * 0.4, 1.1, { fill: 'white', opacity: 0.6, parent: g });
     if (k === 0) {
-      ctx.circle(x + w * 0.78, y + h * 0.78, h * 0.42, { fill: ctx.alpha('#9fe9ff', 0.35), stroke: 'cyan', sw: 1, parent: g, glow: true });
+      ctx.circle(x + w * 0.74, y + h * 0.6, h * 0.27, { fill: ctx.alpha('#9fe9ff', 0.35), stroke: 'cyan', sw: 1, parent: g, glow: true });
       ctx.circle(x + w * 0.3, y + h * 0.36, 3, { fill: 'orange', parent: g, glow: true });
     } else if (k === 1) {
       ctx.rect(x, y, w, 7, { rx: 0, fill: ctx.alpha('red', 0.55), parent: g });
@@ -105,7 +107,7 @@
     var g = S.insp = ctx.group();
     ctx.rect(IX, IY, IW, IH, { rx: 10, fill: 'rgba(7,12,24,0.92)', stroke: ctx.alpha(col, 0.55), sw: 1.2, parent: g });
     ctx.rect(IX, IY, IW, 30, { rx: 10, fill: ctx.alpha(col, 0.13), parent: g });
-    ctx.text(IX + 14, IY + 15, title, { size: 13, font: 'mono', weight: 600, color: col, parent: g });
+    ctx.text(IX + 14, IY + 15, title, { size: 13, font: 'mono', weight: 600, color: tcol(col), parent: g });
     ctx.reveal(g, { from: 'right', dur: 500 });
     return g;
   }
@@ -114,9 +116,46 @@
     if (S.bot) ctx.remove(S.bot, 300);
     var g = S.bot = ctx.group();
     ctx.rect(BX, BY, BW, BH, { rx: 10, fill: 'rgba(7,12,24,0.88)', stroke: ctx.alpha(col, 0.45), sw: 1.1, parent: g });
-    ctx.text(BX + 14, BY + 17, title, { size: 12, font: 'mono', weight: 600, color: col, parent: g });
+    g.titleEl = ctx.text(BX + 14, BY + 17, title, { size: 12, font: 'mono', weight: 600, color: tcol(col), parent: g });
     ctx.reveal(g, { from: 'up', dur: 500, delay: 150 });
     return g;
+  }
+  /* ---------- beat grid of step 3: redrawn for any tempo (TRY IT) ---------- */
+  var CUT_F = [105, 225, 315, 420, 540, 660];
+  var TEMPI = [90, 96, 100, 120];
+  var GX0 = BX + 40, GW = 900;
+  function gx(f) { return GX0 + f / 720 * GW; }
+  function clearKids(g) { while (g.firstChild) g.removeChild(g.firstChild); }
+  function fmt2(v) { return String(Math.round(v * 100) / 100); }
+  function drawGrid(ctx, bpm) {
+    var S = ctx.state, fpb = 1440 / bpm;
+    S.tempo = bpm;
+    clearKids(S.grid); clearKids(S.tk);
+    for (var b = 0; b * fpb <= 720 + 1e-6; b++) {
+      var f = b * fpb, down = b % 4 === 0;
+      ctx.line(tx(f / 24), 466, tx(f / 24), 680, { color: down ? ctx.alpha('orange', 0.28) : 'rgba(255,255,255,0.06)', sw: 1, parent: S.grid });
+      ctx.line(gx(f), BY + 92 - (down ? 11 : 5), gx(f), BY + 92, { color: down ? 'orange' : 'dim', sw: down ? 1.5 : 1, parent: S.tk });
+    }
+    var on = 0, beats = [];
+    S.cutG.forEach(function (c, k) {
+      var r = CUT_F[k] / fpb, hit = Math.abs(r - Math.round(r)) < 0.02;
+      if (hit) on++;
+      beats.push(fmt2(r));
+      c.tri.setAttribute('fill', ctx.C[hit ? 'amber' : 'red']);
+      c.txt.setAttribute('fill', ctx.C[hit ? 'amber' : 'dim']);
+    });
+    S.gTitle.textContent = 'BEAT GRID · ' + bpm + ' BPM · ' + fmt2(fpb) + ' f per beat · ' + on + '/6 cuts on grid';
+    S.gSum.textContent = 'cuts (f): 105 · 225 · 315 · 420 · 540 · 660  →  beats ' + beats.join(' · ') + '   |   HIT 360 f = beat ' + fmt2(360 / fpb);
+    S.eqT.textContent = '60 / ' + bpm + ' = ' + (Math.round(60000 / bpm) / 1000) + ' s per beat = ' + fmt2(fpb) + ' frames';
+  }
+  function paintTempo(ctx) {
+    var S = ctx.state;
+    S.tempoChips.forEach(function (c, k) {
+      var on = TEMPI[k] === S.tempo;
+      c.childNodes[0].setAttribute('fill', on ? ctx.alpha('orange', 0.25) : 'rgba(123,140,171,0.08)');
+      c.childNodes[0].setAttribute('stroke', on ? ctx.C.orange : ctx.alpha('dim', 0.5));
+      c.childNodes[1].setAttribute('fill', on ? ctx.C.orange : ctx.C.dim);
+    });
   }
   /* move the stage highlight over pipeline node i (or span i..j) */
   function stage(ctx, i, j) {
@@ -124,7 +163,7 @@
     j = j === undefined ? i : j;
     var x = PIPE_X[i] - 108, w = PIPE_X[j] - PIPE_X[i] + 216;
     if (!S.hl) {
-      S.hl = ctx.rect(x, PIPE_Y - 40, w, 80, { rx: 14, stroke: 'white', sw: 2, dash: '7 5', glow: true, parent: S.pipe });
+      S.hl = ctx.rect(x, PIPE_Y - 38, w, 76, { rx: 14, stroke: 'white', sw: 2, dash: '7 5', glow: true, parent: S.pipe });
       ctx.reveal(S.hl, { dur: 300 });
       return ctx.wait(300);
     }
@@ -171,14 +210,16 @@
 
   Atlas.register({
     id: 'postprod',
+    poster: 6,
     refs: [
+      'Lipman et al., <i>Flow Matching for Generative Modeling</i>, ICLR 2023',
       'Le et al., <i>Voicebox: Text-Guided Multilingual Universal Speech Generation at Scale</i>, NeurIPS 2023; Chen et al., <i>F5-TTS: A Fairytaler that Fakes Fluent and Faithful Speech with Flow Matching</i>, 2024',
-      'Copet et al., <i>Simple and Controllable Music Generation (MusicGen)</i>, NeurIPS 2023; Evans et al., <i>Fast Timing-Conditioned Latent Audio Diffusion</i>, ICML 2024',
+      'Copet et al., <i>Simple and Controllable Music Generation (MusicGen)</i>, NeurIPS 2023; Evans et al., <i>Fast Timing-Conditioned Latent Audio Diffusion</i>, ICML 2024; Evans et al., <i>Long-Form Music Generation with Latent Diffusion</i>, ISMIR 2024',
       'Cheng et al., <i>MMAudio: Taming Multimodal Joint Training for High-Quality Video-to-Audio Synthesis</i>, CVPR 2025',
-      'Li et al., <i>LatentSync</i>, 2024; Prajwal et al., <i>A Lip Sync Expert Is All You Need (Wav2Lip)</i>, ACM MM 2020; Chung &amp; Zisserman, <i>Out of Time (SyncNet)</i>, ACCV-W 2016',
+      'Li et al., <i>LatentSync: Taming Audio-Conditioned Latent Diffusion Models for Lip Sync with SyncNet Supervision</i>, 2024; Prajwal et al., <i>A Lip Sync Expert Is All You Need for Speech to Lip Generation In The Wild (Wav2Lip)</i>, ACM MM 2020; Chung &amp; Zisserman, <i>Out of Time: Automated Lip Sync in the Wild (SyncNet)</i>, ACCV-W 2016',
       'FFmpeg Project, <i>FFmpeg Filters Documentation</i> (filtergraph, xfade, lut3d, loudnorm), ffmpeg 7.x, 2024–2025',
-      'ITU-R BS.1770-4, <i>Algorithms to measure audio programme loudness and true-peak audio level</i>, 2015; EBU R 128, 2020',
-      'Huang et al., <i>RIFE: Real-Time Intermediate Flow Estimation for Video Frame Interpolation</i>, ECCV 2022; Reda et al., <i>FILM</i>, ECCV 2022',
+      'ITU-R BS.1770-4, <i>Algorithms to measure audio programme loudness and true-peak audio level</i>, 2015 (latest revision BS.1770-5, 2023); EBU R 128, 2020',
+      'Huang et al., <i>RIFE: Real-Time Intermediate Flow Estimation for Video Frame Interpolation</i>, ECCV 2022; Reda et al., <i>FILM: Frame Interpolation for Large Motion</i>, ECCV 2022',
       'ISO/IEC 23000-19 <i>CMAF</i>; RFC 8216 <i>HTTP Live Streaming</i>; ISO/IEC 23009-1 <i>MPEG-DASH</i>'
     ],
     steps: [
@@ -188,9 +229,12 @@
         beats: [
           {
             say: 'The shots are rendered. Six clips of five seconds each sit in object storage as high quality mezzanine files, one for every shot of the trailer.',
-            card: { tag: 'NUMBERS', title: 'Six clips, no generation loss', stat: { v: '6 × 121', u: 'frames', l: '1280×720 at 24 fps, 10-bit ProRes 422 HQ, roughly 80 Mb/s per clip' }, more: '<p>Storage arithmetic: 80 Mb/s × 5 s / 8 = 50 MB per clip, so about 300 MB for the six shots. ProRes is intra-frame only (every frame decodes on its own), which makes it fast to edit and seek but roughly 18 times larger than the final 1080p delivery encode.</p>' },
-            deep: '<p>Each shot leaves the video model as <b>121 frames</b>: five seconds at 24 fps plus one, because a causal video VAE encodes 1 + 4n frames (n = 30). The frames are decoded once and stored as a <b>mezzanine</b> file, ProRes 422 HQ (about 80 Mb/s at 720p24, roughly 50 MB per clip) or lossless FFV1, so no generation loss accumulates before the single final encode.</p>' +
-              '<p>Shots are addressed by URI, for example <code>s3://jobs/7f3a/shots/S3.mov</code>. The LLM never sees pixels.</p>'
+            card: { tag: 'NUMBERS', title: 'Six clips, no generation loss', stat: { v: '6 × 121', u: 'frames', l: '1280×720 at 24 fps, 10-bit ProRes 422 HQ, roughly 88 Mb/s per clip' }, more: '<p>Storage arithmetic: 88 Mb/s × 5 s / 8 = 55 MB per clip, so about 330 MB for the six shots. ProRes is intra-frame only (every frame decodes on its own), which makes it fast to edit and seek but roughly 20 times larger than the final 1080p delivery encode.</p>' },
+            deep: '<p>Each shot leaves the video model as <b>121 frames</b>: five seconds at 24 fps plus one, because a causal video VAE encodes 1 + 4n frames (n = 30). The frames are decoded once and stored as a <b>mezzanine</b> file, ProRes 422 HQ (about 88 Mb/s at 720p24, roughly 55 MB per clip) or lossless FFV1, so no generation loss accumulates before the single final encode.</p>' +
+              '<p>Shots are addressed by URI, for example <code>s3://jobs/7f3a/shots/S3.mov</code>. The LLM never sees pixels.</p>' +
+              '<details><summary>Go deeper: why a mezzanine, and how big</summary>' +
+              '<p>Raw 10-bit 4:2:2 at 1280×720 and 24 fps is 1280 · 720 · 24 · 20 bit ≈ 442 Mb/s. ProRes 422 HQ at roughly 88 Mb/s is about 5 : 1, intra-only and visually lossless. The final 4.5 Mb/s HEVC rung is about 98 : 1 against raw.</p>' +
+              '<p>A mezzanine means paying for lossy compression once. Every extra lossy generation stacks quantisation noise on top of the last, and fine ice grain is the first thing to soften. With mezzanine files a re-cut or a re-grade starts from clean pixels, never from a delivery-grade H.264 file.</p></details>'
           },
           {
             say: 'But six clips are not a film. Post-production turns them into one, through a pipeline of six stages that runs from audio generation to the content delivery network.',
@@ -201,7 +245,8 @@
               '<tr><td>Editor agent</td><td>LLM + tools</td><td>EDL JSON</td></tr>' +
               '<tr><td>Compositor</td><td>ffmpeg / CUDA</td><td>master.mov</td></tr>' +
               '<tr><td>Enhance</td><td>RIFE, SR, color</td><td>graded 1080p/4K master</td></tr>' +
-              '<tr><td>Encode + CDN</td><td>NVENC, packager</td><td>CMAF ladder, manifests</td></tr></table>'
+              '<tr><td>Encode</td><td>NVENC (L4/L40S class)</td><td>5 rungs × 3 codecs</td></tr>' +
+              '<tr><td>Package + CDN</td><td>CMAF packager, edge caches</td><td>segments, HLS and DASH manifests</td></tr></table>'
           },
           {
             say: 'Audio generation creates the narration, the music and the sound effects from the script and the voice memo. An editor agent watches the clips and writes an edit decision list.',
@@ -214,13 +259,20 @@
             card: { tag: 'WHY IT MATTERS', title: 'Same inputs, same bytes', body: 'No model makes a decision after the editor. A render key hashes the edit and its inputs, so a re-run is exact and cacheable.' },
             deep: '<p>Every stage after the editor is a pure function of its inputs:</p>' +
               '<div class="eq">render_key = sha256( EDL ‖ input hashes ‖ ffmpeg build ‖ flags )</div>' +
-              '<p>A cache hit skips the render; a miss recomputes only the touched segments. Change one shot and only that shot and the final encode re-run. The enhancement models (RIFE, super-resolution) are neural but frozen, so on pinned weights, software and hardware they count as deterministic stages too.</p>'
+              '<p>A cache hit skips the render; a miss recomputes only the touched segments. Change one shot and only that shot and the final encode re-run. The enhancement models (RIFE, super-resolution) are neural but frozen, so on a pinned stack (weights, CUDA and driver versions, deterministic-kernel flags, the same GPU model) they can be treated as deterministic stages too. The guarantee is per stack: change the GPU model or the encoder build and the key changes.</p>' +
+              '<details><summary>Go deeper: three levels of "the same"</summary>' +
+              '<ul><li><b>Bit-exact</b>: CPU filters with a fixed thread layout; <code>-fflags +bitexact</code> keeps version strings out of the container.</li>' +
+              '<li><b>Stack-exact</b>: GPU kernels are reproducible only if their reductions and atomics are, so the key also hashes GPU model, driver and library versions.</li>' +
+              '<li><b>Perceptual</b>: NVENC output can differ between chip generations while VMAF against the reference stays within noise. So the cache is keyed on inputs, and each result is also content-addressed by its own hash.</li></ul></details>'
           },
           {
             say: 'The shared data structure through all of it is the timeline below: one video track, one caption track and three audio tracks, measured in whole frames.',
             card: { tag: 'NUMBERS', title: 'The whole film as integers', stat: { v: '720', u: 'frames', l: '30 s at 24 fps on five tracks, in rational time: frame counts, never floating seconds' } },
             deep: '<div class="note">Timeline model (OpenTimelineIO-style): <code>Timeline → Stack → Track[V1, CAP, A1–A3] → Clip{media_ref, source_range}</code>, with <b>rational time</b> in frames at 24/1. Only URIs and ranges pass through LLM context; pixels never do.</div>' +
-              '<p>Rational time matters because 1/24 s has no exact binary floating-point form, so accumulated seconds drift and produce off-by-one frames at cuts. A clip is just <code>{uri, source_range}</code>, for example <code>S3.mov [20, 110)</code>; transitions and effects are further objects on the track.</p>'
+              '<p>Rational time matters because 1/24 s has no exact binary floating-point form, so seconds drift and produce off-by-one frames at cuts. A clip is just <code>{uri, source_range}</code>, for example <code>S3.mov [20, 110)</code>; transitions and effects are further objects on the track.</p>' +
+              '<details><summary>Go deeper: rational time</summary>' +
+              '<p>A time is a pair <code>RationalTime(value, rate)</code>. NTSC video runs at 24000/1001 fps, so a frame lasts 1001/24000 s, which has no finite decimal or binary form. Frame indices sidestep that. In IEEE double precision, <code>floor(k · (1/24) · 24)</code> returns k − 1 for 85 of the 721 frame boundaries of this trailer (k = 7 is the first), and each of those is one dropped or repeated frame at a cut.</p>' +
+              '<p>Conversions between rates (24 → 25 → 30) are explicit, rounded exactly once, and recorded in the EDL instead of accumulating silently.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -247,11 +299,13 @@
             var defs = [['Audio Gen', 'voice · music · sfx', 'music'], ['Editor Agent', 'LLM → EDL JSON', 'agent'], ['Compositor', 'ffmpeg filtergraph', 'layers'],
               ['Enhance', 'color · RIFE · SR', 'spark'], ['Encode', 'NVENC · ABR ladder', 'chip'], ['Package + CDN', 'CMAF · HLS / DASH', 'globe']];
             /* faint fill so the whole ghost area (not just its dashed stroke) is clickable */
-            S.ghost = ctx.node({ x: 1025, y: PIPE_Y + 4, w: 990, h: 112, kind: 'ghost', color: 'orange', fill: 'rgba(255,138,61,0.025)', parent: S.pipe });
-            ctx.text(1025, PIPE_Y + 49, 'deterministic media path · render-delivery', { size: 11, font: 'mono', color: ctx.alpha('orange', 0.8), anchor: 'middle', parent: S.ghost });
+            S.ghost = ctx.node({ x: 1025, y: PIPE_Y + 6, w: 990, h: 118, kind: 'ghost', color: 'orange', fill: 'rgba(255,138,61,0.025)', parent: S.pipe });
+            ctx.text(1025, PIPE_Y + 52, 'deterministic media path · render-delivery', { size: 11, font: 'mono', color: ctx.alpha('orange', 0.8), anchor: 'middle', parent: S.ghost });
             S.pn = defs.map(function (d, k) {
               return ctx.node({ x: PIPE_X[k], y: PIPE_Y, w: 200, h: 64, title: d[0], sub: d[1], icon: d[2], color: k === 1 ? 'magenta' : 'orange', titleSize: 15, subSize: 11, parent: S.pipe });
             });
+            /* magenta sub-text is nearly invisible in the light theme: lighten it (the light theme darkens light hues) */
+            S.pn[1].subEl.setAttribute('fill', ctx.mix('magenta', 'white', 0.55));
             S.pl = [];
             for (var k = 0; k < 5; k++) S.pl.push(ctx.link(S.pn[k], S.pn[k + 1], { color: k === 0 ? 'magenta' : 'orange', straight: true, parent: S.pipe }));
             ctx.hotspot(S.pn[0], 'tts-audio');
@@ -268,7 +322,7 @@
               'look     = "look.json"     # from 3 sketches',
               '# outputs',
               'master   = "master.mov"    # 1080p24 ProRes',
-              'ladder   = "cmaf/"         # 4 rungs, HLS+DASH',
+              'ladder   = "cmaf/"         # 5 rungs, HLS+DASH',
               'captions = "cap.vtt"       # WebVTT',
               'c2pa     = "manifest.c2pa" # signed',
               'budget_s = 20              # after last shot']) });
@@ -330,27 +384,42 @@
             say: 'First, the voice. From the forty two second memo, a voice activity detector and a quality scorer pick the cleanest six seconds, here from twelve to eighteen seconds, as the speaker prompt.',
             card: { tag: 'NUMBERS', title: 'Six seconds is enough', stat: { v: '6 s', u: 'speaker prompt', l: 'cleanest slice of the 42 s memo: single speaker, SNR 31 dB, picked by VAD and DNSMOS' } },
             deep: '<p><b>Prompt selection</b>: voice activity detection plus an SNR and DNSMOS quality scorer pick the cleanest 3–10 s of the memo, here 12–18 s. Its transcript comes from ASR, because in-context models need the words of the prompt as well as its sound.</p>' +
-              '<p>Longer prompts raise speaker similarity but also copy the phone\'s room tone and codec artifacts, so a clean short slice usually beats a long noisy one.</p>'
+              '<p>Longer prompts raise speaker similarity but also copy the phone\'s room tone and codec artifacts, so a clean short slice usually beats a long noisy one.</p>' +
+              '<details><summary>Go deeper: scoring a prompt window</summary>' +
+              '<p>An SNR of 31 dB means the noise carries 10<sup>−3.1</sup> ≈ 0.08 % of the speech power, a clean take for a phone memo. The DNSMOS P.835 model predicts the scores SIG, BAK and OVRL on a 1–5 scale without needing a clean reference. A window is rejected for clipping, for more than one speaker (an embedding-clustering check), or for strong reverberation (low C50, the early-to-late energy ratio).</p>' +
+              '<p>Candidate windows slide over the memo in 1 s steps. The seven disjoint 6 s windows drawn in the Speech chamber are the coarse view of that search.</p></details>'
           },
           {
             say: 'The writer agent\'s script, plus a style instruction, goes into a zero shot text to speech model. A codec language model or a flow matching model continues the prompt, so the new speech keeps the creator\'s timbre while the prosody is steered to sound hushed and cinematic.',
             card: { tag: 'HOW IT WORKS', title: 'Continue the prompt, change the words', body: 'The model treats the memo slice as the start of an utterance and continues it with new text, in a hushed, slow style.' },
             deep: '<ul><li><b>Synthesis</b>: text is normalised ("30-second" → "thirty second"), then a zero-shot model continues the speaker prompt: a codec LM (VALL-E / CosyVoice 2 lineage: semantic tokens + flow-matching decoder) or a fully non-autoregressive flow-matching model (F5-TTS, E2).</li>' +
               '<li><b>Style</b>: instruction or reference-prosody conditioning, here "hushed, awe, slow".</li></ul>' +
-              '<p>Both families are opened up one level down, in the Speech, Music and Lip-Sync chamber.</p>'
+              '<p>Both families are opened up one level down, in the Speech, Music and Lip-Sync chamber.</p>' +
+              '<details><summary>Go deeper: what the model has to generate</summary>' +
+              '<table><tr><th>Family</th><th>Target for line N1 (3.8 s)</th></tr>' +
+              '<tr><td>Codec LM (VALL-E)</td><td>285 autoregressive steps for the first codebook, then 7 parallel passes: 2,280 tokens in all</td></tr>' +
+              '<tr><td>Semantic-token LM (CosyVoice 2)</td><td>about 95 autoregressive steps at 25 Hz, then flow matching to mel</td></tr>' +
+              '<tr><td>Flow matching (F5-TTS)</td><td>no autoregressive loop: 32 Euler steps over 919 mel frames (6.0 s prompt plus 3.8 s target)</td></tr></table>' +
+              '<p>Streaming favours the semantic-token stack; robustness against skipped or repeated words favours flow matching. The chamber below derives each.</p></details>'
           },
           {
-            say: 'Out come three narration lines in the creator\'s voice, generated at about one twelfth of real time on a single GPU. Consent is verified first, and every sample is watermarked.',
+            say: 'Out come three narration lines in the creator\'s voice, generated roughly three times faster than real time on a single GPU. Consent is verified first, and every sample is watermarked.',
             card: { tag: 'NUMBERS', title: 'Does it sound like her?', stat: { v: '0.68', u: 'speaker similarity', l: 'WavLM cosine, output versus prompt; word error rate 1.9 percent on re-transcription' } },
             deep: '<div class="eq">SIM = cos( e<sub>WavLM</sub>(ŷ), e<sub>WavLM</sub>(prompt) )</div>' +
-              '<p>Typical 2025 zero-shot quality on LibriSpeech-PC style tests: WER ≈ 2–3 %, speaker SIM ≈ 0.6–0.7; synthesis runs well below real time on one GPU (RTF ≈ 0.05–0.15). Output is 24 kHz, resampled to the 48 kHz project rate.</p>' +
-              '<div class="note">Consent gate: the memo speaker must verify as the account holder before a clone is allowed, and every synthetic line is watermarked (for example AudioSeal).</div>'
+              '<p>Typical 2025 zero-shot quality on LibriSpeech-PC style tests: WER ≈ 2–3 %, speaker SIM ≈ 0.6–0.75 (F5-TTS reports WER 2.4 % and SIM 0.66 on LibriSpeech-PC test-clean). In the F5-TTS paper\'s setup, flow-matching synthesis runs at RTF ≈ 0.15 with 16 steps and ≈ 0.3 with 32; engine-optimised streaming stacks go lower. Output is 24 kHz, resampled to the 48 kHz project rate.</p>' +
+              '<div class="note">Consent gate: the memo speaker must verify as the account holder before a clone is allowed, and every synthetic line is watermarked (for example AudioSeal).</div>' +
+              '<details><summary>Go deeper: reading the numbers</summary>' +
+              '<p><b>RTF</b> is synthesis time divided by audio time. At RTF 0.31 the 3.8 s line N1 costs about 1.2 s of GPU and all three lines under 4 s, well inside the shot renders. <b>WER</b> comes from re-transcribing the output with an ASR model and comparing it with the script: 1.9 % is fewer than two wrong words per hundred. <b>SIM</b> is a cosine between speaker-verification embeddings; its ceiling is the similarity of two real recordings of the same person, about 0.7 (0.69 in the F5-TTS table), not 1.0.</p>' +
+              '<p>Resampling 24 kHz to 48 kHz uses a polyphase filter and adds no information above 12 kHz. Speech energy up there is negligible, and the mix runs at 48 kHz because video does.</p></details>'
           },
           {
             say: 'Each line also comes back with word level timestamps from forced alignment. Those timestamps later drive the captions, and they tell the editor exactly where the voice breathes.',
             card: { tag: 'KEY IDEA', title: 'Timestamps are the real by-product', body: 'Word times become captions. The gaps between words become natural cut points: cut on a breath, never through a word.' },
             deep: '<p><b>Alignment</b>: CTC forced alignment (for example the wav2vec2 / MMS aligner) returns per-word start and end times. Its frame stride is 20 ms, about half a video frame (41.7 ms at 24 fps), so word boundaries are frame-accurate for cutting.</p>' +
-              '<p>The times feed three consumers: the WebVTT captions, the editor agent\'s <code>get_alignment</code> tool, and the pause detector that offers the 0.4 s gap after "impact," as a cut candidate.</p>'
+              '<p>The times feed three consumers: the WebVTT captions, the editor agent\'s <code>get_alignment</code> tool, and the pause detector that offers the 0.4 s gap after "impact," as a cut candidate.</p>' +
+              '<details><summary>Go deeper: forced alignment as a trellis search</summary>' +
+              '<p>The CTC model outputs a posterior over characters for every 20 ms frame. Forced alignment builds a trellis whose states are the target characters interleaved with blanks (2L + 1 states for L characters) and runs Viterbi over T frames, O(T · L) time. The best path gives each character a frame span, and each word inherits the span from its first to its last character.</p>' +
+              '<p>In video frames, "impact," ends at 2.15 s, frame 51.6, and "the" starts at 2.55 s, frame 61.2. The 9.6-frame gap contains frame 60, beat 4 of the grid, so a cut there would break neither a word nor the beat.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -371,10 +440,10 @@
           return Promise.all([ctx.reveal([memoT, memoW], { from: 'left', stagger: 100 }), ctx.reveal(win, { from: 'scale', delay: 500 }), ctx.reveal(winT, { delay: 800 })]).then(function () { return ctx.beat(1); }).then(function () {
             if (ctx.dead) return;
             /* beat 1: script + style go into the zero-shot TTS model */
-            var sc = ctx.label(IX + 334, IY + 138, 'script + style: "hushed, awe"', { color: 'amber', size: 11, w: 262, parent: G });
+            var sc = ctx.label(IX + 322, IY + 138, 'script + style: "hushed, awe"', { color: 'amber', size: 11, w: 232, parent: G });
             var tts = ctx.node({ x: IX + IW / 2, y: IY + 192, w: 360, h: 56, title: 'Zero-shot TTS', sub: 'codec LM · flow matching · vocoder', icon: 'mic', color: 'orange', titleSize: 15, subSize: 11, parent: G });
             var l1 = ctx.line(wx + ww / 2, IY + 126, wx + ww / 2, IY + 163, { color: 'orange', arrow: true, parent: G });
-            var l2 = ctx.line(IX + 334, IY + 152, IX + 334, IY + 163, { color: 'amber', arrow: true, parent: G });
+            var l2 = ctx.line(IX + 322, IY + 152, IX + 322, IY + 163, { color: 'amber', arrow: true, parent: G });
             S.l1 = l1;
             return Promise.all([ctx.reveal([sc, tts], { from: 'up', stagger: 150 }), ctx.reveal([l1, l2], { from: 'draw', delay: 400, stagger: 120 })]).then(function () {
               return ctx.pulse(tts, { color: 'orange', times: 2, dur: 600 });
@@ -391,14 +460,14 @@
               return g;
             });
             var l3 = ctx.line(IX + IW / 2, IY + 222, IX + IW / 2, oy - 22, { color: 'orange', arrow: true, parent: G });
-            var met = ctx.para(IX + 14, IY + 340, nb(['speaker SIM (WavLM cos)   0.68', 'WER (ASR re-transcribe)   1.9 %', 'RTF 0.08 · 24 kHz → 48 kHz', 'consent ✓ · watermark ✓']), { size: 12, font: 'code', color: 'text', lh: 20, parent: G });
+            var met = ctx.para(IX + 14, IY + 340, nb(['speaker SIM (WavLM cos)   0.68', 'WER (ASR re-transcribe)   1.9 %', 'RTF 0.31 · 24 kHz → 48 kHz', 'consent ✓ · watermark ✓']), { size: 12, font: 'code', color: 'text', lh: 20, parent: G });
             [0, 2, 3].forEach(function (k, n) {
               var v = VOICE[k];
               var c = clip(ctx, S.clips, v.t0, v.t1, 'A1', ctx.C.orange, v.id, { wave: true, seed: 60 + k });
               S.voice.push(c);
               ctx.reveal(c, { from: 'right', delay: 900 + n * 250, dist: 60 });
             });
-            ctx.hud('3 lines · RTF 0.08 · SIM 0.68');
+            ctx.hud('3 lines · RTF 0.31 · SIM 0.68');
             return Promise.all([ctx.reveal(l3, { from: 'draw' }), ctx.reveal(outs, { from: 'left', delay: 300, stagger: 200 }), ctx.reveal(met, { delay: 900 })]).then(function () {
               return ctx.packet(l3, { color: 'orange', dur: 600 });
             });
@@ -433,29 +502,44 @@
         title: 'Score & sound design',
         beats: [
           {
-            say: 'Next, the music. The music model receives a cue sheet: ninety six beats per minute, a minor key, and a build that peaks exactly at the crash, fifteen seconds in.',
-            card: { tag: 'KEY IDEA', title: 'A cue sheet, not a mood', body: 'Tempo, key, length and the hit point are structured constraints. The score is written to the picture, not the other way round.' },
-            deep: '<p><b>Score</b>: a latent-diffusion audio model (Stable Audio class: DiT over a VAE latent at ≈21.5 Hz, 44.1 kHz stereo, with <i>timing conditioning</i> seconds_start / seconds_total) or a codec LM (MusicGen: EnCodec 32 kHz, 4 codebooks at 50 Hz, delay-pattern decoding).</p>' +
-              '<p>The cue sheet pins tempo and the hit point. Stems (strings, synth, percussion) stay separate until the final mix so the editor can re-time any of them without regenerating audio.</p>'
+            say: 'Next, the music. The music model receives a cue sheet: ninety six beats per minute, a minor key, thirty seconds of length, and a build that should peak at the crash, fifteen seconds in.',
+            card: { tag: 'KEY IDEA', title: 'A cue sheet, not a mood', body: 'Tempo, key, length and the hit point are requested as structured constraints, then verified. The score is written to the picture, not the other way round.' },
+            deep: '<p><b>Score</b>: a latent-diffusion audio model (Stable Audio 2 / Open class: DiT over a VAE latent at ≈21.5 Hz, 44.1 kHz stereo, with <i>timing conditioning</i> seconds_start / seconds_total; the original Stable Audio used a U-Net at ≈43 Hz) or a codec LM (MusicGen: EnCodec 32 kHz, 4 codebooks at 50 Hz, delay-pattern decoding).</p>' +
+              '<p>The cue sheet states tempo and hit point. Stems (strings, synth, percussion) stay separate until the final mix so the editor can re-time any of them without regenerating audio.</p>' +
+              '<details><summary>Go deeper: sizes of the two representations</summary>' +
+              '<p>Thirty seconds of 44.1 kHz stereo is 2 · 1.323 M samples. The Stable Audio VAE turns that into 64 channels × 646 latent frames ≈ 41 k numbers, a 64 : 1 reduction. MusicGen instead makes 30 s · 50 Hz · 4 codebooks = 6,000 discrete tokens from an EnCodec 32 kHz stream.</p>' +
+              '<p>Neither model accepts "peak at 15.0 s" as a hard constraint. Timing conditioning fixes the total length, the text steers the arc, and the pipeline measures the result afterwards (next beat) and time-stretches or regenerates the section if it misses.</p></details>'
           },
           {
             say: 'At that tempo one beat lasts exactly fifteen frames, so every cut can land on a beat and the film breathes with the score.',
-            card: { tag: 'NUMBERS', title: 'One beat, fifteen frames', stat: { v: '15 f', u: 'per beat', l: '60 / 96 = 0.625 s = 15 frames at 24 fps, so a bar is 60 frames and the crash falls on beat 24' }, more: '<p>Frames per beat = 24 × 60 / BPM = 1440 / BPM. That is a whole number only for tempos that divide 1440: 72, 80, 90, 96, 120 and 144 give 20, 18, 16, 15, 12 and 10 frames. At 100 BPM a beat is 14.4 frames, so cuts would drift off the grid. That is why the cue sheet asks for 96.</p>' },
-            deep: '<div class="eq">beat = 60 / 96 = 0.625 s = 15 frames @ 24 fps  ·  bar = 60 f  ·  HIT = beat 24 = 15.0 s</div>' +
-              '<p>The 30 s cue is 48 beats, 12 bars. Every cut in the edit is a multiple of 15 frames: 105, 225, 315, 420, 540 and 660. Tempo is only loosely obeyed from text, so the pipeline verifies with a beat tracker (for example madmom) and, if it measures 95.4 BPM, time-stretches by 0.6 % with a phase vocoder so the downbeats land on the edit grid.</p>'
+            card: { tag: 'NUMBERS', title: 'One beat, fifteen frames', stat: { v: '15 f', u: 'per beat', l: '60 / 96 = 0.625 s = 15 frames at 24 fps, so a bar is 60 frames and the crash falls on beat 24, counting from zero' }, more: '<p>Frames per beat = 24 × 60 / BPM = 1440 / BPM. That is a whole number only for tempos that divide 1440: 72, 80, 90, 96, 120 and 144 give 20, 18, 16, 15, 12 and 10 frames. At 100 BPM a beat is 14.4 frames, so cuts would drift off the grid. That is why the cue sheet asks for 96.</p>' },
+            deep: '<div class="eq">beat = 60 / 96 = 0.625 s = 15 frames @ 24 fps  ·  bar = 60 f  ·  HIT = beat 24 (from 0) = 15.0 s</div>' +
+              '<p>The 30 s cue is 48 beats, 12 bars. Every cut in the edit is a multiple of 15 frames: 105, 225, 315, 420, 540 and 660. Tempo is only loosely obeyed from text, so the pipeline verifies with a beat tracker (for example madmom) and, if it measures 95.4 BPM, time-stretches by 0.6 % with a phase vocoder so the downbeats land on the edit grid.</p>' +
+              '<details><summary>Go deeper: why 0.6 % lands the hit</summary>' +
+              '<p>At 95.4 BPM, beat 24 arrives at 24 · 60 / 95.4 = 15.094 s, about 2.3 frames late. A tempo error is a uniform scale on time, so multiplying every timestamp by 95.4 / 96 = 0.99375 moves the hit to exactly 15.000 s and puts every other downbeat on the 15-frame grid too. A phase vocoder changes duration without changing pitch, and a stretch this small is inaudible; for larger misses the section is regenerated instead.</p></details>'
+          },
+          {
+            say: 'Try it. Pick another tempo and watch the grid move under our six cuts. Only tempos that divide fourteen forty give whole frames per beat, and this edit was planned on the ninety six grid.',
+            card: { tag: 'TRY IT', title: 'Click a tempo', body: 'Choose 90, 96, 100 or 120 BPM. The grid is redrawn and the strip counts how many of the six cuts still land on a beat.' },
+            deep: '<p>Frames per beat is 1440 / BPM. At <b>90 BPM</b> a beat is 16 whole frames, yet none of our cuts lands on it, because the cut list was planned on the 96 grid. At <b>100 BPM</b> a beat is 14.4 frames: most grid points fall between two frames and must be rounded, up to half a frame off. At <b>120 BPM</b> a beat is 12 frames and the last three cuts happen to sit on it.</p>' +
+              '<p>So 96 BPM is not arbitrary: it is the tempo for which <i>this</i> edit is on the grid, and one of many that give whole-frame beats, since 1440 = 2<sup>5</sup> · 3<sup>2</sup> · 5 has 36 divisors.</p>'
           },
           {
             say: 'Sound effects come from a video to audio model that watches each shot and places the alarm, the whoosh and the impact on the right frame.',
-            card: { tag: 'STATE OF THE ART', title: 'Foley that watches the picture', body: 'Video-to-audio models such as MMAudio generate effects from frames and text, synchronised to within about one frame.' },
-            deep: '<p><b>Foley</b>: video-to-audio (MMAudio: flow matching, joint audio–video–text training, Synchformer features at 24 fps for frame-level sync) generates per-shot effects that follow on-screen motion. Veo 3-class models can instead emit audio jointly with the video.</p>' +
-              '<p>For the trailer, five events are generated: alarm (S2), whoosh (S3), impact at frame 360 (S4), crackle (S5) and a low hum for the ice (S6). Each lands on its own track A3 clip, so any one can be nudged.</p>'
+            card: { tag: 'STATE OF THE ART', title: 'Foley that watches the picture', body: 'Video-to-audio models such as MMAudio generate effects from frames and text. An onset check then nudges each effect onto its exact frame.' },
+            deep: '<p><b>Foley</b>: video-to-audio (MMAudio: flow matching, joint audio–video–text training, Synchformer features at 24 fps in the paper, 25 fps in the released code, for frame-level sync) generates per-shot effects that follow on-screen motion. Veo 3-class models can instead emit audio jointly with the video.</p>' +
+              '<p>For the trailer, five events are generated: alarm (S2), whoosh (S3), impact at frame 360 (S4), crackle (S5) and a low hum for the ice (S6). Each lands on its own track A3 clip, so any one can be nudged.</p>' +
+              '<details><summary>Go deeper: nudging an effect onto its frame</summary>' +
+              '<p>Compare the generated stem with the picture. With m(t) the motion energy of the shot and a(t) the onset strength of the audio, the offset is τ* = argmax<sub>τ</sub> Σ<sub>t</sub> m(t) · a(t + τ), refined below one frame by fitting a parabola around the peak. The A3 clip is then slid by round(24 · τ*) whole frames. Models such as MMAudio align well but not exactly (their own sync metric, DeSync, is measured in tenths of a second), so this cheap post-check is what makes the hit frame-accurate.</p></details>'
           },
           {
             say: 'Under every spoken line, the music ducks by about ten decibels, so the narration stays intelligible. The gain dips and recovers around each line, keyed by the voice track.',
             card: { tag: 'NUMBERS', title: 'Ducking depth', stat: { v: '−10 dB', u: 'under speech', l: 'sidechain: the voice keys the music gain, 80 ms attack, 400 ms release' } },
             deep: '<p><b>Ducking</b> is a sidechain compressor: A1 (voice) drives gain reduction on A2 (music).</p>' +
               '<div class="eq">g(t) = −10 dB · s(t),  s: attack 80 ms, release 400 ms</div>' +
-              '<p>The gain plot below is what the mixer will apply. Because ducking is automation on a separate stem, moving a line by two frames only moves its dip; nothing is regenerated. The full-power score at the 15.0 s hit sits in a gap between lines on purpose.</p>'
+              '<p>The gain plot below is what the mixer will apply (attack and release are drawn as straight ramps for readability). Because ducking is automation on a separate stem, moving a line by two frames only moves its dip; nothing is regenerated. The full-power score at the 15.0 s hit sits in a gap between lines on purpose.</p>' +
+              '<details><summary>Go deeper: the gain computer</summary>' +
+              '<p>A sidechain compressor with threshold T and ratio R lowers the gain by GR = (L − T)(1 − 1/R) dB whenever the key level L exceeds T. For a 10 dB dip at R = 6 the voice must sit 12 dB over the threshold, since 12 · (1 − 1/6) = 10. The gain is then smoothed with one-pole filters, g[n] = α·g[n−1] + (1 − α)·g<sub>target</sub> with α = exp(−1/(τ f<sub>s</sub>)), where τ = 80 ms on the way down and 400 ms on the way up. A dip therefore reaches 63 % of its depth after 80 ms and 95 % after 240 ms.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -476,31 +560,50 @@
           return Promise.all([ctx.reveal(cue, { from: 'up', delay: 200 }), ctx.reveal(S.music, { from: 'left', delay: 600 })]).then(function () { return ctx.beat(1); }).then(function () {
             if (ctx.dead) return;
             /* beat 1: the beat grid */
-            var eq = ctx.text(IX + 14, IY + 186, '60 / 96 = 0.625 s per beat = 15 frames', { size: 12, font: 'mono', color: 'white', parent: G });
-            for (var b = 0; b <= 48; b++) {
-              var down = b % 4 === 0;
-              ctx.line(tx(b * 0.625), 466, tx(b * 0.625), 680, { color: down ? ctx.alpha('orange', 0.28) : 'rgba(255,255,255,0.06)', sw: 1, parent: S.grid });
-            }
-            var B = strip(ctx, 'BEAT GRID · 96 BPM · every cut is a multiple of 15 frames', 'orange');
-            var px0 = BX + 40, pw = 900;
-            function fx(f) { return px0 + f / 720 * pw; }
-            ctx.line(px0, BY + 92, px0 + pw, BY + 92, { color: 'faint', parent: B });
-            for (var f = 0; f <= 720; f += 15) {
-              ctx.line(fx(f), BY + 92 - (f % 60 ? 5 : 11), fx(f), BY + 92, { color: f % 60 ? 'dim' : 'orange', sw: f % 60 ? 1 : 1.5, parent: B });
-              if (f % 120 === 0) ctx.text(fx(f), BY + 120, 'f ' + f, { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: B });
-            }
-            var cuts = [105, 225, 315, 420, 540, 660].map(function (f) {
+            S.eqT = ctx.text(IX + 14, IY + 186, '', { size: 12, font: 'mono', color: 'white', parent: G });
+            var B = S.bg = strip(ctx, '', 'orange');
+            S.gTitle = B.titleEl;
+            S.tk = ctx.group({ parent: B });
+            ctx.line(GX0, BY + 92, GX0 + GW, BY + 92, { color: 'faint', parent: B });
+            for (var f = 0; f <= 720; f += 120) ctx.text(gx(f), BY + 120, 'f ' + f, { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: B });
+            S.cutG = CUT_F.map(function (f) {
               var g = ctx.group({ parent: B });
-              ctx.poly([[fx(f) - 6, BY + 56], [fx(f) + 6, BY + 56], [fx(f), BY + 70]], { fill: 'amber', parent: g });
-              ctx.text(fx(f), BY + 44, String(f), { size: 11, font: 'mono', color: 'amber', anchor: 'middle', parent: g });
+              g.tri = ctx.poly([[gx(f) - 6, BY + 56], [gx(f) + 6, BY + 56], [gx(f), BY + 70]], { fill: 'amber', parent: g });
+              g.txt = ctx.text(gx(f), BY + 44, String(f), { size: 11, font: 'mono', color: 'amber', anchor: 'middle', parent: g });
               return g;
             });
-            ctx.text(BX + 14, BY + 146, 'cuts at 105 · 225 · 315 · 420 · 540 · 660 f  =  beats 7 · 15 · 21 · 28 · 36 · 44   |   HIT = frame 360 = beat 24', { size: 12, font: 'mono', color: 'text', parent: B });
+            S.gSum = ctx.text(BX + 14, BY + 146, '', { size: 12, font: 'mono', color: 'text', parent: B });
+            drawGrid(ctx, 96);
             ctx.hud('1 beat = 0.625 s = 15 frames');
-            return Promise.all([ctx.reveal(eq, { delay: 200 }), ctx.reveal(S.grid, { delay: 300, dur: 900 }), ctx.reveal(cuts, { from: 'down', stagger: 130, delay: 900 })]).then(function () { return ctx.wait(300); });
+            return Promise.all([ctx.reveal(S.eqT, { delay: 200 }), ctx.reveal(S.grid, { delay: 300, dur: 900 }), ctx.reveal(S.cutG, { from: 'down', stagger: 130, delay: 900 })]).then(function () { return ctx.wait(300); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             if (ctx.dead) return;
-            /* beat 2: foley from the picture */
+            /* beat 2: TRY IT, pick a tempo and watch the cuts fall off the grid */
+            S.tempoG = ctx.group({ parent: S.bg });
+            S.tempoChips = TEMPI.map(function (bpm, k) {
+              var c = ctx.label(BX + 590 + k * 92, BY + 17, bpm + ' BPM', { color: 'dim', size: 11, w: 84, parent: S.tempoG });
+              c.style.cursor = 'pointer';
+              c.addEventListener('click', function () {
+                if (ctx.dead) return;
+                drawGrid(ctx, bpm); paintTempo(ctx);
+                ctx.hud(bpm + ' BPM · ' + fmt2(1440 / bpm) + ' f per beat');
+              });
+              return c;
+            });
+            paintTempo(ctx);
+            ctx.hud('click a tempo · 6 cuts planned on the 96 grid');
+            return ctx.reveal(S.tempoChips, { from: 'left', stagger: 100 }).then(function () { return ctx.wait(500); }).then(function () {
+              drawGrid(ctx, 100); paintTempo(ctx);
+              return ctx.wait(1700);
+            }).then(function () {
+              drawGrid(ctx, 96); paintTempo(ctx);
+              return ctx.pulse(S.tempoChips[1], { color: 'orange', times: 1, dur: 600 });
+            });
+          }).then(function () { return ctx.beat(3); }).then(function () {
+            if (ctx.dead) return;
+            /* beat 3: foley from the picture (the tempo demo is put away and the grid restored) */
+            if (S.tempo !== 96) drawGrid(ctx, 96);
+            ctx.fadeOut(S.tempoG, 300, true);
             ctx.text(IX + 14, IY + 214, 'video-to-audio (MMAudio-class): frames → foley', { size: 12, font: 'mono', color: 'dim', parent: G });
             var rows = SFX.map(function (e, k) {
               var g = ctx.group({ parent: G });
@@ -518,11 +621,11 @@
               ctx.reveal(c, { from: 'down', delay: 500 + k * 200 });
               return c;
             });
-            ctx.hud('5 foley events · onset within 1 frame');
+            ctx.hud('5 foley events · onsets checked to the frame');
             return Promise.all([ctx.reveal(rows, { from: 'left', stagger: 140 })]).then(function () { return ctx.pulse(S.sfx[2], { color: 'amber', times: 2, dur: 600 }); });
-          }).then(function () { return ctx.beat(3); }).then(function () {
+          }).then(function () { return ctx.beat(4); }).then(function () {
             if (ctx.dead) return;
-            /* beat 3: ducking, drawn over A2 and as gain automation */
+            /* beat 4: ducking, drawn over A2 and as gain automation */
             function gainDb(t) {
               var g = 0;
               VOICE.forEach(function (v) {
@@ -562,26 +665,34 @@
             say: 'In shot two the fox speaks on screen: mayday, hull breach. The video model animated a mouth, but not these exact syllables.',
             card: { tag: 'PITFALL', title: 'Plausible lips, wrong syllables', body: 'A video model animates a talking mouth, not these phonemes. Three frames of audio lag, 125 ms, is right at the edge of what viewers notice.' },
             deep: '<p>The video generator saw a text prompt, not the waveform of D1, the fox\'s line "Mayday. Hull breach." (2.6 s). It produces plausible mouth motion, but the visemes (mouth shapes) do not line up with the phonemes in the audio.</p>' +
-              '<p>Humans tolerate audio leading by about 45 ms and lagging by about 125 ms (ITU-R BT.1359), which is 1 to 3 frames at 24 fps. Unrepaired generator lips are typically worse than that.</p>'
+              '<p>Viewers start to notice audio that leads the picture by about 45 ms or lags it by about 125 ms (the ITU-R BT.1359 detectability thresholds), which is 1 to 3 frames at 24 fps. Unrepaired generator lips are often worse than that.</p>' +
+              '<details><summary>Go deeper: phonemes versus visemes</summary>' +
+              '<p>English has roughly 40 phonemes but only about a dozen visemes (MPEG-4 defines 14), because many sounds share one mouth shape: /p/, /b/ and /m/ all close the lips. So a plausible mouth exists for almost any audio, which is why the error hides in a still frame and shows in motion. The most visible faults are lip closures that occur where the audio has none, or the reverse.</p></details>'
           },
           {
             say: 'A lip sync model repairs that locally. It masks the lower half of the face in every frame and regenerates only that region.',
             card: { tag: 'KEY IDEA', title: 'Repaint the mouth, keep the rest', body: 'Only the masked lower face is regenerated and pasted back with a feathered edge. Ears, fur, background and every other frame stay untouched.' },
             deep: '<p>The mask comes from a face track. Stylised faces break landmark detectors, so for the fox the mask comes from the generator\'s own segmentation track (for example SAM 2 propagated through the shot).</p>' +
-              '<p>The face crop is encoded by an image VAE (8× spatial downsampling), the lower half is masked, and the diffusion model repaints only those latents. Because the rest of the frame is copied through, colour and grain of the shot are preserved exactly.</p>'
+              '<p>The face crop is encoded by an image VAE (8× spatial downsampling), the lower half is masked, and the diffusion model repaints only those latents. Because the rest of the frame is copied through, colour and grain of the shot are preserved exactly.</p>' +
+              '<details><summary>Go deeper: why only the mask comes from the decoder</summary>' +
+              '<p>The VAE round trip is not the identity: a Stable-Diffusion-style 8× autoencoder reconstructs images at only about 23 to 25 dB PSNR (COCO at 256², SDXL paper), softening skin, fur and grain everywhere. Decoding the whole frame would degrade exactly the pixels the method promises to leave alone. So the output is composited: I<sub>out</sub> = M<sub>f</sub> ⊙ D(ẑ) + (1 − M<sub>f</sub>) ⊙ I<sub>orig</sub>, where M<sub>f</sub> is the mask blurred by a Gaussian of a few pixels so the seam disappears.</p></details>'
           },
           {
             say: 'The regeneration is a latent diffusion model conditioned on Whisper audio features and on a reference frame of the fox, so the identity stays fixed while the lips follow the speech.',
             card: { tag: 'HOW IT WORKS', title: 'Audio drives, a reference anchors', body: 'Whisper features enter through cross attention; an unmasked reference frame keeps teeth, fur and face shape. Sixteen frames are denoised together.' },
-            deep: '<p><b>LatentSync</b> (2024): Stable-Diffusion-style U-Net in VAE latent space; inputs per 16-frame window are masked target latents ‖ reference-frame latents ‖ noise. Whisper encoder features of the aligned audio enter through cross-attention.</p>' +
-              '<p>It is trained with a SyncNet loss in pixel space plus TREPA (temporal representation alignment) against flicker. Lineage: <b>Wav2Lip</b> (2020) used a frozen SyncNet expert as a discriminator; diffusion replaced the GAN for sharper, more stable mouths.</p>'
+            deep: '<p><b>LatentSync</b> (2024): Stable-Diffusion-style U-Net in VAE latent space; inputs per 16-frame window are the noisy latent, a mask, the masked-frame latents and the reference-frame latents (13 channels). Whisper encoder features of the aligned audio enter through cross-attention.</p>' +
+              '<p>It is trained with a SyncNet loss in pixel space plus TREPA (temporal representation alignment) against flicker. Lineage: <b>Wav2Lip</b> (2020) used a frozen, pre-trained SyncNet-style expert as a discriminator; diffusion replaced the GAN for sharper, more stable mouths.</p>' +
+              '<details><summary>Go deeper: audio cross-attention</summary>' +
+              '<p>Inside each U-Net block the queries come from the video latent tokens and the keys and values from the audio window: Attn = softmax(Q Kᵀ / √d) V, with K, V ∈ ℝ<sup>(2m+1)×d<sub>a</sub></sup> for the 2m + 1 Whisper feature frames around the current video frame. Whisper was trained for recognition on 680,000 hours of weakly supervised speech, so its intermediate features encode phonetic content that holds up across speakers, rooms and noise.</p></details>'
           },
           {
             say: 'A SyncNet style expert then measures the offset between sound and lips. Before the fix, its confidence is weak and peaks three frames late. After it, a sharp peak sits at zero.',
             card: { tag: 'NUMBERS', title: 'From three frames late to zero', stat: { v: '+3 → 0', u: 'frames', l: 'audio-video offset; LSE-C rises from 2.1 to 8.0. The gate is one frame and LSE-C at least 6' }, more: '<p>SyncNet embeds a 0.2 s audio window and a 5-frame mouth crop and compares them at every offset from −15 to +15 frames. LSE-D is the smallest distance, LSE-C the gap between the median and the minimum: a sharp, deep valley means the audio and the lips agree at exactly one offset.</p>' },
             deep: '<p><b>SyncNet metric</b>: distances are computed for offsets δ ∈ [−15, 15] frames.</p>' +
               '<div class="eq">LSE-D = min<sub>δ</sub> d(δ)   LSE-C = median<sub>δ</sub> d(δ) − min<sub>δ</sub> d(δ)</div>' +
-              '<p>Low LSE-D and high LSE-C (≈7–8 for real talking-head footage) mean tight sync; argmin δ is the AV offset, which must be 0 ±1 frame. Joint audio-video generators (Veo 3 class) avoid the patch, but any later line change still needs lip-sync.</p>'
+              '<p>Low LSE-D and high LSE-C (≈7–8 on real footage; the Wav2Lip tables give 6.9–7.8) mean tight sync; argmin δ is the AV offset, which must be 0 ±1 frame. Joint audio-video generators (Veo 3 class) avoid the patch, but any later line change still needs lip-sync.</p>' +
+              '<details><summary>Go deeper: the offset search in pseudocode</summary>' +
+              '<pre>for δ in −15 … +15:\n    d[δ] = mean over windows t of\n           ‖ f_video(frames t..t+4) − f_audio(audio at t+δ) ‖₂\nLSE-D  = min(d)               # distance at the best offset\nLSE-C  = median(d) − min(d)   # how sharp the valley is\noffset = argmin(d)            # must be 0 ± 1 frame</pre></details>'
           }
         ],
         run: function (ctx) {
@@ -597,7 +708,7 @@
           var fox = foxHead(ctx, G, fx, fy, 0.95);
           var d1T = ctx.text(IX + 14, IY + 300, 'D1 audio · "Mayday. Hull breach." · 2.6 s', { size: 12, font: 'mono', color: 'orange', parent: G });
           var bars = ctx.bars(IX + 14, IY + 312, IW - 28, 60, env, { color: 'orange', gap: 4, parent: G });
-          var head = ctx.line(IX + 14, IY + 308, IX + 14, IY + 376, { color: 'white', sw: 2, parent: G, glow: true });
+          var head = ctx.line(IX + 14, IY + 308, IX + 14, IY + 376, { color: 'white', sw: 2.5, parent: G });
           S.lip = ctx.loop(function (t) {
             var u = (t % 2.6) / 2.6, idx = Math.min(25, Math.floor(u * 26));
             fox.mouth.setAttribute('ry', (2 + 13 * env[idx]).toFixed(2));
@@ -611,7 +722,7 @@
             if (ctx.dead) return;
             /* beat 1: mask the lower face */
             var mask = ctx.rect(fx - 70, fy + 6, 140, 70, { rx: 6, stroke: 'magenta', sw: 1.6, dash: '5 4', fill: ctx.alpha('magenta', 0.08), parent: G });
-            var maskT = ctx.text(fx, fy + 108, 'mask: lower face', { size: 11, font: 'mono', color: 'magenta', anchor: 'middle', parent: G });
+            var maskT = ctx.text(fx, fy + 108, 'mask: lower face', { size: 11, font: 'mono', color: 'white', anchor: 'middle', parent: G });
             S.chain = ['face track + mask (SAM 2)', 'VAE encode · 8× down', 'denoise ⟵ Whisper audio', 'VAE decode · feather paste'].map(function (s, k) {
               return ctx.node({ x: IX + 356, y: IY + 72 + k * 58, w: 206, h: 40, title: s, color: k === 2 ? 'violet' : 'orange', kind: 'chip', titleSize: 11.5, glow: false, parent: G });
             });
@@ -640,7 +751,7 @@
             ctx.line(z.x, py0, z.x, py0 + ph, { color: 'faint', dash: '3 4', parent: B });
             [-15, -10, -5, 0, 5, 10, 15].forEach(function (o) { ctx.text(before.toPx(o, 0).x, py0 + ph + 12, (o > 0 ? '+' : '') + o, { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: B }); });
             var p3 = before.toPx(3, 4.2);
-            var t1 = ctx.text(p3.x + 10, p3.y - 6, 'before: +3 f', { size: 11, font: 'mono', color: 'dim', parent: B });
+            var t1 = ctx.text(p3.x + 12, p3.y - 15, 'before: +3 f', { size: 11, font: 'mono', color: 'dim', parent: B });
             var p0 = after.toPx(0, 9.8);
             var t2 = ctx.text(p0.x + 12, p0.y + 4, 'after: 0 f', { size: 11, font: 'mono', color: 'lime', parent: B });
             var stats = ctx.para(BX + 680, BY + 52, nb(['before  LSE-C 2.1  LSE-D 10.4', 'after   LSE-C 8.0  LSE-D 6.6', 'gate: |offset| ≤ 1 frame', '      LSE-C ≥ 6']), { size: 12, font: 'code', color: 'text', lh: 22, parent: B });
@@ -659,25 +770,33 @@
             say: 'Now the editor agent. It watches low resolution proxies of every shot, and it reads the script timings, the word timestamps and the beat grid through tool calls.',
             card: { tag: 'HOW IT WORKS', title: 'The editor sees proxies, not pixels', body: 'Two-frames-per-second keyframes go through the vision encoder; alignment and beat data arrive as structured tool results.' },
             deep: '<p>The editor is an LLM agent with tools: <code>get_proxy(shot, fps=2)</code> (captioned keyframes via the vision encoder), <code>get_alignment(line)</code>, <code>get_beats()</code> and finally <code>submit_edl(edl)</code>.</p>' +
-              '<p>A 480×270 proxy at 2 fps costs a few hundred tokens per shot after captioning, so all six shots fit in context with room to reason. Full-resolution mezzanine files are never opened by the model.</p>'
+              '<p>A 480×270 proxy at 2 fps costs a few hundred tokens per shot after captioning, so all six shots fit in context with room to reason. Full-resolution mezzanine files are never opened by the model.</p>' +
+              '<details><summary>Go deeper: the context budget</summary>' +
+              '<p>Six shots at 2 fps for 5 s is 60 keyframes. As raw patch tokens (14 × 14 patches on 480×270 is about 650 per frame) that would cost around 40 k tokens; as captions of roughly 40 tokens each it is about 2.4 k. The price is fidelity: a caption can miss a small continuity fault, so the later QC pass looks at real pixels on the agent\'s behalf.</p></details>'
           },
           {
             say: 'It writes an edit decision list: structured JSON with clip URIs, in and out points in frames, transitions, audio tracks and captions. The first draft lands on the timeline exactly as the agent wrote it.',
             card: { tag: 'KEY IDEA', title: 'The edit is data', body: 'URIs and frame ranges, no pixels. That makes the edit inspectable, diffable, cheap to revise and exactly reproducible.' },
             deep: '<p>The output is <b>data</b>, validated before any GPU is scheduled. Each video entry is <code>{uri, in, out}</code> in source frames, plus optional <code>xfade</code> or <code>fade_out_f</code>; audio entries carry a track, a URI and a start frame.</p>' +
-              '<div class="note">Why an EDL instead of letting a model "render the edit"? It is inspectable, diffable, cheap to revise (re-render only touched segments), and exactly reproducible. It interoperates with NLEs via OpenTimelineIO / CMX 3600 / FCPXML adapters for a human editor to take over.</div>'
+              '<div class="note">Why an EDL instead of letting a model "render the edit"? It is inspectable, diffable, cheap to revise (re-render only touched segments), and exactly reproducible. It interoperates with NLEs via OpenTimelineIO / CMX 3600 / FCPXML adapters for a human editor to take over.</div>' +
+              '<details><summary>Go deeper: EDL formats</summary>' +
+              '<p>CMX 3600 is the tape-era list: one video track, event lines with source and record timecodes, few transitions. OpenTimelineIO models the same content as objects (a <code>Clip</code> with a <code>source_range</code> and a <code>media_reference</code>, plus a <code>Transition</code> with in and out offsets) and has adapters for CMX 3600, FCPXML and AAF. The JSON shown here is a project dialect that maps one-to-one onto those objects, which keeps hand-over to a human editor straightforward.</p></details>'
           },
           {
             say: 'The list is emitted as a tool call and validated against a schema before any GPU is scheduled. The first draft fails three checks: it runs seven frames long, the dissolve has too little handle, and the third cut is off the beat grid.',
             card: { tag: 'WHY IT MATTERS', title: 'Fail in milliseconds, not GPU-minutes', body: 'A rule check costs nothing. Discovering the same mistake after a render costs minutes of GPU time and a wasted encode.' },
-            deep: '<pre>validate(edl):\n  0 ≤ in &lt; out ≤ src_frames        # 121\n  Σ(out − in) == dur_f               # 720\n  xfade f ≤ 2·min(handle_a, handle_b)\n  cut % 15 == 0   (beat grid, soft)\n  uris resolvable, captions ≤ 42 chars\non error → typed errors → agent repairs (≤ 3)</pre>' +
-              '<p>The draft has S3 out = 117, so S3 lasts 97 frames, the total is 727, only 4 spare source frames follow the out point (the dissolve needs 6), and the cut lands at frame 322, seven frames off beat 21.</p>'
+            deep: '<pre>validate(edl):\n  0 ≤ in &lt; out ≤ src_frames        # 121\n  Σ(out − in) == dur_f               # 720\n  xfade f ≤ 2·min(handle_a, handle_b)\n  cut % 15 == 0   (beat grid)\n  uris resolvable, captions ≤ 42 chars\non error → typed errors → agent repairs (≤ 3)</pre>' +
+              '<p>The draft has S3 out = 117, so S3 lasts 97 frames, the total is 727, only 4 spare source frames follow the out point (the dissolve needs 6), and the cut lands at frame 322, seven frames off beat 21.</p>' +
+              '<details><summary>Go deeper: the rules as constraints</summary>' +
+              '<p>Let clip i have source length L<sub>i</sub> = 121 and in and out points a<sub>i</sub> &lt; b<sub>i</sub>. The rules are: 0 ≤ a<sub>i</sub> and b<sub>i</sub> ≤ L<sub>i</sub>; Σ(b<sub>i</sub> − a<sub>i</sub>) + 60 (title) = 720; a dissolve of d frames after clip i needs L<sub>i</sub> − b<sub>i</sub> ≥ d/2 and a<sub>i+1</sub> ≥ d/2; and every cut position c<sub>k</sub> = Σ<sub>j≤k</sub>(b<sub>j</sub> − a<sub>j</sub>) satisfies c<sub>k</sub> ≡ 0 (mod 15). All are linear or modular constraints over integers, so a check takes microseconds and each failure has a precise, machine-readable message.</p></details>'
           },
           {
             say: 'The typed errors go back to the agent as a tool result. It trims the third clip by seven frames, the cut snaps to the beat at frame three hundred fifteen, and every check turns green.',
             card: { tag: 'NUMBERS', title: 'Snap to the beat', stat: { v: '−7 f', u: 'on cut 3', l: '322 → 315 = beat 21. Length is exactly 720 frames and the dissolve keeps its 6-frame handles' } },
             deep: '<p>Durations: 105 + 120 + 90 + 105 + 120 + 120 + 60 = 720 frames. The S3→S4 dissolve is centred on cut 315 and consumes 6-frame handles on each side (S3 has 11 spare frames after its out point of 110, S4 has 8 before its in point of 8), so the total length is unchanged.</p>' +
-              '<p>A single repair turn was enough. The loop is bounded at three turns; if the agent cannot produce a valid EDL by then, the job escalates to a fallback template edit and flags a human review.</p>'
+              '<p>A single repair turn was enough. The loop is bounded at three turns; if the agent cannot produce a valid EDL by then, the job escalates to a fallback template edit and flags a human review.</p>' +
+              '<details><summary>Go deeper: one integer satisfies three rules</summary>' +
+              '<p>Let o be the out point of S3 (in = 20, every other clip fixed). Length: 610 + o = 720, so o = 110. Handles: 121 − o ≥ 6, so o ≤ 115. Beat grid: the cut sits at 205 + o ≡ 0 (mod 15), so o ∈ {95, 110, 125}. Only o = 110 meets all three, which is why one repair turn is enough: the typed errors point at a single variable, and the constraints leave a single solution.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -697,7 +816,7 @@
           var tools = [['get_proxy(S1…S6, fps=2)', 'keyframes + captions'], ['get_alignment(N1…N3)', 'per-word times'], ['get_beats()', '96 BPM · 15 f grid']];
           var rows = tools.map(function (t, k) {
             var g = ctx.group({ parent: G });
-            ctx.label(IX + 14, IY + 142 + k * 50, t[0], { color: 'magenta', size: 11, anchor: 'start', w: 250, parent: g });
+            ctx.label(IX + 14, IY + 142 + k * 50, t[0], { color: 'magenta', textColor: 'white', size: 11, anchor: 'start', w: 250, parent: g });
             ctx.line(IX + 270, IY + 142 + k * 50, IX + 296, IY + 142 + k * 50, { color: 'magenta', arrow: true, parent: g });
             ctx.text(IX + 304, IY + 142 + k * 50, t[1], { size: 12, font: 'mono', color: 'text', parent: g });
             return g;
@@ -710,6 +829,7 @@
             ctx.remove(S.insp, 300);
             var G2 = S.insp = ctx.group();
             S.edl = ctx.code({ x: IX, y: IY, w: IW, title: 'edl.json · tool_use: submit_edl', lang: 'json', size: 12, color: 'magenta', typing: true, maxLines: 18, parent: G2, lines: [] });
+            S.edl.childNodes[5].setAttribute('fill', ctx.mix('magenta', 'white', 0.55));   /* readable window title in the light theme */
             ctx.reveal(S.edl, { from: 'right', dur: 400 });
             S.v1 = [];
             var labels = ['S1 approach', 'S2 cockpit', 'S3 re-entry', 'S4 impact', 'S5 emerge', 'S6 ice glow', 'TITLE'];
@@ -744,7 +864,7 @@
             });
             S.errT = ctx.text(BX + 14, BY + 140, 'on failure: typed error list → back to the editor agent as a tool_result (≤ 3 repair turns)', { size: 12, font: 'mono', color: 'dim', parent: B });
             ctx.hud('draft = 727 f · target = 720 f');
-            var verdict = { 2: 'red', 3: 'red', 4: 'amber' };
+            var verdict = { 2: 'red', 3: 'red', 4: 'red' };
             return ctx.wait(500).then(function () {
               return S.chk.reduce(function (p, c, k) {
                 return p.then(function () { tint(ctx, c, verdict[k] || 'lime'); return ctx.wait(140); });
@@ -787,32 +907,40 @@
             card: { tag: 'KEY IDEA', title: 'Compiled, not improvised', body: 'A versioned, deterministic compiler maps the EDL to an ffmpeg filter graph. No model touches a pixel at this point.' },
             deep: '<p>An ffmpeg <b>filter graph</b> is a DAG of filters connected by labelled pads; frames are pulled through it by the sinks. The compiler is a pure function of the EDL and is versioned along with the ffmpeg build.</p>' +
               '<pre>[0:v]trim=start_frame=12:end_frame=117,\n     setpts=PTS-STARTPTS[v0];  …</pre>' +
-              '<p>Each source is trimmed to its <code>[in, out)</code> range and its timestamps are reset so the clips can be concatenated on the timeline.</p>'
+              '<p>Each source is trimmed to its <code>[in, out)</code> range and its timestamps are reset so the clips can be concatenated on the timeline.</p>' +
+              '<details><summary>Go deeper: half-open ranges and timestamps</summary>' +
+              '<p><code>trim=start_frame=12:end_frame=117</code> keeps frames 12 … 116, a half-open range of 105 frames that matches the EDL\'s <code>[in, out)</code>. <code>setpts=PTS-STARTPTS</code> then moves the first kept frame to time 0 in the 1/24 s timebase. Without it every clip after the first would carry a stale offset, the textbook cause of black frames and audio drift after a cut.</p></details>'
           },
           {
             say: 'On the video side it trims and retimes each clip, cross fades the dissolve, applies the show look up table, and overlays the title.',
             card: { tag: 'HOW IT WORKS', title: 'Four video operations', body: 'Trim, dissolve, colour look-up table, title overlay. The dissolve blends 12 frames borrowed from clip handles, so the film keeps its length.' },
             deep: '<pre>[v2][v3]xfade=transition=fade:\n     duration=0.5:offset=3.5[v23];\n[vcat]lut3d=show_v2.cube[vg];\n[vg][t]overlay=enable=\'gte(n,660)\'[v];</pre>' +
-              '<p>The dissolve input S3 is trimmed with its 6-frame handle, [20, 116); S4 starts 6 frames early at source frame 2; offset = 309 − 225 = 84 f = 3.5 s. The look-up table is a 33³ cube applied with tetrahedral interpolation.</p>'
+              '<p>The dissolve input S3 is trimmed with its 6-frame handle, [20, 116); S4 starts 6 frames early at source frame 2; offset = 309 − 225 = 84 f = 3.5 s. The look-up table is a 33³ cube applied with tetrahedral interpolation.</p>' +
+              '<details><summary>Go deeper: the LUT and the dissolve offset</summary>' +
+              '<p>A 33³ cube holds 35,937 RGB triples, about 0.4 MB in float32. Tetrahedral interpolation places each pixel in one of six tetrahedra of its lattice cell and blends 4 corner values instead of the 8 of trilinear, and it keeps the grey axis exactly grey. The xfade offset follows from the cut: the blend starts 6 frames before the cut at timeline frame 315, so 315 − 6 − 225 = 84 frames = 3.5 s into the S3 stream, whose trimmed length is 96 frames.</p></details>'
           },
           {
             say: 'On the audio side, the three stems are mixed, with the voice driving a side chain compressor on the music, so the ducking you saw earlier becomes an exact filter.',
             card: { tag: 'HOW IT WORKS', title: 'The ducker is a filter', body: 'The voice is split: one copy is mixed, one copy keys the compressor that lowers the music. Same graph, same result, every render.' },
-            deep: '<pre>[1:a]asplit[a1][key];\n[2:a][key]sidechaincompress=ratio=6:\n     attack=80:release=400[duck];\n[a1][duck][3:a]amix=inputs=3:normalize=0,</pre>' +
-              '<p><code>sidechaincompress</code> compresses its <i>first</i> input (the music) keyed by the <i>second</i> (the voice), which is why the voice stem is split: one copy goes to the mix, one drives the ducker. The ratio, attack and release are the numbers the mixer plotted earlier, so the graph reproduces that ducking curve exactly.</p>'
+            deep: '<pre>[6:a]asplit[a1][key];\n[7:a][key]sidechaincompress=threshold=0.025:\n     ratio=6:attack=80:release=400[duck];\n[a1][duck][8:a]amix=inputs=3:normalize=0,</pre>' +
+              '<p>Inputs 0 to 5 are the six shots; 6, 7 and 8 are the voice, music and effects stems. <code>sidechaincompress</code> compresses its <i>first</i> input (the music) keyed by the <i>second</i> (the voice), which is why the voice stem is split: one copy goes to the mix, one drives the ducker.</p>' +
+              '<p>Attack and release are the numbers the mixer plotted earlier. Threshold and ratio are set so a typical voice level of about −20 dBFS sits 12 dB over the threshold (0.025 is −32 dBFS), which gives the 10 dB dip: 12 · (1 − 1/6) = 10. The compressor is level dependent, so the real dip follows the voice\'s loudness instead of being a fixed −10 dB. That is why the loudness pass measures the actual result.</p>'
           },
           {
             say: 'Loudness is normalized to minus fourteen LUFS integrated, with true peaks held under minus one decibel. Our mix measures minus eighteen point seven, so the graph adds four point seven decibels and a peak limiter.',
-            card: { tag: 'NUMBERS', title: 'Loudness target', stat: { v: '−14 LUFS', u: 'integrated', l: 'measured −18.7, so +4.7 dB of gain; a true-peak limiter holds peaks under −1 dBTP' }, more: '<p>The measured true peak was −3.2 dBTP. A static +4.7 dB gain alone would push the impact transient to +1.5 dBTP, so a look-ahead limiter takes about 2.5 dB off those few peaks. Doing this in two passes (measure, then apply) keeps the mix linear everywhere else.</p>' },
+            card: { tag: 'NUMBERS', title: 'Loudness target', stat: { v: '−14 LUFS', u: 'integrated', l: 'measured −18.7, so +4.7 dB of gain; a true-peak limiter holds peaks under −1 dBTP' }, more: '<p>The measured true peak was −3.2 dBTP. A static +4.7 dB gain alone would push the impact transient to +1.5 dBTP, so a look-ahead limiter takes about 2.5 dB off those few peaks. Measuring first and applying second gives one static offset for the whole file, and the limiter only touches the peaks that need it.</p>' },
             deep: '<p><b>Loudness</b> (ITU-R BS.1770-4 / EBU R128): K-weighting (high-shelf + high-pass), mean square over 400 ms blocks (75 % overlap), absolute gate −70 LUFS, relative gate −10 LU:</p>' +
               '<div class="eq">L<sub>K</sub> = −0.691 + 10·log<sub>10</sub> Σ<sub>c</sub> G<sub>c</sub>·z<sub>c</sub></div>' +
-              '<p>Targets: −14 LUFS (streaming platforms), −23 LUFS (EBU broadcast), −24 LKFS (ATSC A/85). The measurement pass gives I = −18.7 LUFS and TP = −3.2 dBTP, then the render applies the gain and limiter. The render-delivery chamber walks through the measurement.</p>'
+              '<p>Targets: −14 LUFS (streaming platforms), −23 LUFS (EBU broadcast), −24 LKFS (ATSC A/85). The measurement pass gives I = −18.7 LUFS and TP = −3.2 dBTP, then the render applies the gain and limiter. The render-delivery chamber walks through the measurement.</p>' +
+              '<details><summary>Go deeper: loudnorm in two passes, and its pitfall</summary>' +
+              '<p>Pass one runs <code>loudnorm=print_format=json</code> and reports I, TP, LRA and the gate threshold. Pass two feeds them back as <code>measured_I</code>, <code>measured_TP</code>, <code>measured_LRA</code> and <code>measured_thresh</code> with <code>linear=true</code> for one static gain. But linear mode only stays linear if the gain does not push the true peak over the ceiling. Here +4.7 dB would take −3.2 dBTP to +1.5 dBTP, so ffmpeg reverts to its dynamic mode, or the pipeline applies a plain gain followed by a separate look-ahead true-peak limiter. Either way the number that counts is measured again on the finished file.</p></details>'
           },
           {
             say: 'Because the graph is a pure function of its inputs, the render is keyed by a hash, cached, and replayed exactly. Watch the playhead sweep all seven hundred twenty frames into one master file.',
-            card: { tag: 'STATE OF THE ART', title: 'Frames never leave the GPU', body: 'NVDEC decodes, CUDA kernels composite, NVENC encodes: seven hundred twenty frames of 1080p composite in about three seconds.' },
-            deep: '<div class="note">Render key = sha256(EDL ‖ input hashes ‖ ffmpeg build ‖ flags). With <code>-fflags +bitexact</code> and pinned versions the master is byte-identical on replay. The GPU path (NVDEC → CUDA compositor → NVENC) keeps frames in VRAM: 720 frames of 1080p composite in ≈3 s.</div>' +
-              '<p>A cache hit reuses the previous master and skips the render entirely; a partial hit reuses per-segment intermediates. The output <code>master.mov</code> is ProRes 4444 at 24 fps, ready for enhancement.</p>'
+            card: { tag: 'STATE OF THE ART', title: 'Composite in VRAM, in parallel', body: 'Frames are uploaded to the GPU once, CUDA kernels composite and grade them in place, and eight segments render in parallel: a budget of about 3 s for 720 frames of 1080p.' },
+            deep: '<div class="note">Render key = sha256(EDL ‖ input hashes ‖ ffmpeg build ‖ flags). With <code>-fflags +bitexact</code> and pinned versions the master is byte-identical on replay.</div>' +
+              '<p>Once uploaded, frames stay in VRAM: CUDA kernels (<code>scale_cuda</code>, <code>overlay_cuda</code>, a LUT kernel) composite 720 frames of 1080p within a budget of about 3 s. NVDEC and NVENC have no ProRes support, so the ProRes mezzanine is decoded, and the ProRes master encoded, by CPU threads. The timeline is therefore cut into eight segments, one per host of the job, about 90 frames each, and stitched afterwards. Where the intermediate is H.264, HEVC or AV1, NVDEC and NVENC can cover both ends.</p>' +
+              '<p>A cache hit reuses the previous master and skips the render; a partial hit reuses per-segment intermediates. The output <code>master.mov</code> is ProRes 422 HQ at 24 fps, ready for enhancement.</p>'
           }
         ],
         run: function (ctx) {
@@ -833,10 +961,10 @@
           var cv = ctx.code({ x: BX, y: 700, w: 490, title: 'video graph · compiled from the EDL', lang: 'sh', size: 11, color: 'lime', typing: true, maxLines: 6, parent: S.bot, lines: [] });
           var ca = ctx.code({ x: BX + 500, y: 700, w: 485, title: 'audio graph · compiled from the EDL', lang: 'sh', size: 11, color: 'orange', typing: true, maxLines: 6, parent: S.bot, lines: [] });
           var VL = nb(['[0:v]trim=start_frame=12:end_frame=117,', '     setpts=PTS-STARTPTS[v0];  …', '[v2][v3]xfade=transition=fade:', '     duration=0.5:offset=3.5[v23];', '[vcat]lut3d=show_v2.cube[vg];', '[vg][t]overlay=enable=\'gte(n,660)\'[v];']);
-          var AL = nb(['[1:a]asplit[a1][key];', '[2:a][key]sidechaincompress=ratio=6:', '     attack=80:release=400[duck];', '[a1][duck][3:a]amix=inputs=3:normalize=0,', '     loudnorm=I=-14:TP=-1:LRA=11[a]']);
+          var AL = nb(['[6:a]asplit[a1][key];', '[7:a][key]sidechaincompress=threshold=0.025:', '     ratio=6:attack=80:release=400[duck];', '[a1][duck][8:a]amix=inputs=3:normalize=0,', '     loudnorm=I=-14:TP=-1:LRA=11[a]']);
           /* beat 0: the compiler and the graph's sources and sink */
           mk(vn, vc, IX + 121, 'lime', 0); mk(an, ac, IX + 349, 'orange', 0);
-          var mux = ctx.node({ x: IX + IW / 2, y: IY + 300, w: 330, h: 40, title: 'mux → master.mov (ProRes 4444)', color: 'white', kind: 'box', titleSize: 13, glow: false, parent: G });
+          var mux = ctx.node({ x: IX + IW / 2, y: IY + 300, w: 330, h: 40, title: 'mux → master.mov (ProRes 422 HQ)', color: 'white', kind: 'box', titleSize: 13, glow: false, parent: G });
           ctx.hud('EDL → filtergraph · pure function');
           return Promise.all([ctx.reveal(S.bot, { from: 'up', delay: 100 }), ctx.reveal([vn[0], an[0]], { from: 'up', stagger: 100, delay: 200 }), ctx.reveal(mux, { from: 'scale', delay: 500 }), ctx.wait(300).then(function () { return typeLines(ctx, cv, VL.slice(0, 2), 2); })]).then(function () { return ctx.beat(1); }).then(function () {
             if (ctx.dead) return;
@@ -892,10 +1020,11 @@
           }).then(function () { return ctx.beat(4); }).then(function () {
             if (ctx.dead) return;
             /* beat 4: the render key, and the playhead sweeps the master */
-            var key = ctx.para(IX + 14, IY + 352, ['key = sha256(EDL ‖ inputs ‖ ffmpeg 7.1 ‖ flags)', 'cache hit → reuse master, skip render', 'GPU path: NVDEC → CUDA → NVENC (VRAM)'], { size: 12, font: 'mono', color: 'text', lh: 20, parent: G });
+            var key = ctx.para(IX + 14, IY + 352, ['key = sha256(EDL ‖ inputs ‖ ffmpeg 7.1 ‖ flags)', 'cache hit → reuse master, skip render', 'CUDA composite in VRAM · 8 parallel segments'], { size: 12, font: 'mono', color: 'text', lh: 20, parent: G });
             var ph = ctx.group({ parent: S.clips });
             var bar = ctx.rect(TX, RY - 4, 0.01, 4, { rx: 1, fill: 'lime', parent: ph });
-            var line = ctx.line(TX, RY + 2, TX, 680, { color: 'white', sw: 2, parent: ph, glow: true });
+            /* no glow here: the glow filter region of a vertical line is fixed at its creation point, so a moving line would vanish */
+            var line = ctx.line(TX, RY + 2, TX, 680, { color: 'white', sw: 2.5, parent: ph });
             var ft = ctx.text(TX + 6, 684, 'f 0', { size: 11, font: 'mono', color: 'white', parent: ph });
             S.ph = ph;
             ctx.hud('render key = sha256(EDL ‖ inputs ‖ build)');
@@ -920,26 +1049,38 @@
             card: { tag: 'HOW IT WORKS', title: 'Match first, then grade', body: 'Per-shot statistics transfer pulls six diffusion runs toward one hero look. A single shared LUT then applies the show grade.' },
             deep: '<p><b>Shot matching</b> (Reinhard-style transfer in a decorrelated space, per channel):</p>' +
               '<div class="eq">x′ = (x − μ<sub>s</sub>) · σ<sub>t</sub>/σ<sub>s</sub> + μ<sub>t</sub></div>' +
-              '<p>then a shared 33³ 3D LUT (the "show look"). Statistics are computed on keyframes and smoothed across the shot to avoid pumping. The target is the hero shot S5, and inter-shot ΔE<sub>00</sub> must end below 3.</p>'
+              '<p>then a shared 33³ 3D LUT (the "show look"). Statistics are computed on keyframes and smoothed across the shot to avoid pumping. The target is the hero shot S5, and inter-shot ΔE<sub>00</sub> must end below 3.</p>' +
+              '<details><summary>Go deeper: why an affine map</summary>' +
+              '<p>Matching mean and standard deviation per channel is the optimal-transport (Monge) map between two 1-D Gaussians: among monotone maps sending N(μ<sub>s</sub>, σ<sub>s</sub>²) to N(μ<sub>t</sub>, σ<sub>t</sub>²), the affine one above minimises the expected squared displacement. Reinhard et al. (2001) apply it in the decorrelated lαβ space so channels can be treated independently. It assumes each shot is roughly Gaussian per channel, so a frame that is half sky and half ice needs masks or a histogram-matching variant. ΔE<sub>00</sub> is the CIEDE2000 difference; about 1 is a just-noticeable difference, so under 3 reads as one look across a cut.</p></details>'
           },
           {
-            say: 'For a forty eight frames per second deliverable, a flow based interpolator like RIFE synthesizes the in between frames, and it never interpolates across a cut.',
+            say: 'Interpolation is optional here, because our shots are native twenty four frames per second. For a forty eight frames per second deliverable, or a sixteen frames per second model, a flow based interpolator like RIFE synthesizes the in between frames, but never across a cut.',
             card: { tag: 'HOW IT WORKS', title: 'Invent the in-between frames', body: 'RIFE estimates flow from the middle time and blends two warped frames. The cut list keeps it from morphing across shots.' },
             deep: '<p><b>Interpolation</b> (RIFE): IFNet directly regresses intermediate flows and a fusion mask:</p>' +
               '<div class="eq">Î<sub>t</sub> = M ⊙ W(I<sub>0</sub>, F<sub>t→0</sub>) + (1 − M) ⊙ W(I<sub>1</sub>, F<sub>t→1</sub>)</div>' +
-              '<p>Used for 24→48/60 fps deliverables, or 16→24 fps when a model generates at 16 fps (Wan 2.1); FILM handles large motion better. Never interpolate across a cut: split on EDL boundaries first.</p>'
+              '<p>Optional for this trailer, whose shots are native 24 fps. It matters for 24→48/60 fps deliverables, or 16→24 fps when a model generates at 16 fps (Wan 2.1); FILM is aimed at large motion. Never interpolate across a cut: split on EDL boundaries first.</p>' +
+              '<details><summary>Go deeper: why estimate flow from t itself</summary>' +
+              '<p>Earlier methods (Super SloMo, DAIN) estimate F<sub>0→1</sub> and F<sub>1→0</sub> and approximate the flows to time t, for example with Super SloMo\'s linear form F̂<sub>t→0</sub> = −(1 − t)·t·F<sub>0→1</sub> + t²·F<sub>1→0</sub>. That assumes smooth, roughly linear motion and smears at motion boundaries. RIFE\'s IFNet regresses F<sub>t→0</sub> and F<sub>t→1</sub> directly from (I<sub>0</sub>, I<sub>1</sub>, t), and training uses a privileged teacher that also sees the true middle frame, distilled into the student.</p></details>'
           },
           {
             say: 'A super resolution model lifts the seven twenty p renders to ten eighty p or four K, restoring plausible detail that bicubic upsampling cannot.',
             card: { tag: 'NUMBERS', title: 'Pixels lifted after generation', stat: { v: '×1.5', u: 'to 1080p', l: 'or ×3 for a 4K master, in 512² tiles with 32 px overlap so VRAM stays flat' } },
             deep: '<p><b>Super-resolution</b>: Real-ESRGAN (RRDB, ~16.7 M params, trained with a high-order degradation model) for ×2/×4, or one-step diffusion VSR (for example SeedVR2-style) with temporal attention for fewer artifacts; tiles of 512² with 32 px overlap bound VRAM.</p>' +
-              '<p>Rendering at 1080p would cost 2.25× the latent tokens and roughly 5× the attention FLOPs of 720p; upscaling afterwards is far cheaper per pixel.</p>'
+              '<p>Rendering at 1080p would cost 2.25× the latent tokens and roughly 5× the attention FLOPs of 720p; upscaling afterwards is far cheaper per pixel.</p>' +
+              '<details><summary>Go deeper: the token arithmetic</summary>' +
+              '<p>A 5 s shot is 121 frames, which the causal VAE turns into 31 latent frames. At 720p the 8× VAE gives 90 × 160 latent positions and 1×2×2 patches give 45 × 80, so 31 · 45 · 80 = 111,600 tokens. At 1080p the grid is 135 × 240 and pads to 68 × 120 patches: 31 · 68 · 120 = 252,960 tokens, 2.27× more. Attention FLOPs scale as N² · d, so the attention term grows by 2.27² ≈ 5.1×.</p></details>'
           },
           {
             say: 'Finally an automated QC pass checks for flicker, frozen frames, clipping and sync drift, and sends typed issues back to the critic agent instead of to the viewer.',
             card: { tag: 'HOW IT WORKS', title: 'Critic gates before encode', body: 'Eight automated checks run on the graded master. A failure returns a typed issue for a targeted fix, such as re-grading one shot.' },
             deep: '<p><b>QC</b>: black/freeze detection, temporal flicker ΔY, inter-shot ΔE<sub>00</sub>, true-peak, AV offset, caption safe-area, safety re-scan, and a check that no interpolated frame straddles a cut.</p>' +
-              '<div class="note">Order in practice: matching, interpolation and SR run <i>per shot</i> on the EDL source ranges plus handles (cuts are known, so nothing blends across them). The step-6 graph is then re-executed on the enhanced segments at delivery resolution. The deterministic render key makes that second pass a cheap, cacheable recompute.</div>'
+              '<div class="note">Order in practice: matching, interpolation and SR run <i>per shot</i> on the EDL source ranges plus handles (cuts are known, so nothing blends across them). The step-6 graph is then re-executed on the enhanced segments at delivery resolution. The deterministic render key makes that second pass a cheap, cacheable recompute.</div>' +
+              '<details><summary>Go deeper: what the gates compute</summary>' +
+              '<ul><li><b>Freeze</b>: mean absolute luma difference between consecutive frames under a small epsilon for more than about 12 frames.</li>' +
+              '<li><b>Flicker</b>: ΔY = |mean Y<sub>t</sub> − mean Y<sub>t−1</sub>|, flagged when its z-score against the shot\'s own history is large (for example above 4).</li>' +
+              '<li><b>Inter-shot ΔE<sub>00</sub></b>: CIEDE2000 between shot mean colours in CIELAB, under 3.</li>' +
+              '<li><b>AV offset</b>: the SyncNet argmin from the lip-sync step, at most 1 frame.</li></ul>' +
+              '<p>Thresholds are tuned on human-rated clips. Each gate returns a typed issue (shot, frame range, metric, value) so the critic can pick the cheapest fix.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -971,7 +1112,7 @@
             if (ctx.dead) return;
             /* beat 1: frame interpolation */
             var by = IY + 120;
-            var rt = ctx.text(IX + 14, by + 10, 'RIFE · flow-based interpolation', { size: 12, font: 'mono', color: 'white', parent: G });
+            var rt = ctx.text(IX + 14, by + 10, 'RIFE · flow interpolation (optional stage)', { size: 12, font: 'mono', color: 'white', parent: G });
             function frame(x, dotX, col, lab) {
               var g = ctx.group({ parent: G });
               ctx.rect(x, by + 28, 110, 62, { rx: 4, fill: '#0c3440', stroke: col, sw: 1.3, parent: g });
@@ -991,7 +1132,7 @@
               ctx.line(xk, by + 122, xk, by + 136, { color: k % 2 ? 'lime' : 'dim', sw: k % 2 ? 2 : 1.5, parent: ticks });
             }
             ctx.text(IX + IW - 14, by + 129, '24 → 48 fps (×2)', { size: 11, font: 'mono', color: 'lime', anchor: 'end', parent: ticks });
-            ctx.hud('24 → 48 fps · never across a cut');
+            ctx.hud('optional: 24 → 48 fps · never across a cut');
             return Promise.all([ctx.reveal(rt, { delay: 100 }), ctx.reveal([f0, f1], { delay: 300, stagger: 100 }), ctx.reveal(ft, { from: 'scale', delay: 800 }), ctx.reveal([fa, fb], { from: 'draw', delay: 1000 }), ctx.reveal([la, lb], { delay: 1200 }), ctx.reveal(ticks, { delay: 1300 })]).then(function () {
               return ctx.pulse(ft, { color: 'lime', times: 2, dur: 600 });
             });
@@ -1027,27 +1168,34 @@
         beats: [
           {
             say: 'Last, the master is encoded into an adaptive bitrate ladder, from ten eighty p at around four and a half megabits per second down to three sixty p under one megabit, on hardware encoders.',
-            card: { tag: 'NUMBERS', title: 'The trailer in a browser', stat: { v: '≈ 17 MB', l: 'the 30 s trailer on the 1080p HEVC rung at 4.5 Mb/s; 360p is under 3 MB' }, more: '<p>File size = bitrate × duration / 8: 4.5 Mb/s × 30 s / 8 = 16.9 MB, and 0.6 Mb/s gives 2.25 MB. The four HEVC rungs together (4.5 + 2.5 + 1.4 + 0.6 = 9 Mb/s) total about 34 MB, and each additional codec set roughly adds the same again.</p>' },
+            card: { tag: 'NUMBERS', title: 'The trailer in a browser', stat: { v: '≈ 17 MB', l: 'the 30 s trailer on the 1080p HEVC rung at 4.5 Mb/s; 360p is under 3 MB' }, more: '<p>File size = bitrate × duration / 8: 4.5 Mb/s × 30 s / 8 = 16.9 MB, and 0.6 Mb/s gives 2.25 MB. The five HEVC rungs together (4.5 + 2.5 + 1.4 + 0.9 + 0.6 = 9.9 Mb/s) total about 37 MB, and each additional codec set adds a comparable amount.</p>' },
             deep: '<table><tr><th>Rung</th><th>HEVC</th><th>AV1</th><th>H.264</th></tr>' +
               '<tr><td>1080p</td><td>4.5 Mb/s</td><td>3.2</td><td>7.0</td></tr>' +
               '<tr><td>720p</td><td>2.5</td><td>1.8</td><td>4.0</td></tr>' +
               '<tr><td>540p</td><td>1.4</td><td>1.0</td><td>2.2</td></tr>' +
+              '<tr><td>432p</td><td>0.9</td><td>0.65</td><td>1.4</td></tr>' +
               '<tr><td>360p</td><td>0.6</td><td>0.45</td><td>1.0</td></tr></table>' +
-              '<p>Each codec generation saves roughly 30–50 % bitrate at equal quality (H.264 → HEVC ≈ 35–50 %, HEVC → AV1 ≈ 20–30 %; this table sits at the conservative end of both ranges); rungs are chosen per title from the convex hull of rate–quality curves (VMAF).</p>'
+              '<p>Reported savings at equal quality vary with content, metric and encoder: H.264 → HEVC roughly 25–50 %, HEVC → AV1 roughly 10–30 %. This illustrative table assumes 36–40 % and 25–29 %, inside both ranges; rungs are chosen per title from the convex hull of rate–quality curves (VMAF).</p>' +
+              '<details><summary>Go deeper: bits per pixel</summary>' +
+              '<p>4.5 Mb/s at 1920 × 1080 × 24 is 0.09 bits per pixel; the AV1 rung at 3.2 Mb/s is 0.064. Streaming HEVC ladders commonly sit between roughly 0.05 and 0.1 bpp. Bits per pixel usually rises as resolution falls, because small frames are less predictable per pixel: the 360p rung at 0.6 Mb/s over 640 · 360 · 24 = 5.5 M pixels/s is 0.11 bpp.</p></details>'
           },
           {
             say: 'Each rendition is cut into four second CMAF segments, described by HLS and DASH manifests, and signed with C2PA content credentials that travel with the file.',
             card: { tag: 'HOW IT WORKS', title: 'One set of segments, two manifests', body: 'CMAF fragmented MP4 serves both HLS and DASH, so every rung is stored once. The C2PA manifest is bound to it by hash.' },
-            deep: '<ul><li><b>Encode</b>: NVENC (Ada/Blackwell have AV1): several hundred 1080p fps per chip; GOP = 96 frames (4 s) closed, so every segment starts with an IDR.</li>' +
+            deep: '<ul><li><b>Encode</b>: NVENC (Ada and newer can encode AV1): hundreds of 1080p frames per second per chip at fast presets. H100 and A100 class training GPUs have decoders but no NVENC block, so encoding runs on a pool of L4 or L40S class GPUs. GOP = 96 frames (4 s) closed, so every segment starts with an IDR.</li>' +
               '<li><b>Package</b>: CMAF fMP4 (init + moof/mdat), one set of segments referenced by both HLS <code>.m3u8</code> and DASH <code>.mpd</code>.</li>' +
-              '<li><b>Provenance</b>: C2PA manifest (signed claim: generator, edits, AI assertions) bound by hash to the asset.</li></ul>'
+              '<li><b>Provenance</b>: C2PA manifest (signed claim: generator, edits, AI assertions) bound by hash to the asset.</li></ul>' +
+              '<details><summary>Go deeper: segment arithmetic</summary>' +
+              '<p>At a 24000 timescale a 4 s segment is 96,000 ticks. The 1080p rung at 4.5 Mb/s averages 2.25 MB per segment, and the impact segment (12 to 16 s), running near the 8.5 Mb/s cap, is roughly 4.2 MB. Because each segment is one closed GOP, a player can begin decoding at any segment boundary and never has to fetch a previous segment to resolve references.</p></details>'
           },
           {
             say: 'Everything is pushed to a content delivery network, and the player picks a rung from its buffer and bandwidth, so the film plays without stalling on a bad connection.',
             card: { tag: 'KEY IDEA', title: 'Immutable segments, no purges', body: 'Segment names carry a content hash, so edge caches never need invalidation. Only the short-lived manifest changes.' },
             deep: '<ul><li><b>CDN</b>: origin → shield → edge, signed URLs with expiry, immutable segment names (content hash) so caches never need purging.</li>' +
-              '<li><b>Player</b>: an adaptive-bitrate controller (throughput, buffer or hybrid such as BOLA) chooses the next segment\'s rung, starting mid-ladder and switching up once a few segments are buffered.</li></ul>' +
-              '<p>The Render, Encoding and Delivery chamber opens all of this: filter graphs, codecs, ladders, caches and the ABR math.</p>'
+              '<li><b>Player</b>: an adaptive-bitrate controller (throughput-based, buffer-based such as BOLA, or a hybrid) chooses the next segment\'s rung, starting mid-ladder and switching up once a few segments are buffered.</li></ul>' +
+              '<p>The Render, Encoding and Delivery chamber opens all of this: filter graphs, codecs, ladders, caches and the ABR math.</p>' +
+              '<details><summary>Go deeper: shield arithmetic</summary>' +
+              '<p>Without a shield, each of E edge POPs misses a new segment once, so the origin sees up to E requests per segment. With a shield it sees one, so origin load no longer depends on the number of edges. With edge hit ratio h the origin-side bytes per view are (1 − h) · 16.9 MB ≈ 0.85 MB at h = 0.95, and request collapsing makes the real figure lower for popular segments.</p></details>'
           },
           {
             say: 'After the last shot renders, this whole chain adds only about fourteen seconds. Zoom into either chamber to see the audio models, or the codec and delivery machinery, in depth.',
@@ -1061,15 +1209,15 @@
           stage(ctx, 4);
           if (S.bot) ctx.remove(S.bot, 300);
           var G = panel(ctx, 'ENCODE · PACKAGE · DELIVER', 'orange');
-          var rungs = [['1080p', 4.5], ['720p', 2.5], ['540p', 1.4], ['360p', 0.6]];
+          var rungs = [['1080p', 4.5], ['720p', 2.5], ['540p', 1.4], ['432p', 0.9], ['360p', 0.6]];
           /* beat 0: the ABR ladder */
           var lt = ctx.text(IX + 14, IY + 50, 'ABR ladder (HEVC, per-title)', { size: 12, font: 'mono', color: 'white', parent: G });
           var bars = rungs.map(function (r, k) {
             var g = ctx.group({ parent: G });
-            var y = IY + 70 + k * 30;
-            ctx.text(IX + 14, y + 10, r[0], { size: 12, font: 'mono', color: 'text', parent: g });
-            var b = ctx.rect(IX + 70, y, r[1] / 4.5 * 250, 20, { rx: 3, fill: ctx.alpha('orange', 0.3 + 0.15 * (3 - k)), stroke: 'orange', sw: 1, parent: g });
-            ctx.text(IX + 78 + r[1] / 4.5 * 250, y + 10, r[1] + ' Mb/s', { size: 11, font: 'mono', color: 'orange', parent: g });
+            var y = IY + 66 + k * 24;
+            ctx.text(IX + 14, y + 9, r[0], { size: 12, font: 'mono', color: 'text', parent: g });
+            var b = ctx.rect(IX + 70, y, r[1] / 4.5 * 250, 18, { rx: 3, fill: ctx.alpha('orange', 0.3 + 0.1 * (4 - k)), stroke: 'orange', sw: 1, parent: g });
+            ctx.text(IX + 78 + r[1] / 4.5 * 250, y + 9, r[1] + ' Mb/s', { size: 11, font: 'mono', color: 'orange', parent: g });
             g.b = b;
             return g;
           });
@@ -1077,25 +1225,25 @@
           return Promise.all([ctx.reveal(lt, { delay: 100 }), ctx.reveal(bars, { from: 'left', stagger: 150, delay: 300 })]).then(function () { return ctx.pulse(S.pn[4], { color: 'orange', times: 2, dur: 600 }); }).then(function () { return ctx.beat(1); }).then(function () {
             if (ctx.dead) return;
             /* beat 1: CMAF segments, manifests, C2PA */
-            var sy = IY + 206;
+            var sy = IY + 202;
             var st = ctx.text(IX + 14, sy, 'CMAF fMP4 · 4 s segments · GOP 96 f (closed)', { size: 12, font: 'mono', color: 'white', parent: G });
             var segs = [];
-            segs.push(ctx.label(IX + 44, sy + 30, 'init', { color: 'cyan', size: 11, w: 52, parent: G }));
-            for (var i = 0; i < 8; i++) segs.push(ctx.label(IX + 102 + i * 44, sy + 30, 's' + (i + 1), { color: 'orange', size: 11, w: 40, parent: G }));
-            var man = ctx.para(IX + 14, sy + 64, ['master.m3u8 · manifest.mpd', 'C2PA manifest · signed · hash-bound'], { size: 12, font: 'mono', color: 'text', lh: 20, parent: G });
+            segs.push(ctx.label(IX + 44, sy + 28, 'init', { color: 'cyan', size: 11, w: 52, parent: G }));
+            for (var i = 0; i < 8; i++) segs.push(ctx.label(IX + 102 + i * 44, sy + 28, 's' + (i + 1), { color: 'orange', size: 11, w: 40, parent: G }));
+            var man = ctx.para(IX + 14, sy + 58, ['master.m3u8 · manifest.mpd', 'C2PA manifest · signed · hash-bound'], { size: 12, font: 'mono', color: 'text', lh: 20, parent: G });
             ctx.hud('4 s segments · HLS + DASH · C2PA');
             return Promise.all([ctx.reveal(st, { delay: 100 }), stage(ctx, 5), ctx.reveal(segs, { from: 'fade', stagger: 60, delay: 300 }), ctx.reveal(man, { delay: 900 })]);
           }).then(function () { return ctx.beat(2); }).then(function () {
             if (ctx.dead) return;
             /* beat 2: the CDN and the players */
-            var cy = IY + 362;
+            var cy = IY + 370;
             var org = ctx.node({ x: IX + 60, y: cy, w: 96, h: 36, title: 'origin', color: 'orange', kind: 'chip', titleSize: 12, glow: false, parent: G });
             var sh = ctx.node({ x: IX + 180, y: cy, w: 96, h: 36, title: 'shield', color: 'orange', kind: 'chip', titleSize: 12, glow: false, parent: G });
-            var edges = [0, 1, 2].map(function (k) { return ctx.node({ x: IX + 310, y: cy - 50 + k * 50, w: 84, h: 30, title: 'edge', color: 'blue', kind: 'pill', titleSize: 12, glow: false, parent: G }); });
-            var players = [0, 1, 2].map(function (k) { return ctx.icon(k === 1 ? 'globe' : 'phone', IX + 420, cy - 50 + k * 50, 24, 'cyan', { parent: G }); });
+            var edges = [0, 1, 2].map(function (k) { return ctx.node({ x: IX + 310, y: cy - 44 + k * 44, w: 84, h: 30, title: 'edge', color: 'blue', kind: 'pill', titleSize: 12, glow: false, parent: G }); });
+            var players = [0, 1, 2].map(function (k) { return ctx.icon(k === 1 ? 'globe' : 'phone', IX + 420, cy - 44 + k * 44, 24, 'cyan', { parent: G }); });
             var cl = [ctx.link(org, sh, { color: 'orange', straight: true, parent: G })];
             edges.forEach(function (e) { cl.push(ctx.link(sh, e, { color: 'orange', parent: G })); });
-            S.el2 = edges.map(function (e, k) { return ctx.link(e, { x: IX + 406, y: cy - 50 + k * 50 }, { color: 'cyan', straight: true, parent: G }); });
+            S.el2 = edges.map(function (e, k) { return ctx.link(e, { x: IX + 406, y: cy - 44 + k * 44 }, { color: 'cyan', straight: true, parent: G }); });
             ctx.hud('edge hit ≈ 95 % · origin ≈ 1 req / segment');
             return Promise.all([ctx.reveal([org, sh].concat(edges), { from: 'scale', stagger: 100 }), ctx.reveal(cl.concat(S.el2), { from: 'draw', stagger: 60, delay: 300 }), ctx.reveal(players, { delay: 600, stagger: 100 })]).then(function () {
               return Promise.all(S.el2.map(function (l, k) { return ctx.wait(k * 200).then(function () { return ctx.packet(l, { color: 'cyan', dur: 500 }); }); }));

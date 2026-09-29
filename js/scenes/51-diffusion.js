@@ -198,13 +198,18 @@
     id: 'diffusion',
     refs: [
       'Sohl-Dickstein et al., <i>Deep Unsupervised Learning using Nonequilibrium Thermodynamics</i>, ICML 2015; Ho, Jain &amp; Abbeel, <i>Denoising Diffusion Probabilistic Models</i>, NeurIPS 2020; Song et al., <i>Score-Based Generative Modeling through SDEs</i>, ICLR 2021',
-      'Lipman et al., <i>Flow Matching for Generative Modeling</i>, ICLR 2023; Liu, Gong &amp; Liu, <i>Flow Straight and Fast: Rectified Flow</i>, ICLR 2023',
+      'Lipman et al., <i>Flow Matching for Generative Modeling</i>, ICLR 2023',
+      'Liu, Gong &amp; Liu, <i>Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow</i>, ICLR 2023',
       'Karras et al., <i>Elucidating the Design Space of Diffusion-Based Generative Models (EDM)</i>, NeurIPS 2022; Hoogeboom, Heek &amp; Salimans, <i>simple diffusion: End-to-end diffusion for high resolution images</i>, ICML 2023',
-      'Ho &amp; Salimans, <i>Classifier-Free Diffusion Guidance</i>, 2022; Salimans &amp; Ho, <i>Progressive Distillation</i> (v-prediction), ICLR 2022; Kynkäänniemi et al., <i>Applying Guidance in a Limited Interval Improves Sample and Distribution Quality in Diffusion Models</i>, NeurIPS 2024; Sadat et al., <i>Eliminating Oversaturation and Artifacts of High Guidance Scales in Diffusion Models (APG)</i>, ICLR 2025',
+      'Ho &amp; Salimans, <i>Classifier-Free Diffusion Guidance</i>, NeurIPS 2021 Workshop on Deep Generative Models; Salimans &amp; Ho, <i>Progressive Distillation for Fast Sampling of Diffusion Models</i>, ICLR 2022; Kynkäänniemi et al., <i>Applying Guidance in a Limited Interval Improves Sample and Distribution Quality in Diffusion Models</i>, NeurIPS 2024; Sadat et al., <i>Eliminating Oversaturation and Artifacts of High Guidance Scales in Diffusion Models (APG)</i>, ICLR 2025',
       'Esser et al., <i>Scaling Rectified Flow Transformers for High-Resolution Image Synthesis (SD3)</i>, ICML 2024',
       'Song et al., <i>Consistency Models</i>, ICML 2023; Lu &amp; Song, <i>Simplifying, Stabilizing and Scaling Continuous-Time Consistency Models (sCM)</i>, ICLR 2025',
-      'Yin et al., <i>DMD</i>, CVPR 2024 and <i>Improved DMD (DMD2)</i>, NeurIPS 2024; Yin et al., <i>CausVid</i>, CVPR 2025; Huang et al., <i>Self Forcing</i>, 2025',
-      'Sauer et al., <i>Adversarial Diffusion Distillation</i>, 2023; Lin et al., <i>Diffusion Adversarial Post-Training for One-Step Video Generation (APT)</i>, 2025'
+      'Yin et al., <i>One-step Diffusion with Distribution Matching Distillation</i> (DMD), CVPR 2024',
+      'Yin et al., <i>Improved Distribution Matching Distillation for Fast Image Synthesis</i> (DMD2), NeurIPS 2024',
+      'Yin et al., <i>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</i> (CausVid), CVPR 2025',
+      'Huang et al., <i>Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion</i>, NeurIPS 2025',
+      'Lin et al., <i>Diffusion Adversarial Post-Training for One-Step Video Generation</i> (Seaweed-APT), ICML 2025',
+      'Sauer et al., <i>Adversarial Diffusion Distillation</i>, ECCV 2024'
     ],
     setup: function (ctx) {
       var S = ctx.state;
@@ -274,7 +279,7 @@
             say: 'Different model families choose different schedules for how signal and noise trade off. Rectified flow uses straight lines, the cosine schedule a quarter circle, and both sweep the log signal to noise ratio from plus infinity to minus infinity.',
             card: { tag: 'HOW IT WORKS', title: 'Same endpoints, different paths', body: 'VP-cosine and rectified flow both sweep log-SNR from +∞ to −∞; they differ in how time maps to it. SD3, Wan and HunyuanVideo use the straight line.', more: '<p>For x<sub>t</sub> = αx<sub>0</sub> + σε, SNR(t) = α²/σ². Rectified flow gives SNR = ((1 − t)/t)², so λ = 2 ln((1 − t)/t), antisymmetric about t = ½ where λ = 0. The cosine schedule gives SNR = cot²(πt/2) and λ = −2 ln tan(πt/2). Any monotone schedule is a reparameterisation of the same path in λ, which is why samplers and loss weights are usually compared in log-SNR.</p>' },
             deep: '<table><tr><th>Schedule</th><th>α<sub>t</sub>, σ<sub>t</sub></th><th>Used by</th></tr>' +
-              '<tr><td>VP (α² + σ² = 1)</td><td>cos(πt/2), sin(πt/2) for the cosine schedule</td><td>DDPM, iDDPM, SD 1.x/2.x</td></tr>' +
+              '<tr><td>VP (α² + σ² = 1)</td><td>cos(πt/2), sin(πt/2) for the cosine schedule</td><td>DDPM, iDDPM (cosine), SD 1.x/2.x</td></tr>' +
               '<tr><td>VE / EDM</td><td>1, σ(t) ∈ [0.002, 80]</td><td>EDM, score SDEs</td></tr>' +
               '<tr><td>Rectified flow</td><td>1 − t, t</td><td>SD3, Flux, Wan, HunyuanVideo, Movie Gen</td></tr></table>' +
               '<p>What matters is the signal-to-noise ratio SNR(t) = α²/σ², or λ = log SNR. For rectified flow λ = 2 ln((1 − t)/t), which is 0 at t = ½; for the cosine schedule λ = −2 ln tan(πt/2). Schedules differ mainly in how they spend training samples and sampler steps along λ.</p>'
@@ -385,8 +390,8 @@
         beats: [
           {
             say: 'What exactly should the network predict? Picture three points: the clean sample, the noise sample, and the noisy point somewhere between them. In high dimensions the data and the noise are almost perpendicular.',
-            card: { tag: 'NUMBERS', title: 'Data and noise are orthogonal', stat: { v: '4 × 10⁻⁴', l: 'typical cosine between a data vector and Gaussian noise in 7.1 M dimensions (about 1/√d)' } },
-            deep: '<p>Take one training pair. In d = 7.1 M dimensions a Gaussian ε has norm ≈ √d and is almost exactly orthogonal to any fixed x<sub>0</sub>: the cosine is ~ 1/√d ≈ 4×10⁻⁴. So the right-angle picture is literal.</p>' +
+            card: { tag: 'NUMBERS', title: 'Data and noise are orthogonal', stat: { v: '3.7 × 10⁻⁴', l: 'typical cosine between a data vector and Gaussian noise in 7.1 M dimensions (about 1/√d)' } },
+            deep: '<p>Take one training pair. In d = 7.1 M dimensions a Gaussian ε has norm ≈ √d and is almost exactly orthogonal to any fixed x<sub>0</sub>: the cosine is ~ 1/√d ≈ 3.7×10⁻⁴. So the right-angle picture is literal.</p>' +
               '<p>For unit-variance data (‖x<sub>0</sub>‖ ≈ ‖ε‖) the variance-preserving path α = cos, σ = sin is a quarter circle, and the rectified-flow path is its chord. Midway along the chord the state has norm √½ ≈ 0.71: the straight path cuts through the inside of the sphere that the VP path stays on.</p>'
           },
           {
@@ -469,7 +474,7 @@
           /* right: parameterisation table, one row per beat */
           var rows = [
             ['ε-prediction', 'DDPM · SD 1.x', 'ε_θ(x_t, t) ≈ ε', 'dim'],
-            ['x₀-prediction', 'early / cascades', 'D_θ(x_t, t) ≈ x₀', 'cyan'],
+            ['x₀-prediction', 'EDM denoiser D_θ', 'D_θ(x_t, t) ≈ x₀', 'cyan'],
             ['v-prediction', 'VP · Imagen Video', 'v = α_t·ε − σ_t·x₀', 'violet'],
             ['flow velocity', 'SD3 · Wan · Hunyuan', 'v = ε − x₀', 'amber']
           ];
@@ -700,7 +705,7 @@
             card: { tag: 'TRADE-OFF', title: 'Second order costs evaluations', body: 'Heun uses 7 network calls for 4 steps but its global error is O(h²) instead of O(h): better accuracy per step, not always per call.' },
             deep: '<p><b>Heun</b> (2 NFE per step, last step Euler as in EDM), global O(h²):</p>' +
               '<div class="eq">z̃ = z<sub>i</sub> + h·v(z<sub>i</sub>, t<sub>i</sub>)<br>z<sub>i+1</sub> = z<sub>i</sub> + (h/2)·( v(z<sub>i</sub>, t<sub>i</sub>) + v(z̃, t<sub>i+1</sub>) )</div>' +
-              '<p>The trapezoidal rule averages the slope at both ends of the step. Four steps cost 3·2 + 1 = 7 NFE, because the final step to t = 0 is plain Euler: the exact velocity diverges like 1/t there.</p>' +
+              '<p>The trapezoidal rule averages the slope at both ends of the step. Four steps cost 3·2 + 1 = 7 NFE, because the final step to t = 0 is plain Euler: the velocity formula divides by t, so the second evaluation at t = 0 is undefined (EDM’s Algorithm 2 likewise applies the second-order correction only when the next noise level is nonzero).</p>' +
               '<details><summary>Go deeper</summary><p>Taylor: z(t + h) = z + h·z′ + ½h²·z″ + O(h³). Euler keeps only the first term, so its local error is ½h²·z″ (global O(h)). Heun’s trapezoid estimates z″ ≈ (v(z̃, t + h) − v(z, t)) / h and so also matches the second-order term, leaving O(h³) locally and O(h²) globally. Both errors are proportional to the path curvature z″: on a perfectly straight path Euler is already exact, which is the whole motivation for reflow.</p></details>'
           },
           {
@@ -709,7 +714,7 @@
             deep: '<ul><li>Multistep solvers (DPM-Solver++, UniPC) reuse past velocities for 2nd–3rd order at 1 NFE per step; production video uses 30–50 steps of Euler or UniPC with a shifted schedule.</li>' +
               '<li>Exponential integrators exploit the semi-linear structure of the diffusion ODE, and both DPM-Solver++ and UniPC have direct flow-matching variants.</li>' +
               '<li>ODE versus SDE sampling: re-injecting fresh noise at each step (ancestral or SDE samplers) keeps the same marginals and can correct earlier errors, but it needs many more steps; deterministic ODE samplers are the default for few-step video generation, and they make a seed reproducible.</li>' +
-              '<li>Stiffness: near t → 0 the exact field diverges like 1/t, so the last step is Euler and many samplers stop at a small t<sub>min</sub>.</li></ul>'
+              '<li>Stiffness: the exact marginal velocity divides by t, so it is singular at t = 0. The last step is therefore Euler, and many samplers stop at a small t<sub>min</sub>.</li></ul>'
           },
           {
             say: 'Measured on this toy, the error falls with steps and with solver order. In a video model, too few steps look like blurry, melting motion, because the last step lands on an average of possible outcomes.',
@@ -1059,13 +1064,13 @@
             say: 'Classifier free guidance trades diversity for prompt adherence. Here the condition asks for the upper moon only, so the unconditional field alone would fill both moons.',
             card: { tag: 'HOW IT WORKS', title: 'Extrapolate from the unconditional', body: '<code>v = v∅ + w·(v_c − v∅)</code>: two network calls per step. With w = 1 this is plain conditional sampling.', more: '<p>Since s<sub>c</sub> − s<sub>∅</sub> = ∇log p(c | x) by Bayes, the guided score is s<sub>∅</sub> + w·∇log p(c | x) = ∇log[ p(x) · p(c | x)<sup>w</sup> ]. At w = 1 that is exactly p(x | c); at w &gt; 1 the classifier term is amplified beyond the true conditional.</p>' },
             deep: '<div class="eq">v<sub>w</sub>(z, t) = v<sub>θ</sub>(z, t, ∅) + w · ( v<sub>θ</sub>(z, t, c) − v<sub>θ</sub>(z, t, ∅) )</div>' +
-              '<p>In score form this is ∇log p(x) + w·∇log p(c | x): approximately sampling from p(x)·p(c|x)<sup>w</sup>, a sharpened conditional (only approximately, because guided fields at different t are not marginals of one distribution).</p>' +
+              '<p>In score form this is ∇log p(x) + w·∇log p(c | x): approximately sampling from p(x)·p(c|x)<sup>w</sup>, a sharpened conditional (only approximately, because guided fields at different t are not marginals of one distribution). This is the convention of video codebases such as Wan, where w = 1 means no extrapolation; Ho &amp; Salimans wrote (1 + w)·ε<sub>c</sub> − w·ε<sub>∅</sub>, so their w is one less.</p>' +
               '<p>The toy uses exact fields: v<sub>c</sub> from the upper-moon points plus ~15% mislabelled lower-moon points (like noisy captions), v<sub>∅</sub> from all points.</p>'
           },
           {
             say: 'With guidance one, samples follow the true conditional distribution, including a few stragglers that landed on the wrong moon, like a mis captioned training example.',
             card: { tag: 'KEY IDEA', title: 'Faithful, with stragglers', body: 'At w = 1 the samples follow the conditional distribution, mislabelled 15% included: diversity is kept, prompt adherence is imperfect.' },
-            deep: '<ul><li><b>Training</b>: drop the condition ~10% of the time so one network learns both fields.</li>' +
+            deep: '<ul><li><b>Training</b>: drop the condition for a small fraction of samples (Ho &amp; Salimans found 10–20% about equally good) so one network learns both fields.</li>' +
               '<li><b>Cost</b>: 2 NFE per step (batched cond/uncond, or split across GPUs = CFG parallelism).</li>' +
               '<li><b>w = 1</b> is the true conditional: no extrapolation, one NFE suffices. Real captions are imperfect, so a fraction of samples never quite match the prompt.</li></ul>' +
               '<p>The on-target percentage shown on the stage is computed live from the toy.</p>'
@@ -1075,12 +1080,12 @@
             card: { tag: 'TRY IT', title: 'Pick your own guidance scale', body: 'Click <b>w = 1, 2, 4, 6 or 10</b> under the right panel to rerun it. On-target climbs to 100% while the spread of the samples keeps shrinking: adherence bought with diversity.' },
             deep: '<p>Raising w multiplies the condition’s log-likelihood ratio, sharpening p(x | c). Samples are pulled toward the mode of the conditional and, in high dimensions, beyond it: toward the extremes of the manifold, which is where oversaturation and off-manifold artifacts come from.</p>' +
               '<p>The chips rerun the 500-particle simulation live with the exact fields. <b>Spread</b> is the root-mean-square distance of the 500 samples from their centroid, a crude diversity measure: it falls steadily as w grows, and samples pile up at one end of the moon instead of covering it.</p>' +
-              '<ul><li><b>Video practice</b>: Wan 2.1 w = 5; I2V often uses separate text and image scales; the negative prompt replaces ∅ (“blurry, static, distorted…”).</li></ul>'
+              '<ul><li><b>Video practice</b>: Wan 2.1 w = 5 (its default guide scale); some image-conditioned models use separate text and image scales; the negative prompt replaces ∅ (“blurry, static, distorted…”).</li></ul>'
           },
           {
             say: 'In video, high guidance means crisp prompt following, but also oversaturated colour, less variety, and sometimes frozen motion. Fixes limit the guidance to a middle band of noise levels, or bake it into the model.',
             card: { tag: 'PITFALL', title: 'Oversaturation and frozen motion', body: 'High w burns colour and can freeze motion. Fixes: a guidance interval, APG, CFG-rescale, CFG-Zero*, or guidance distillation.' },
-            deep: '<ul><li><b>Failure modes</b>: oversaturation, low diversity, off-manifold artifacts at high w. Fixes: CFG-rescale, APG (drop the parallel component), guidance only in a middle t-interval (Kynkäänniemi et al. 2024), CFG-Zero*.</li>' +
+            deep: '<ul><li><b>Failure modes</b>: oversaturation, low diversity, off-manifold artifacts at high w. Fixes: CFG-rescale, APG (down-weight the parallel component), guidance only in a middle t-interval (Kynkäänniemi et al. 2024), CFG-Zero*.</li>' +
               '<li><b>Guidance distillation</b> bakes w into a student that needs 1 NFE per step.</li></ul>' +
               '<details><summary>Go deeper</summary><p><b>APG.</b> Write the guidance direction Δ = v<sub>c</sub> − v<sub>∅</sub> and split it into a part parallel to the conditional prediction and a part orthogonal to it. The parallel part mostly inflates the norm of the result and drives oversaturation; the orthogonal part carries the quality gain. Adaptive projected guidance (Sadat et al., 2024) keeps the orthogonal part at full strength, damps the parallel part and adds momentum, so large w stops burning colour. <b>CFG-rescale</b> instead renormalises the guided prediction to the standard deviation of the conditional one. <b>Guidance interval</b> (Kynkäänniemi et al., 2024) switches guidance off at very high noise, where it mainly reduces diversity, and at very low noise, where it is wasted compute.</p></details>' +
               '<div class="note">The image pair on the right is illustrative (contrast and saturation push), not a model output.</div>'
@@ -1224,7 +1229,7 @@
         beats: [
           {
             say: 'Fifty steps with guidance means one hundred network evaluations per clip, about an hour on a single H one hundred GPU. The teacher\'s paths are curved, which is why it needs so many steps.',
-            card: { tag: 'NUMBERS', title: 'The teacher\'s bill', stat: { v: '100', u: 'NFE', l: '50 Euler steps × 2 (guidance), each a full DiT forward: about 54 H100-minutes per clip' }, more: '<p>32.6 s per NFE = 1.29 × 10¹⁶ FLOPs / (0.4 × 989 × 10¹² FLOP/s). 100 NFE ≈ 3,260 s ≈ 54 minutes; a 4-step student without guidance ≈ 130 s. On 8 GPUs with ideal sequence parallelism divide by 8, before communication losses.</p>' },
+            card: { tag: 'NUMBERS', title: 'The teacher\'s bill', stat: { v: '100', u: 'NFE', l: '50 solver steps × 2 (guidance), each a full DiT forward: about 54 H100-minutes per clip' }, more: '<p>32.6 s per NFE = 1.29 × 10¹⁶ FLOPs / (0.4 × 989 × 10¹² FLOP/s). 100 NFE ≈ 3,260 s ≈ 54 minutes; a 4-step student without guidance ≈ 130 s. On 8 GPUs with ideal sequence parallelism divide by 8, before communication losses.</p>' },
             deep: '<div class="eq">cost ≈ NFE × 1.29×10¹⁶ FLOPs,   NFE = 50 steps × 2 (CFG) = 100</div>' +
               '<p>Every NFE is a full 14B forward over 111,600 tokens. At 40% MFU on one H100 that is ~32 s, so 100 NFE ≈ 54 minutes on one GPU, or roughly 7 minutes with ideal 8-way sequence parallelism.</p>' +
               '<p>The curved teacher paths from step 3 are the reason: an Euler step assumes a straight line, so accuracy needs small steps. Distillation attacks either the number of steps or the curvature.</p>'
@@ -1244,8 +1249,8 @@
               '<p>Song et al. train f either by distilling a pre-trained diffusion model (consistency distillation) or from scratch. sCM (Lu &amp; Song, 2025) makes the continuous-time version stable enough to scale, and LCM applies it in latent space with guidance folded in.</p>'
           },
           {
-            say: 'Distribution matching and adversarial training teach a student to match the teacher\'s outputs directly. Production video models now ship four to eight step students, trading a little diversity for a twenty five fold speedup.',
-            card: { tag: 'STATE OF THE ART', title: 'Four-step students ship', body: 'DMD2, CausVid and Self Forcing students run 4 steps; Seaweed-APT makes 720p video in one. The cost is some diversity loss.' },
+            say: 'Distribution matching and adversarial training teach a student to match the teacher\'s outputs directly. Open video families now ship step distilled models that run in roughly four to twelve steps, and a four step student saves a factor of twenty five in network evaluations, at some cost in diversity.',
+            card: { tag: 'STATE OF THE ART', title: 'Four-step students ship', body: 'DMD2, CausVid and Self Forcing students run 4 steps; Seaweed-APT makes 2 s of 720p video in one step. The cost is some diversity loss.' },
             deep: '<table><tr><th>Family</th><th>Objective (sketch)</th><th>Steps</th></tr>' +
               '<tr><td>DMD / DMD2</td><td>min KL(p<sub>student</sub> ‖ p<sub>teacher</sub>) via score difference</td><td>1–4</td></tr>' +
               '<tr><td>Adversarial (ADD, LADD, APT)</td><td>GAN loss, teacher-initialised discriminator</td><td>1–4</td></tr></table>' +

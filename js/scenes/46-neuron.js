@@ -63,13 +63,17 @@
 
   Atlas.register({
     id: 'neuron',
+    poster: 1,
     refs: [
-      'McCulloch &amp; Pitts, <i>A Logical Calculus of the Ideas Immanent in Nervous Activity</i>, Bulletin of Mathematical Biophysics 1943; Rosenblatt, <i>The Perceptron</i>, Psychological Review 1958; Minsky &amp; Papert, <i>Perceptrons</i>, MIT Press 1969',
+      'McCulloch &amp; Pitts, <i>A Logical Calculus of the Ideas Immanent in Nervous Activity</i>, Bulletin of Mathematical Biophysics 1943; Rosenblatt, <i>The Perceptron: A Probabilistic Model for Information Storage and Organization in the Brain</i>, Psychological Review 1958; Minsky &amp; Papert, <i>Perceptrons</i>, MIT Press 1969',
       'Rumelhart, Hinton &amp; Williams, <i>Learning Representations by Back-propagating Errors</i>, Nature 1986',
       'Hendrycks &amp; Gimpel, <i>Gaussian Error Linear Units (GELUs)</i>, 2016; Ramachandran et al., <i>Searching for Activation Functions</i> (Swish/SiLU), 2017',
-      'NVIDIA, <i>H100 Tensor Core GPU Architecture</i> whitepaper, 2022; <i>CUTLASS</i> / PTX ISA docs (mma, wgmma, tcgen05); Blackwell architecture brief, 2024',
-      'Elhage et al., <i>Toy Models of Superposition</i>, Transformer Circuits 2022; Bricken et al., <i>Towards Monosemanticity</i>, Anthropic 2023',
-      'Templeton et al., <i>Scaling Monosemanticity</i>, Anthropic 2024; Gao et al., <i>Scaling and Evaluating Sparse Autoencoders</i>, OpenAI 2024; Lieberum et al., <i>Gemma Scope</i>, 2024',
+      'NVIDIA, <i>NVIDIA H100 Tensor Core GPU Architecture</i> whitepaper, 2022',
+      'NVIDIA, <i>NVIDIA Blackwell Architecture Technical Brief</i>, 2024',
+      '<i>CUTLASS</i> / PTX ISA docs (mma, wgmma, tcgen05)',
+      'Elhage et al., <i>Toy Models of Superposition</i>, Transformer Circuits 2022',
+      'Bricken et al., <i>Towards Monosemanticity: Decomposing Language Models With Dictionary Learning</i>, Anthropic 2023',
+      'Templeton et al., <i>Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet</i>, Anthropic 2024; Gao et al., <i>Scaling and Evaluating Sparse Autoencoders</i>, OpenAI 2024; Lieberum et al., <i>Gemma Scope: Open Sparse Autoencoders Everywhere All At Once on Gemma 2</i>, 2024',
       'Dunefsky et al., <i>Transcoders Find Interpretable LLM Feature Circuits</i>, NeurIPS 2024; Ameisen et al., <i>Circuit Tracing: Revealing Computational Graphs in Language Models</i>, Anthropic 2025'
     ],
     steps: [
@@ -213,11 +217,12 @@
               return ctx.packet(S.l2, { color: 'orange', dur: 500 });
             }).then(function () { return ctx.pulse(S.outC, { color: 'orange', dur: 600 }); });
           }).then(function () { return ctx.beat(4); }).then(function () {
-            /* beat 4: the inputs change, the output follows: warm up and glow down silences the neuron */
-            S.x = [1, 1, 0];
-            return S.update(400).then(function () { return ctx.wait(900); }).then(function () {
-              S.x = [1, 0, 1];
-              return S.update(400);
+            /* beat 4: the inputs change, the output follows: warm up and glow down silences the neuron
+             * (step 2 restores x = (1, 0, 1)) */
+            S.x = [1, 0.5, 0.5];
+            return S.update(400).then(function () { return ctx.wait(700); }).then(function () {
+              S.x = [1, 1, 0];
+              return S.update(500);
             });
           });
         }
@@ -256,6 +261,9 @@
         run: function (ctx) {
           var S = ctx.state;
           ctx.fadeOut(S.bottom, 300, true);
+          /* back to the icy input x = (1, 0, 1) so the plots below use z = 1.70 */
+          S.x = [1, 0, 1];
+          S.update(0, true);
           var g = card(ctx, null, 60, 612, 1480, 260, 'pink', 'ACTIVATION FUNCTIONS  φ(z)');
           S.bottom = g;
           var pl = ctx.plot(120, 648, 560, 200, ACTS.ReLU, { xDomain: [-4, 3], yDomain: [-0.6, 3], color: 'orange', sw: 2.4, parent: g, xLabel: 'z', yLabel: '' });
@@ -289,7 +297,7 @@
           S.aChips = ['ReLU', 'GELU', 'SiLU'].map(function (k, i) {
             var c = ctx.label(1060 + i * 120, 700, k, { color: ACOL[k], size: 14, w: 100, parent: chipG });
             c.style.cursor = 'pointer';
-            c.addEventListener('click', function (ev) { ev.stopPropagation(); S.setAct(k); });
+            c.addEventListener('click', function (ev) { ev.stopPropagation(); if (S.actReady) S.setAct(k); });
             return c;
           });
           var nt1 = ctx.text(1000, 752, 'linear ∘ linear = linear', { size: 13, font: 'mono', color: 'text', parent: g, opacity: 0 });
@@ -323,6 +331,7 @@
           }).then(function () { return ctx.beat(3); }).then(function () {
             /* beat 3: pick an activation for the neuron */
             ctx.reveal(chipG, { from: 'left', dur: 500 });
+            S.actReady = true;
             return ctx.tween(800, function (t) { setZ(3 + (S.z - 3) * t); }, 'inOut').then(function () {
               S.setAct('SiLU');
               return ctx.wait(400);
@@ -365,14 +374,17 @@
           ctx.fadeOut([S.bottom, S.ro], 350, true);
           S.bottom = null; S.ro = null;
           /* shrink the neuron to the top-right corner */
-          ctx.transform(S.nd, { x: 1078, y: 90, s: 0.45 }, 900, 'inOut');
+          ctx.transform(S.nd, { x: 1040, y: 60, s: 0.5 }, 900, 'inOut');
+          /* ctx.pulse needs an untransformed element: a reference box where the shrunken neuron ends up */
+          S.ndRef = ctx.group();
+          S.ndRef.box = boxOf(1115, 174, 440, 167);
           var g = ctx.group();
-          ctx.rect(P.x - 20, P.y - 20, P.w + 40, P.h + 60, { rx: 12, fill: 'rgba(7,12,24,0.94)', stroke: ctx.alpha('cyan', 0.4), parent: g });
+          ctx.rect(P.x - 20, P.y - 34, P.w + 40, P.h + 74, { rx: 12, fill: 'rgba(7,12,24,0.94)', stroke: ctx.alpha('cyan', 0.4), parent: g });
           ctx.line(P.x, toPx(0, 0).y, P.x + P.w, toPx(0, 0).y, { color: ctx.alpha('white', 0.12), parent: g });
           ctx.line(toPx(0, 0).x, P.y, toPx(0, 0).x, P.y + P.h, { color: ctx.alpha('white', 0.12), parent: g });
           ctx.text(P.x + P.w, P.y + P.h + 22, 'cold (x1) →', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: g });
-          ctx.text(P.x + 4, P.y - 9, 'glow (x3) ↑', { size: 12, font: 'mono', color: 'dim', parent: g });
-          ctx.text(P.x + P.w - 4, P.y - 9, 'warm (x2) held at 0', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: g });
+          ctx.text(P.x + 4, P.y - 15, 'glow (x3) ↑', { size: 12, font: 'mono', color: 'dim', parent: g });
+          ctx.text(P.x + P.w - 4, P.y - 15, 'warm (x2) held at 0', { size: 12, font: 'mono', color: 'dim', anchor: 'end', parent: g });
           S.shade = ctx.poly([[0, 0]], { fill: ctx.alpha('lime', 0.1), parent: g });
           S.bLine = ctx.line(0, 0, 0, 0, { color: 'lime', sw: 2.5, parent: g });
           S.nArrow = ctx.line(0, 0, 0, 0, { color: 'white', sw: 2, arrow: true, parent: g });
@@ -455,7 +467,7 @@
               '<p>The logistic (sigmoid) output turns z into a probability of "ice". Here: full-batch gradient descent, η = 0.5, 40 iterations from w = (−1, 0.3), b = 0.5, computed live. The starting boundary is deliberately wrong: it sits on the wrong side.</p>'
           },
           {
-            say: 'The chain rule gives the gradient of the loss with respect to every weight. For a sigmoid neuron with cross entropy loss, it is simply the error times the input.',
+            say: 'The chain rule gives the gradient of the loss with respect to every weight. For a sigmoid neuron with cross entropy loss, it is simply the error times the input. The red rings show each point’s error: the wrongly placed points push hardest.',
             card: { tag: 'HOW IT WORKS', title: 'Gradient = error × input', more: '<p>σ′(z) = ŷ(1 − ŷ) and ∂L/∂ŷ = (ŷ − y)/(ŷ(1 − ŷ)), so ∂L/∂z = ŷ − y and ∂L/∂w = (ŷ − y)·x. The awkward σ′ cancels. With squared error instead, a saturated wrong neuron (ŷ near 0 or 1) would get a vanishing gradient.</p>', body: 'dL/dw = (ŷ − y)·x. The chain rule collapses to that when a sigmoid meets cross-entropy.' },
             deep: '<div class="eq">∂L/∂w = ∂L/∂ŷ · ∂ŷ/∂z · ∂z/∂w = (ŷ − y)·x, &nbsp; ∂L/∂b = ŷ − y</div>' +
               '<p>The sigmoid–cross-entropy pairing makes the gradient simply <i>error × input</i>: the σ′(z) factor cancels the 1/ŷ terms of the loss derivative, so a confidently wrong neuron gets a large gradient instead of a vanishing one.</p>'
@@ -468,9 +480,9 @@
           },
           {
             say: 'Large language models use exactly this rule at scale: an adaptive optimiser called AdamW, mini batches of millions of tokens, and hundreds of billions of parameters.',
-            card: { tag: 'NUMBERS', title: 'Training state is big', stat: { v: '1.1', u: 'TB', l: 'weights plus optimizer state for a 70B model: 16 bytes per parameter' } },
+            card: { tag: 'NUMBERS', title: 'Training state is big', stat: { v: '1.1', u: 'TB', l: 'weights, gradients and optimizer state for a 70B model: 16 bytes per parameter' } },
             deep: '<ul><li>LLMs use the same rule at scale: <b>AdamW</b> (per-parameter adaptive steps, decoupled weight decay), mini-batches of millions of tokens, warm-up + cosine/WSD learning-rate schedules, gradient clipping at norm 1.0, BF16 compute with FP32 master weights.</li>' +
-              '<li>Optimizer state: Adam keeps 2 extra FP32 moments per parameter → 16 bytes/param with master weights: 1.1 TB for a 70B model, sharded (ZeRO/FSDP) across GPUs.</li></ul>'
+              '<li>Training state: BF16 weights (2 B) and gradients (2 B), plus FP32 master weights and Adam’s two FP32 moments (12 B), come to 16 bytes per parameter: about 1.1 TB for a 70B model, sharded (ZeRO/FSDP) across GPUs.</li></ul>'
           }
         ],
         run: function (ctx) {
@@ -504,10 +516,19 @@
             return t;
           });
           keepWS(c1);
-          S.adamNote = ctx.text(664, 830, 'AdamW: 16 B / param → 70B params ≈ 1.1 TB of weights + optimizer state', { size: 13, font: 'mono', color: 'amber', parent: c1, opacity: 0 });
+          S.adamNote = ctx.text(664, 838, 'AdamW: 16 B / param → 70B params ≈ 1.1 TB of weights + grads + optimizer', { size: 13, font: 'mono', color: 'amber', parent: c1, opacity: 0 });
           lp.curve.setAttribute('opacity', 0.25);
+          /* per-point error rings on the plane (beat 1): radius grows with |ŷ − y|, so the gradient's weights are visible */
+          S.errRings = S.pts.map(function (p) {
+            return ctx.circle(parseFloat(p.el.getAttribute('cx')), parseFloat(p.el.getAttribute('cy')), 7, { stroke: 'red', sw: 1.6, dash: '3 3', parent: S.plot, opacity: 0 });
+          });
+          S.errNote = ctx.text(664, 806, 'red rings on the plane: size = per-point error |ŷ − y|', { size: 13, font: 'mono', color: 'red', parent: c1, opacity: 0 });
           function show(i) {
             var t = traj[i];
+            S.pts.forEach(function (p, j) {
+              var e = Math.abs(sigm(t.w[0] * p.x + t.w[1] * p.y + t.b) - Y[j]);
+              S.errRings[j].setAttribute('r', (7 + 17 * e).toFixed(1));
+            });
             var ok = S.drawLine(t.w[0], t.w[1], t.b);
             var p = lp.toPx(i, t.L);
             S.lossDot.setAttribute('cx', p.x); S.lossDot.setAttribute('cy', p.y);
@@ -520,7 +541,9 @@
           swapMain(ctx, S, rp);
           show(0);
           return ctx.wait(700).then(function () { return ctx.pulse(S.lossDot, { color: 'amber', dur: 600 }); }).then(function () { return ctx.beat(1); }).then(function () {
-            /* beat 1: the gradient of the loss */
+            /* beat 1: the gradient of the loss: error rings show which points push hardest */
+            ctx.reveal(S.errRings, { dur: 400, stagger: 20, opacity: 0.9 });
+            ctx.reveal(S.errNote, { from: 'up', dur: 400 });
             return ctx.reveal(pl[1], { from: 'left', dur: 500 }).then(function () { return ctx.pulse(pl[1], { color: 'amber', dur: 700 }); });
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: forty steps of gradient descent */
@@ -553,7 +576,7 @@
             say: 'The forward pass computes activations left to right and a loss against the target. Every hidden value is stored, because the backward pass will need it.',
             card: { tag: 'NUMBERS', title: 'The forward pass', stat: { v: '0.320', l: 'the loss: ŷ = 0.20 against target 1.0 gives L = ½(0.20 − 1)² = 0.32' } },
             deep: '<p>Forward values: z = (0.50, 0.60), h = (0.50, 0.60), ŷ = 0.9·0.5 − 0.5·0.6 + 0.05 = 0.20, L = ½(0.20 − 1.0)² = 0.320.</p>' +
-              '<p>Training memory is dominated by these stored activations, which is why <b>activation checkpointing</b> recomputes them in the backward pass instead of storing them.</p>'
+              '<p>Stored activations are a major share of training memory, which is why <b>activation checkpointing</b> recomputes them in the backward pass instead of storing them.</p>'
           },
           {
             say: 'The backward pass sends the error right to left. At the output the error signal is the prediction minus the target, and each output weight gradient is that signal times the hidden activation feeding it.',
@@ -569,11 +592,11 @@
               '<p>If z<sub>j</sub> ≤ 0 the gate is closed: δ<sub>j</sub> = 0, none of that unit’s incoming weights gets a gradient this step, and the unit stays silent until its input distribution shifts.</p>'
           },
           {
-            say: 'Every number you see is computed exactly. One backward pass costs about twice the forward pass, which is why training costs six times the parameter count in floating point operations per token, against two times for inference.',
-            card: { tag: 'NUMBERS', title: 'Backward costs double', stat: { v: '2×', l: 'the forward cost: training ≈ 6N FLOPs per token versus 2N for inference' } },
-            deep: '<p><b>Reverse-mode autodiff</b>: one backward pass yields all gradients at ≈ 2× the forward cost (hence 6N FLOPs/token for training vs 2N for inference). It must keep forward activations, which is why training memory is dominated by activations; <b>activation checkpointing</b> recomputes them instead.</p>' +
+            say: 'Every number you see is computed exactly. One small step against these gradients, with a learning rate of one tenth, moves every weight and cuts the loss from zero point three two to about zero point one one. The backward pass costs about twice the forward pass.',
+            card: { tag: 'NUMBERS', title: 'One step downhill', more: '<p>The backward pass costs about twice the forward pass: two GEMMs (∂L/∂W and ∂L/∂x) for every forward GEMM. So training costs ≈ 6N FLOPs per token against 2N for inference, before counting recomputation.</p>', stat: { v: '0.11', u: 'loss', l: 'down from 0.32 after one gradient step at η = 0.1 on all nine parameters; ŷ moves from 0.20 to 0.52' } },
+            deep: '<p><b>Reverse-mode autodiff</b>: one backward pass yields all gradients at ≈ 2× the forward cost (hence 6N FLOPs/token for training vs 2N for inference). It must keep forward activations, a major share of training memory; <b>activation checkpointing</b> recomputes them instead.</p>' +
               '<p>In matrix form a layer’s backward pass is two GEMMs: ∂L/∂W = δᵀX and ∂L/∂X = δW — the same tensor-core workload as the forward pass.</p>' +
-              '<p>The six gradients on the stage are what the optimiser consumes next: w ← w − η·g for each weight, moving the prediction from 0.20 toward the target 1.0.</p>' +
+              '<p>The gradients on the stage feed w ← w − η·g. With η = 0.1, and the two hidden biases and the output bias updated the same way (their gradients are δ<sub>z</sub> and δ<sub>y</sub>), all nine parameters move: the updated weights turn green, and a fresh forward pass gives ŷ = 0.52 and L = 0.114, down from 0.20 and 0.320. Too large an η overshoots; too small crawls.</p>' +
               '<details><summary>Go deeper</summary><p>Reverse mode wins because the loss is one scalar and the parameters are billions: one forward and one backward pass give every gradient, where forward mode needs a pass per parameter. The price is storing the activations. Each backward step is a vector–Jacobian product, δ<sub>x</sub> = Wᵀδ<sub>z</sub> and ∂L/∂W = δ<sub>z</sub>xᵀ: the two GEMMs behind the 2× rule.</p></details>'
           }
         ],
@@ -597,9 +620,18 @@
           function edgeLab(x, y, str, hot) {
             var w = str.length * 7.8 + 16, lg = ctx.group({ parent: g, opacity: hot ? 0 : 1 });
             ctx.rect(x - w / 2, y - 11, w, 22, { rx: 6, fill: '#0a1326', stroke: hot ? ctx.alpha('magenta', 0.8) : ctx.alpha('white', 0.3), sw: 1, parent: lg });
-            ctx.text(x, y + 0.5, str, { size: 12, font: 'mono', weight: hot ? 700 : 400, color: hot ? MG : 'text', anchor: 'middle', parent: lg });
+            lg.tx = ctx.text(x, y + 0.5, str, { size: 12, font: 'mono', weight: hot ? 700 : 400, color: hot ? MG : 'text', anchor: 'middle', parent: lg });
             return lg;
           }
+          /* one gradient-descent step (eta = 0.1) on all nine parameters, then a fresh forward pass */
+          var lr = 0.1;
+          var Wn = Wm.map(function (row, j) { return row.map(function (w, i) { return w - lr * dW[j][i]; }); });
+          var vn = v.map(function (q, j) { return q - lr * dv[j]; });
+          var bn = bb.map(function (q, j) { return q - lr * dz[j]; });
+          var cn = c - lr * dy;
+          var zn = Wn.map(function (row, j) { return row[0] * x[0] + row[1] * x[1] + bn[j]; });
+          var hn = zn.map(function (q) { return Math.max(0, q); });
+          var yn = vn[0] * hn[0] + vn[1] * hn[1] + cn, Ln = 0.5 * (yn - tgt) * (yn - tgt);
           function along(x1, y1, x2, y2, t) { return { x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t }; }
           var edges = [];
           [0, 1].forEach(function (j) {
@@ -636,8 +668,8 @@
           /* right: chain rule ledger */
           var rp = ctx.group();
           var c1 = card(ctx, rp, 1130, 380, 410, 490, 'magenta', 'CHAIN RULE LEDGER');
-          S.ledger = ['forward', 'z = (' + fmt(z[0]) + ', ' + fmt(z[1]) + ')', 'h = (' + fmt(h[0]) + ', ' + fmt(h[1]) + ')', 'ŷ = ' + fmt(yh) + '   L = ' + L.toFixed(3), 'backward', 'δy = ŷ − t = ' + fmt(dy), 'dL/dv = δy·h = (' + fmt(dv[0]) + ', ' + fmt(dv[1]) + ')', 'δh = δy·v = (' + fmt(dh[0]) + ', ' + fmt(dh[1]) + ')', 'δz = δh·1[z>0] (both z > 0)', 'dL/dW = δz ⊗ x   (g on edges)'].map(function (s, k) {
-            return ctx.text(1150, 426 + k * 42, s, { size: 14, font: 'mono', weight: (k === 0 || k === 4) ? 700 : 400, color: k < 4 ? (k === 0 ? 'cyan' : 'text') : (k === 4 ? MG : 'text'), parent: c1, opacity: 0 });
+          S.ledger = ['forward', 'z = (' + fmt(z[0]) + ', ' + fmt(z[1]) + ')', 'h = (' + fmt(h[0]) + ', ' + fmt(h[1]) + ')', 'ŷ = ' + fmt(yh) + '   L = ' + L.toFixed(3), 'backward', 'δy = ŷ − t = ' + fmt(dy), 'dL/dv = δy·h = (' + fmt(dv[0]) + ', ' + fmt(dv[1]) + ')', 'δh = δy·v = (' + fmt(dh[0]) + ', ' + fmt(dh[1]) + ')', 'δz = δh·1[z>0] (both z > 0)', 'dL/dW = δz ⊗ x   (g on edges)', 'one step, η = 0.1', 'ŷ ' + fmt(yh) + ' → ' + fmt(yn) + '   L ' + L.toFixed(3) + ' → ' + Ln.toFixed(3)].map(function (s, k) {
+            return ctx.text(1150, 424 + k * 37.5, s, { size: 14, font: 'mono', weight: (k === 0 || k === 4 || k === 10) ? 700 : 400, color: k < 4 ? (k === 0 ? 'cyan' : 'text') : (k === 4 ? MG : (k >= 10 ? 'lime' : 'text')), parent: c1, opacity: 0 });
           });
           /* beat 0: the tiny network, before any numbers flow */
           swapMain(ctx, S, rp);
@@ -672,9 +704,23 @@
               return ctx.wait(300);
             });
           }).then(function () { return ctx.beat(4); }).then(function () {
-            /* beat 4: all gradients are in */
+            /* beat 4: all gradients are in; one descent step updates every weight and the loss drops */
             ctx.reveal(S.ledger[9], { from: 'left', dur: 300 });
-            return ctx.wait(300).then(function () { return ctx.pulse(rp, { color: 'magenta', dur: 700 }); });
+            return ctx.wait(500).then(function () {
+              ctx.fade(edges.map(function (q) { return q.grad; }).concat(vEdges.map(function (q) { return q.grad; })), 0.25, 400);
+              edges.forEach(function (q, k) {
+                var j = Math.floor(k / 2), i = k % 2;
+                q.lbl.tx.textContent = 'W' + (j + 1) + (i + 1) + '=' + fmt(Wn[j][i]);
+                q.lbl.tx.setAttribute('fill', ctx.C.lime);
+              });
+              vEdges.forEach(function (q, j) { q.lbl.tx.textContent = 'v' + (j + 1) + '=' + fmt(vn[j]); q.lbl.tx.setAttribute('fill', ctx.C.lime); });
+              nh.forEach(function (n, j) { n.val.textContent = hn[j].toFixed(2); n.fw.textContent = 'z' + (j + 1) + '=' + fmt(zn[j]); n.bw.textContent = ''; });
+              ny.val.textContent = yn.toFixed(2);
+              ny.bw.textContent = '';
+              lossN.titleEl.textContent = 'L = ' + Ln.toFixed(3);
+              ctx.reveal([S.ledger[10], S.ledger[11]], { from: 'left', stagger: 150, dur: 300 });
+              return ctx.pulse(lossN, { color: 'lime', times: 2, dur: 600 });
+            });
           });
         }
       },
@@ -791,7 +837,7 @@
             say: 'On the GPU, that matrix multiply is cut into tiles. Each thread block owns one output tile, say one hundred twenty eight by one hundred twenty eight.',
             card: { tag: 'KEY IDEA', title: 'Tile the output', body: 'One thread block owns one output tile of C and computes it independently of all the others.' },
             deep: '<div class="eq">C<sub>tile</sub> += Σ<sub>k</sub> A[m-tile, k-slice] · B[k-slice, n-tile]</div>' +
-              '<p>A GEMM C = A·B with M, N, K in the thousands launches one CTA (cooperative thread array, or thread block) per output tile, typically 128 × 128 or 128 × 256. Thousands of tiles run concurrently across the 132 SMs of an H100, with no communication between tiles.</p>'
+              '<p>A GEMM C = A·B with M, N, K in the thousands launches one CTA (cooperative thread array, or thread block) per output tile, typically 128 × 128 or 128 × 256. Thousands of tiles are scheduled across the 132 SMs of an H100, one or more per SM at a time, essentially independently of one another.</p>'
           },
           {
             say: 'It marches along the shared dimension, loading a slice of A and a slice of B into on-chip memory and accumulating into its tile.',
@@ -933,9 +979,9 @@
           },
           {
             say: 'Sparse autoencoders untangle this. They learn a much wider dictionary of features, only a few active at a time, that reconstructs the layer’s activations.',
-            card: { tag: 'HOW IT WORKS', title: 'Sparse autoencoder', more: '<p>Three ways to enforce sparsity: an L1 penalty (shrinks activations, biasing them low), TopK (keep exactly the k largest, no shrinkage; OpenAI 2024) and JumpReLU (learned per-feature thresholds; Gemma Scope). Reconstruction error versus L0 is the trade-off curve used to compare SAEs.</p>', body: 'A wide, sparse code f that reconstructs x. Sparsity keeps only tens of features active per token.' },
+            card: { tag: 'HOW IT WORKS', title: 'Sparse autoencoder', more: '<p>Three ways to enforce sparsity: an L1 penalty (shrinks activations, biasing them low), TopK (keep exactly the k largest, no shrinkage; OpenAI 2024) and JumpReLU (learned per-feature thresholds; Gemma Scope). Reconstruction error versus L0 is the trade-off curve used to compare SAEs.</p>', body: 'A wide, sparse code f that reconstructs x. Sparsity keeps only tens to hundreds of features active per token.' },
             deep: '<div class="eq">f = ReLU(W<sub>e</sub>(x − b<sub>d</sub>) + b<sub>e</sub>), &nbsp; x̂ = W<sub>d</sub>f + b<sub>d</sub>, &nbsp; L = ‖x − x̂‖² + λ‖f‖<sub>1</sub></div>' +
-              '<p>Dictionary width 16× to 1000s× d; typical L0 (active features per token): tens. The L1 penalty (or a TopK / JumpReLU activation) pushes most features to zero, so each input is explained by a handful of directions.</p>' +
+              '<p>Dictionary width from a few × to 1000s× d; typical L0 (active features per token): tens to a few hundred (Anthropic reports fewer than 300 on average). The L1 penalty (or a TopK / JumpReLU activation) pushes most features to zero, so each input is explained by a handful of directions.</p>' +
               '<details><summary>Go deeper</summary><p>Decoder columns are held at unit norm, otherwise the L1 penalty could be cheated by shrinking f and inflating W<sub>d</sub>. Quality is a frontier: reconstruction error against L0, the average number of active features. L1 also shrinks activations, which TopK and JumpReLU avoid.</p></details>'
           },
           {
@@ -948,7 +994,7 @@
           {
             say: 'Transcoders do the same for whole MLP layers, replacing them with sparse features so that circuits become traceable from input to output.',
             card: { tag: 'STATE OF THE ART', title: 'Transcoders and circuits', body: 'Cross-layer transcoders give linear feature-to-feature edges, so whole computations become attribution graphs.' },
-            deep: '<p><b>Transcoders / cross-layer transcoders</b> approximate an MLP’s <i>output</i> from its <i>input</i> through sparse features, giving linear, input-independent feature-to-feature edges → attribution graphs of whole computations (Circuit Tracing, 2025; Dunefsky et al. 2024).</p>' +
+            deep: '<p><b>Transcoders / cross-layer transcoders</b> approximate an MLP’s <i>output</i> from its <i>input</i> through sparse features, giving linear feature-to-feature edges (attention patterns and norms held fixed) → attribution graphs of whole computations (Circuit Tracing, 2025; Dunefsky et al. 2024).</p>' +
               '<p>This closes the loop of the whole chamber: a neuron computes a weighted sum, layers are matrix multiplies, and interpretability recovers the sparse features a network actually thinks in.</p>'
           }
         ],
@@ -1044,7 +1090,7 @@
             /* beat 4: transcoders make circuits traceable */
             ctx.reveal(cC, { from: 'left', dur: 500 });
             ctx.reveal(tcLbl, { from: 'down', dur: 500 });
-            return ctx.wait(400).then(function () { return ctx.pulse(S.nd, { color: 'amber', dur: 700, parent: S.nd }); });
+            return ctx.wait(400).then(function () { return ctx.pulse(S.ndRef, { color: 'amber', times: 2, dur: 700 }); });
           });
         }
       }

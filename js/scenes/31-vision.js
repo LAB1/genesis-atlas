@@ -134,8 +134,8 @@
       'Arnab et al., <i>ViViT: A Video Vision Transformer</i> (tubelet embedding), ICCV 2021',
       'Bolya et al., <i>Token Merging: Your ViT But Faster (ToMe)</i>, ICLR 2023',
       'Darcet et al., <i>Vision Transformers Need Registers</i>, ICLR 2024',
-      'Chen et al., <i>How Far Are We to GPT-4V? InternVL 1.5</i> (pixel shuffle, dynamic tiling), 2024',
-      'Wang et al., <i>Qwen2-VL</i>, 2024; Bai et al., <i>Qwen2.5-VL Technical Report</i>, 2025 (M-RoPE, dynamic resolution)'
+      'Chen et al., <i>How Far Are We to GPT-4V? Closing the Gap to Commercial Multimodal Models with Open-Source Suites (InternVL 1.5)</i> (pixel shuffle, dynamic tiling), 2024',
+      'Wang et al., <i>Qwen2-VL: Enhancing Vision-Language Model\'s Perception of the World at Any Resolution</i>, 2024; Bai et al., <i>Qwen2.5-VL Technical Report</i>, 2025 (M-RoPE, dynamic resolution)'
     ],
     steps: [
       /* ------------------------------------------------------------------ 1 */
@@ -501,12 +501,12 @@
         beats: [
           {
             say: 'Now the one thousand and twenty four tokens pass through a stack of transformer blocks, twenty seven of them in SigLIP so four hundred m.',
-            card: { tag: 'NUMBERS', title: 'A stack of 27 blocks', stat: { v: '27', u: 'blocks', l: 'width 1152, about 0.41 B parameters in the SigLIP 2 so400m tower' } },
+            card: { tag: 'NUMBERS', title: 'A stack of 27 blocks', stat: { v: '27', u: 'blocks', l: 'width 1152, roughly 0.4 B parameters in the SigLIP 2 so400m tower' } },
             deep: '<table><tr><th>SigLIP so400m/14</th><th></th></tr>' +
               '<tr><td>depth / width / MLP</td><td>27 / 1152 / 4304</td></tr>' +
               '<tr><td>heads × head dim</td><td>16 × 72</td></tr>' +
               '<tr><td>params / block</td><td>4d² + 2·d·4304 ≈ 15.2 M</td></tr>' +
-              '<tr><td>total</td><td>≈ 0.41 B</td></tr></table>' +
+              '<tr><td>total (27 blocks)</td><td>≈ 0.41 B</td></tr></table>' +
               '<p>The <b>residual stream</b> (the vertical spine in the diagram) carries the <code>1024×1152</code> token matrix from block to block; each block only adds to it.</p>'
           },
           {
@@ -527,7 +527,7 @@
             say: 'There is no causal mask: the whole picture is visible at once, so patches can attend in every direction.',
             card: { tag: 'KEY IDEA', title: 'Bidirectional attention', body: 'Unlike the language model, the ViT never hides the future. All 1024 by 1024 scores are live in every layer.' },
             deep: '<p>An LLM masks the upper triangle so token <i>i</i> cannot see token <i>j &gt; i</i>. A ViT has no notion of "earlier" patch, so it uses the <b>full</b> matrix: 1024² = 1.05 M scores per head and layer, no masking, no KV cache needed at inference.</p>' +
-              '<div class="note">Variants: Qwen2.5-VL\'s ViT uses <i>window attention</i> in most layers; InternViT-6B scales width instead of depth; DINOv2 and SigLIP 2 add self-distillation and masked-prediction losses for denser features.</div>'
+              '<div class="note">Variants: Qwen2.5-VL\'s ViT uses <i>window attention</i> in most layers; InternViT-6B scales the encoder itself to about 6 B parameters (45 layers in InternVL 1.5); DINOv2 and SigLIP 2 add self-distillation and masked-prediction losses for denser features.</div>'
           },
           {
             say: 'The whole stack costs about one teraflop per image, a couple of milliseconds on a modern GPU.',
@@ -648,9 +648,9 @@
           },
           {
             say: 'Notice one bright patch in empty sky. Large vision transformers repurpose low information patches as scratch registers, and those artifact tokens show up as bright spots.',
-            card: { tag: 'PITFALL', title: 'High-norm artifact tokens', body: 'Big ViTs park global information in redundant background patches. Adding a few register tokens (Darcet et al., 2024) removes the spots.', more: '<p>Diagnosing artifacts: compute the L2 norm of every output token. Artifacts are outliers several times above the median norm, about 2% of the tokens in the large DINOv2 models. Registers give the network dedicated scratch space, so the norms flatten and dense tasks such as segmentation improve.</p>' },
+            card: { tag: 'PITFALL', title: 'High-norm artifact tokens', body: 'Big ViTs park global information in redundant background patches. Adding a few register tokens (Darcet et al., 2024) removes the spots.', more: '<p>Diagnosing artifacts: compute the L2 norm of every output token. Artifacts are outliers with roughly 10× the norm of ordinary tokens, about 2% of the tokens in the paper\'s DINOv2 measurement (2.37% above a norm of 150). Registers give the network dedicated scratch space, so the norms flatten and dense tasks such as segmentation improve.</p>' },
             deep: '<p><b>Artifact tokens</b> (Darcet et al., 2024): large, well-trained ViTs (DINOv2, OpenCLIP, DeiT-III in the paper) develop high-norm tokens in redundant background patches that aggregate global information; attention maps show bright spots in empty sky.</p>' +
-              '<p>Fix: append 4–16 learnable <i>register</i> tokens that are discarded at the output: cleaner maps and better dense features.</p>'
+              '<p>Fix: append a few learnable <i>register</i> tokens (the paper settles on 4 and tests 1 to 16) that are discarded at the output: cleaner maps and better dense features.</p>'
           },
           {
             say: 'Now it is your turn. Click any patch on the sketch to move the query yourself, and read off where its attention mass goes by region.',
@@ -754,7 +754,7 @@
           {
             say: 'A block diagonal attention mask keeps the images from attending to each other, so packing never leaks information between unrelated pictures.',
             card: { tag: 'HOW IT WORKS', title: 'Block-diagonal mask', body: 'Patches attend freely inside their own image and not at all across images: the mask is three squares along the diagonal.' },
-            deep: '<p>The attention mask is <b>block diagonal</b>: block <i>k</i> is all-ones for the <i>n<sub>k</sub></i> patches of image <i>k</i>, and zero everywhere else. Position ids restart for every image, so 2-D RoPE row and column indices are relative to that image.</p>' +
+            deep: '<p>The attention mask is <b>block diagonal</b>: block <i>k</i> is all-ones for the <i>n<sub>k</sub></i> patches of image <i>k</i>, and zero everywhere else. Row and column positions restart for every image (NaViT uses factorised x and y position embeddings; RoPE-based encoders reset their 2-D indices), so they are relative to that image.</p>' +
               '<p>Without the mask, a sketch patch could attend to a keyframe patch and its features would depend on which images happened to share a batch row.</p>'
           },
           {
@@ -886,9 +886,9 @@
           },
           {
             say: 'A single image is simply a frame duplicated, so one stem serves both, and temporal ids advance two per second. The price is that two frames half a second apart fuse into one token, blurring fast motion.',
-            card: { tag: 'TRADE-OFF', title: 'Fast motion blurs', body: 'Tubelets fuse frames 0.5 s apart. The visor flicker at 2.1 to 2.9 s fits inside one tubelet, so sample a short window at higher fps instead of more seconds.' },
+            card: { tag: 'TRADE-OFF', title: 'Fast motion blurs', body: 'Tubelets fuse frames 0.5 s apart. The visor flicker at 3.1 to 3.6 s reaches only one sampled frame, blended with a clean one. Sample a short window at higher fps.' },
             deep: '<p>Single images are duplicated into two identical frames so the same Conv3d stem serves both (Qwen2-VL / 2.5-VL). Temporal position ids advance per tubelet; Qwen2.5-VL maps them to absolute time (2 ids per second).</p>' +
-              '<p>Trade-offs: tubelets are cheap temporal compression but fuse two frames sampled 0.5 s apart into one token, blurring fast motion. The critic\'s flicker (visor reflection at 2.1–2.9 s) lies entirely between the frames at 2.0 s and 2.5 s that make tubelet 2, so no token can resolve it: a <b>higher fps on a short window</b> is better than more seconds at low fps. Alternatives: per-frame encoding + temporal pooling (LLaVA-Video), or learned temporal resamplers.</p>' +
+              '<p>Trade-offs: tubelets are cheap temporal compression but fuse two frames sampled 0.5 s apart into one token, blurring fast motion. The critic\'s flicker (visor reflection at 3.1–3.6 s) is seen by only one sampled frame, the one at 3.5 s, and tubelet 3 fuses it with the clean frame at 3.0 s: one token carries a diluted flicker and cannot say when it started. A <b>higher fps on a short window</b> is better than more seconds at low fps. Alternatives: per-frame encoding + temporal pooling (LLaVA-Video), or learned temporal resamplers.</p>' +
               '<p>Rule of thumb for the critic: for motion questions (flicker, lip sync) raise the fps and shorten the window; for scene-level questions lower the fps and cover more seconds.</p>'
           }
         ],
@@ -971,9 +971,9 @@
             /* beat 4: images use the same stem; temporal ids */
             var t4 = ctx.text(790, 540 + 4 * 36, 'image = frame duplicated ×2 → same Conv3d stem', { size: 15, font: 'code', pre: true, color: 'text', parent: P });
             var t5 = ctx.text(790, 540 + 5 * 36, 'temporal ids 0, 2, 4, 6, 8 (2 per second, M-RoPE)', { size: 15, font: 'code', pre: true, color: 'amber', parent: P });
-            var fl = ctx.label(900, 434, 'visor flicker 2.1–2.9 s', { color: 'red', size: 11, bg: '#0d1a33', parent: P });
+            var fl = ctx.label(1140, 434, 'visor flicker 3.1–3.6 s', { color: 'red', size: 11, bg: '#0d1a33', parent: P });
             hide([t4, t5, fl]);
-            S.hl.setAttribute('x', 316 + 2 * 240);
+            S.hl.setAttribute('x', 316 + 3 * 240);
             ctx.reveal(fl, { from: 'down' });
             return ctx.reveal([t4, t5], { from: 'left', stagger: 300 }).then(function () { return ctx.pulse(S.hl, { color: 'red', dur: 700 }); });
           });
@@ -987,8 +987,8 @@
           {
             say: 'Five thousand tokens for one short shot is still too many for a language model, so encoders compress them. The first tool is a simple reshape called pixel shuffle.',
             card: { tag: 'WHY IT MATTERS', title: 'Tokens are the bill', body: 'Every visual token costs LLM prefill compute and KV cache for the rest of the conversation. Compression is where the budget is won.' },
-            deep: '<p>Every visual token costs LLM prefill compute (2·7.6 B ≈ 15 GFLOP per token) and 56 KiB of KV cache for the rest of the conversation: a 256-token sketch is 3.9 TFLOP and 14 MB. Compression is where the budget is won.</p>' +
-              '<p><b>Pixel shuffle / 2×2 patch merge</b> (InternVL, Qwen2-VL / 2.5-VL, Idefics3 / SmolVLM; MiniCPM-V instead uses a query resampler):</p>' +
+            deep: '<p>Every visual token costs LLM prefill compute (2·7.6 B ≈ 15 GFLOP per token) and 56 KiB of KV cache for the rest of the conversation: a 256-token sketch is 3.9 TFLOP and about 15 MB. Compression is where the budget is won.</p>' +
+              '<p><b>Pixel shuffle / 2×2 patch merge</b> (InternVL, Qwen2-VL / 2.5-VL and Idefics3 use 2×2; SmolVLM shuffles 3×3 for 9× fewer tokens; MiniCPM-V instead uses a query resampler):</p>' +
               '<div class="eq">[H/14, W/14, C] → reshape → [H/28, W/28, 4C] : &nbsp;32×32×1152 → 16×16×4608</div>' +
               '<p>The slice on the left is an 8×8 corner of the 32×32 feature grid.</p>'
           },
@@ -1007,8 +1007,8 @@
           },
           {
             say: 'Merging the most similar pairs roughly doubles throughput without any retraining, at a tiny accuracy cost.',
-            card: { tag: 'NUMBERS', title: 'ToMe payoff', stat: { v: '~ 2×', l: 'ViT-L/H throughput at 0.2–0.4% ImageNet accuracy cost, with no retraining' } },
-            deep: '<p>With r tokens merged per layer the count drops by r·L; on ViT-L/H this gives ~2× throughput at ~0.2–0.4% ImageNet accuracy cost, training-free. For video, merging across time is even more effective because static background repeats across frames.</p>' +
+            card: { tag: 'NUMBERS', title: 'ToMe payoff', stat: { v: '~ 2×', l: 'ViT-L/H throughput at 0.2–0.3% ImageNet accuracy cost, with no retraining' } },
+            deep: '<p>With r tokens merged per layer the count drops by r·L; on off-the-shelf ViT-L @ 512 and ViT-H @ 518 this gives 2× throughput at a 0.2–0.3% ImageNet accuracy drop, training-free (Bolya et al.). For video the paper reports 2.2× on ViT-L at a similar drop, since static background repeats across frames.</p>' +
               '<div class="note">Rule: compress <i>after</i> the encoder has mixed context (pixel-shuffle, pooling) to keep semantics; compress <i>inside</i> (ToMe) to save encoder FLOPs.</div>'
           }
         ],
@@ -1091,7 +1091,7 @@
           }).then(function () {
             /* beat 3: merge the most similar pairs */
             var T = S.tome;
-            var pr2 = ctx.para(700, 586, ['merge the top-r edges (here r = 3): 12 → 9 tokens', 'size-weighted mean + proportional attention (+log s)', '~2× ViT-L throughput, ~0.3% acc drop, no retraining'], { size: 13, font: 'mono', color: 'text', lh: 23, parent: T });
+            var pr2 = ctx.para(700, 586, ['merge the top-r edges (here r = 3): 12 → 9 tokens', 'size-weighted mean + proportional attention (+log s)', '~2× ViT-L throughput, 0.2–0.3% acc drop, no retraining'], { size: 13, font: 'mono', color: 'text', lh: 23, parent: T });
             var pool = ctx.text(330, 660, 'pooling (avg / bilinear 2×2) and learned resamplers are the other two families', { size: 13, font: 'mono', color: 'dim', parent: P });
             hide([pr2, pool]);
             ctx.reveal([pr2, pool], { from: 'up', stagger: 300 });
@@ -1132,13 +1132,13 @@
           {
             say: 'Two hundred fifty six of them describe this sketch, and the agent can now ask the language model anything about it.',
             card: { tag: 'NUMBERS', title: 'The sketch in the LLM', stat: { v: '256', u: 'tokens', l: 'projected vectors enter the language model beside the words of the prompt' } },
-            deep: '<p>Training the bridge: stage 1 freezes ViT and LLM and trains only the projector on image–caption pairs (≈ 0.5–1 M pairs suffices to align); stage 2 unfreezes everything on interleaved and instruction data, typically with a lower LR for the ViT.</p>' +
+            deep: '<p>Training the bridge: in the common two-stage recipe, stage 1 freezes ViT and LLM and trains only the projector on image–caption pairs (558 k pairs in LLaVA-1.5); stage 2 unfreezes the LLM, and in many recipes the ViT at a lower LR, on interleaved and instruction data. Some studies find the first stage can be skipped.</p>' +
               '<div class="note">Design space summary: patch size, resolution policy (fixed / tiles / native), positional scheme, compression (shuffle / ToMe / pooling / resampler) and projector depth — each trades detail for tokens.</div>'
           },
           {
             say: 'The whole detour is cheap: about a teraflop in the encoder, fifteen gigaflops in the projector, and roughly four teraflops for the language model to read these tokens.',
             card: { tag: 'WHY IT MATTERS', title: 'The LLM is the expensive part', body: 'ViT ~1 TFLOP, projector 15 GFLOP, LLM prefill on the 256 tokens ~3.9 TFLOP. Fewer visual tokens directly cut the biggest term.' },
-            deep: '<p>Per sketch: ViT 2·0.41 B·1024 + attention ≈ 1 TFLOP (~2 ms on an H100); projector ≈ 15 GFLOP; LLM prefill 2·7.6 B·256 ≈ 3.9 TFLOP (~10 ms). The language model dominates, so merging 2×2 (4× fewer tokens) mostly saves <i>LLM</i> compute and KV cache, not encoder compute.</p>' +
+            deep: '<p>Per sketch: ViT 2·0.41 B·1024 + attention ≈ 1 TFLOP (~2 ms on an H100); projector ≈ 15 GFLOP; LLM prefill 2·7.6 B·256 ≈ 3.9 TFLOP (~10 ms). The language model dominates, so merging 2×2 (4× fewer tokens) mostly saves <i>LLM</i> compute and KV cache, not encoder compute. (The 7.6 B here also counts the embedding tables, so the LLM figures are a roughly 15% upper bound.)</p>' +
               '<p>For a three-sketch prompt: 768 visual tokens ≈ 11.7 TFLOP of prefill (2·7.6 B·768) plus about 44 MB of KV cache (768 × 56 KiB), which prefix caching then keeps warm across the agents\' follow-up questions.</p>'
           }
         ],

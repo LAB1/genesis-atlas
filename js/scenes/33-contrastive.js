@@ -75,6 +75,7 @@
 
   Atlas.register({
     id: 'contrastive',
+    poster: 1,
     refs: [
       'Radford et al., <i>Learning Transferable Visual Models From Natural Language Supervision (CLIP)</i>, ICML 2021',
       'van den Oord et al., <i>Representation Learning with Contrastive Predictive Coding</i> (InfoNCE), 2018',
@@ -82,8 +83,9 @@
       'Wang &amp; Isola, <i>Understanding Contrastive Representation Learning through Alignment and Uniformity on the Hypersphere</i>, ICML 2020',
       'Liang et al., <i>Mind the Gap: Understanding the Modality Gap in Multi-modal Contrastive Representation Learning</i>, NeurIPS 2022',
       'Hessel et al., <i>CLIPScore: A Reference-free Evaluation Metric for Image Captioning</i>, EMNLP 2021',
-      'Yuksekgonul et al., <i>When and Why Vision-Language Models Behave like Bags-of-Words</i>, ICLR 2023',
-      'Wan Team, <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, 2025; Kong et al., <i>HunyuanVideo</i>, 2024'
+      'Yuksekgonul et al., <i>When and Why Vision-Language Models Behave like Bags-of-Words, and What to Do About It?</i>, ICLR 2023',
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025',
+      'Kong et al., <i>HunyuanVideo: A Systematic Framework for Large Video Generative Models</i>, arXiv 2412.03603, 2024'
     ],
     steps: [
       /* ------------------------------------------------------------------ 1 */
@@ -95,7 +97,7 @@
             card: { tag: 'KEY IDEA', title: 'Web pairs are the supervision', body: 'Hundreds of millions to billions of scraped image and caption pairs. No class labels and no boxes: the pairing itself is the label.' },
             deep: '<p>Contrastive vision-language pretraining needs nothing but <b>(image, alt-text) pairs</b> found on the web, which is why it scales to billions of examples where human-labelled datasets stop at millions.</p>' +
               '<table><tr><th></th><th>CLIP (2021)</th><th>SigLIP / SigLIP 2</th></tr>' +
-              '<tr><td>data</td><td>400 M pairs (WIT)</td><td>WebLI, ~10 B images, 100+ languages</td></tr></table>' +
+              '<tr><td>data</td><td>400 M pairs (WIT)</td><td>WebLI, ~10 B images (SigLIP 2: 12 B alt-texts, 109 languages)</td></tr></table>' +
               '<p>Captions are noisy and loosely aligned (alt-text says "IMG_2043" as often as it describes the picture); scale and filtering average that noise away.</p>'
           },
           {
@@ -543,8 +545,8 @@
               '<p>With τ = 1 the largest possible logit gap is 2 (cosine −1 to +1), and realistic gaps are 0.1–0.3, so the softmax barely leaves uniform and gradients tell the model little about which negatives matter.</p>'
           },
           {
-            say: 'CLIP starts at zero point zero seven and learns the value. By the end of training the logit scale saturates at one hundred, so the model is extremely confident.',
-            card: { tag: 'NUMBERS', title: 'Logit scale saturates', stat: { v: '100', l: 'CLIP clips 1/τ at 100 (τ = 0.01); it starts at 1/0.07 = 14.3' }, more: '<p>Too low a temperature early in training makes gradients vanish for all but the hardest negatives and destabilises learning; too high and the loss cannot distinguish near-misses. Making τ learnable (with a clip at 100) lets the model anneal itself.</p>' },
+            say: 'CLIP starts at zero point zero seven and learns the value. The paper clips the logit scale at one hundred for stability, and at that cap the softmax is extremely confident.',
+            card: { tag: 'NUMBERS', title: 'Logit scale cap', stat: { v: '100', l: 'CLIP clips 1/τ at 100 (τ = 0.01); it starts at 1/0.07 = 14.3' }, more: '<p>Too low a temperature early in training makes gradients vanish for all but the hardest negatives and destabilises learning; too high and the loss cannot distinguish near-misses. Making τ learnable (with a clip at 100) lets the model anneal itself.</p>' },
             deep: '<table><tr><th>τ</th><th>1/τ</th><th>p(T1 | I1)</th><th>batch ℒ</th></tr>' +
               '<tr><td>0.1</td><td>10</td><td>≈ 0.54</td><td>≈ 0.46</td></tr>' +
               '<tr><td>0.07</td><td>14.3</td><td>≈ 0.69</td><td>≈ 0.24</td></tr>' +
@@ -629,12 +631,12 @@
           },
           {
             say: 'In practice it trains better at small batch sizes, matches softmax around thirty two thousand, and scales to large batches with far less memory.',
-            card: { tag: 'NUMBERS', title: 'Where sigmoid wins', stat: { v: '~ 32 k', l: 'batch where sigmoid and softmax saturate; sigmoid is clearly better below ~16 k, and 1 M gives no gain' } },
-            deep: '<ul><li><b>Batch size</b>: sigmoid beats softmax clearly below ~16 k; both saturate around 32 k; going to 1 M does not help (Zhai et al.).</li>' +
+            card: { tag: 'NUMBERS', title: 'Where sigmoid wins', stat: { v: '~ 32 k', l: 'batch size where SigLIP saturates; sigmoid helps most at small batches, and 1 M gives only diminishing returns' } },
+            deep: '<ul><li><b>Batch size</b>: sigmoid beats softmax at smaller batches (the gap is clearest below roughly 16 k); performance saturates around 32 k, and going up to 1 M brings only diminishing returns (Zhai et al.).</li>' +
               '<li><b>Hard negatives</b> visible in the matrix: (fox image, "ice moon") has cos 0.24 → σ ≈ 0.27 at the illustrative t = 100, b = −25, a per-pair loss of 0.31 while easy cells contribute nearly nothing.</li></ul>'
           },
           {
-            say: 'SigLIP two, released in twenty twenty five, adds a captioning decoder, self distillation and masked prediction, and is the encoder family many open vision language models now build on.',
+            say: 'SigLIP two, released in twenty twenty five, adds a captioning decoder, self distillation and masked prediction, and extends the SigLIP line that many open vision language models build on.',
             card: { tag: 'STATE OF THE ART', title: 'SigLIP 2 (2025)', body: 'Adds a captioning decoder, self-distillation, masked prediction, multilingual data and native-aspect variants to the sigmoid recipe.' },
             deep: '<p><b>SigLIP 2</b> (2025) adds a captioning decoder (LocCa), self-distillation and masked prediction for dense features, multilingual data, and NaFlex native-aspect variants (patch-16 checkpoints, sequence lengths up to 1024 patches). Its SigLIP lineage is the vision tower of PaliGemma, Gemma 3, Idefics3 and SmolVLM, among others; Qwen2.5-VL and InternVL bring their own ViTs.</p>' +
               '<div class="note">This is the vision tower inside the chapter <i>Vision Encoders</i>: a SigLIP 2 so400m/14 with 27 blocks and width 1152.</div>'
@@ -741,7 +743,7 @@
             say: 'A trained contrastive model classifies without any training labels. Write each class as a prompt, a photo of a fox, a photo of a cat, embed the prompts, and pick the one closest to the image.',
             card: { tag: 'NUMBERS', title: 'Zero-shot ImageNet', stat: { v: '83 %', l: 'ImageNet top-1 for SigLIP so400m/14 at 384 px with no ImageNet training labels (CLIP ViT-L/14@336: 76.2 %)' } },
             deep: '<div class="eq">ŷ<sub>c</sub> = normalize(g("a photo of a {c}")), &nbsp; p(c | I) = softmax<sub>c</sub>(x̂ · ŷ<sub>c</sub> / τ)</div>' +
-              '<p>CLIP ViT-L/14@336 reaches 76.2% ImageNet top-1 zero-shot; SigLIP so400m/14@384 ≈ 83%. Prompt ensembling (80 templates averaged) adds 1–5 points.</p>' +
+              '<p>CLIP ViT-L/14@336 reaches 76.2% ImageNet top-1 zero-shot; SigLIP so400m/14@384 ≈ 83%. In the CLIP paper, a "A photo of a {label}." template adds 1.3 points on ImageNet and an ensemble of 80 prompts another 3.5, nearly 5 in total.</p>' +
               '<p>The class list is just text, so new categories cost one forward pass of the text tower, not a new labelled dataset.</p>'
           },
           {
@@ -754,7 +756,7 @@
             say: 'There is also a quirk of geometry: images and texts occupy two separate cones on the sphere, the modality gap.',
             card: { tag: 'KEY IDEA', title: 'Two cones, not one blob', body: 'Even after training, image embeddings and text embeddings sit in separate narrow cones of the sphere.', more: '<p>Liang et al. (2022) trace the gap to the cone effect at initialisation and to low temperature, and show that shifting embeddings along the gap vector changes zero-shot behaviour: the gap is a design knob and a diagnostic, not a bug.</p>' },
             deep: '<p><b>Modality gap</b> (Liang et al., 2022): embeddings of each modality occupy a narrow cone, caused by initialisation (random encoders already map inputs to cones) and preserved by the contrastive loss at low temperature.</p>' +
-              '<p>The gap is not a bug to fix: it is a stable minimum of the loss at small τ, and it leaves the ranking <i>within</i> one modality almost unchanged, which is what retrieval uses.</p>'
+              '<p>The gap is not simply a bug to fix: contrastive training at low temperature preserves it, moving embeddings along the gap changes zero-shot accuracy and fairness, and it leaves the ranking <i>within</i> one modality almost unchanged, which is what retrieval uses.</p>'
           },
           {
             say: 'So a matched image and caption sit much further apart than two similar images do, and that changes how similarity thresholds must be set.',
@@ -870,13 +872,13 @@
             say: 'Third, they check that generated keyframes still match the creator\'s sketches, and send a shot back when the similarity falls too low.',
             card: { tag: 'NUMBERS', title: 'Style check fails', stat: { v: '0.74', l: 'image–image cosine of shot 3 to the three sketches, below the 0.80 threshold, so the critic re-renders it (identity cosine 0.81 passes)' } },
             deep: '<p><b>Style / identity match</b>: image–image cosine between keyframes and the identity crop (0.81 for shot_03, above the 0.80 gate) and between keyframes and the three sketches (style score 0.74, below it). These are the same two numbers the reference analysis of the parent chamber stored for shot_03. Thresholds are calibrated on held-out pairs; DINOv2 features are more sensitive to style and layout and can be blended in.</p>' +
-              '<p>An image–image score is a much tighter measure than image–text: near-duplicate images reach 0.8–0.9, which is why the thresholds differ by an order of magnitude from CLIPScore\'s.</p>'
+              '<p>An image–image score is a much tighter measure than image–text: near-duplicate images reach 0.8–0.9, which is why these thresholds sit far above CLIPScore\'s image–text values of about 0.3.</p>'
           },
           {
             say: 'And they condition generators: an image embedding of the reference can steer image to video models. For text conditioning, though, modern video diffusion transformers mostly use T five or large language model encoders, because CLIP\'s text tower is weak at long, compositional prompts.',
             card: { tag: 'STATE OF THE ART', title: 'CLIP for images, LLMs for text', body: 'CLIP image features feed I2V and adapter paths. Text conditioning in 2025 video DiTs comes from umT5-XXL or an MLLM, not CLIP.' },
             deep: '<p><b>Conditioning</b>: CLIP-image features feed I2V and adapter paths (Wan 2.1 I2V, IP-Adapter). Text encoders of 2025 video DiTs: umT5-XXL (Wan 2.1), a decoder MLLM plus CLIP-L pooled vector (HunyuanVideo), T5-XXL + CLIP-L/G (SD3-style MM-DiT). CLIP text is capped at 77 tokens and behaves like a bag of words.</p>' +
-              '<div class="note">Known blind spots: word order and relations ("fox on moon" vs "moon on fox"), counting, negation, typographic attacks (ARO, Winoground). The critic therefore pairs embedding scores with a VLM judge.</div>'
+              '<div class="note">Known blind spots: word order and relations ("fox on moon" vs "moon on fox", measured by ARO and Winoground), counting, negation and typographic attacks. The critic therefore pairs embedding scores with a VLM judge.</div>'
           }
         ],
         run: function (ctx) {

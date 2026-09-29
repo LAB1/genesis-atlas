@@ -11,7 +11,8 @@
   function card(ctx, parent, x, y, w, h, color, title) {
     var g = ctx.group({ parent: parent });
     g.frame = ctx.rect(x, y, w, h, { rx: 10, fill: 'rgba(8,14,28,0.92)', stroke: ctx.alpha(color, 0.55), parent: g });
-    if (title) ctx.text(x + 16, y + 22, title, { size: 13, font: 'mono', weight: 700, color: color, parent: g, spacing: 1 });
+    /* the title is a lighter tint of the card colour: readable on dark, and darker (not washed out) in the light theme */
+    if (title) ctx.text(x + 16, y + 22, title, { size: 13, font: 'mono', weight: 700, color: ctx.mix(color, 'white', 0.3), parent: g, spacing: 1 });
     g.x0 = x; g.y0 = y; g.w0 = w;
     g.box = bx(x, y, w, h);
     return g;
@@ -27,6 +28,18 @@
   function stopLoops(S) {
     (S.loops || []).forEach(function (l) { l.stop(); });
     S.loops = [];
+  }
+
+  /* red, magenta, blue, violet and pink text turns pale in the inverted light theme: lighten it a little
+     (big numerals are left alone) so small labels stay legible in both themes */
+  function soften(ctx, root) {
+    var map = {};
+    ['red', 'magenta', 'blue', 'violet', 'pink'].forEach(function (n) { map[String(ctx.C[n]).toLowerCase()] = ctx.mix(n, 'white', 0.42); });
+    var ts = root.getElementsByTagName('text');
+    for (var i = 0; i < ts.length; i++) {
+      var f = (ts[i].getAttribute('fill') || '').toLowerCase();
+      if (map[f] && parseFloat(ts[i].getAttribute('font-size')) < 30) ts[i].setAttribute('fill', map[f]);
+    }
   }
 
   /* hide one element or a list of them (opacity 0) so a later beat can ctx.reveal() them */
@@ -57,10 +70,11 @@
           x += 16;
         }
       });
+      soften(ctx, S.crumb);
       ctx.reveal(S.crumb, { from: 'down', dur: 500 });
     }
     S.crumbEls.forEach(function (el, i) {
-      ctx.fade(el, active.indexOf(i) >= 0 ? 1 : 0.6, 400);
+      ctx.fade(el, active.indexOf(i) >= 0 ? 1 : 0.68, 400);
     });
   }
 
@@ -76,6 +90,7 @@
     ]).then(function () {
       var g = freshPage(ctx, S);
       build(g);
+      soften(ctx, g);
       var p = ctx.reveal(g, { from: 'scale', s0: 0.25, dur: 850, ease: 'out' });
       ctx.camera(null, null, null, 1);
       return p;
@@ -89,6 +104,7 @@
     return Promise.all([ctx.camera(800, 470, 0.45, 900), ctx.fadeOut(old, 800, true)]).then(function () {
       var g = freshPage(ctx, S);
       build(g);
+      soften(ctx, g);
       var p = ctx.reveal(g, { from: 'scale', s0: 1.5, dur: 850, ease: 'out' });
       ctx.camera(null, null, null, 1);
       return p;
@@ -111,16 +127,16 @@
       ctx.rect(162, y, 330, 19, { rx: 3, fill: sw ? ctx.alpha('cyan', 0.06) : 'rgba(255,255,255,0.03)', stroke: ctx.alpha(sw ? 'cyan' : 'red', 0.35), sw: 1, parent: t });
       if (sw) {
         si++;
-        ctx.text(170, y + 10, 'SW' + si, { size: 11, font: 'mono', color: 'cyan', parent: t });
+        ctx.text(168, y + 10, 'SW' + si, { size: 11, font: 'mono', color: 'cyan', parent: t });
         ctx.rect(230, y + 3, 110, 13, { rx: 2, fill: ctx.alpha('cyan', 0.3), stroke: 'cyan', sw: 1, parent: t });
         ctx.rect(360, y + 3, 110, 13, { rx: 2, fill: ctx.alpha('cyan', 0.3), stroke: 'cyan', sw: 1, parent: t });
       } else {
         ci++;
-        ctx.text(170, y + 10, 'CT' + (ci < 10 ? '0' : '') + ci, { size: 11, font: 'mono', color: 'dim', parent: t });
-        ctx.rect(204, y + 3, 32, 13, { rx: 2, fill: ctx.alpha('blue', 0.3), stroke: 'blue', sw: 1, parent: t });
-        ctx.rect(240, y + 3, 32, 13, { rx: 2, fill: ctx.alpha('blue', 0.3), stroke: 'blue', sw: 1, parent: t });
+        ctx.text(168, y + 10, 'CT' + (ci < 10 ? '0' : '') + ci, { size: 11, font: 'mono', color: 'dim', parent: t });
+        ctx.rect(212, y + 3, 30, 13, { rx: 2, fill: ctx.alpha('blue', 0.3), stroke: 'blue', sw: 1, parent: t });
+        ctx.rect(246, y + 3, 30, 13, { rx: 2, fill: ctx.alpha('blue', 0.3), stroke: 'blue', sw: 1, parent: t });
         for (var j = 0; j < 4; j++) {
-          S.rackGpu.push(ctx.rect(282 + j * 52, y + 3, 46, 13, { rx: 2, fill: ctx.alpha('red', 0.45), stroke: 'red', sw: 1, parent: t }));
+          S.rackGpu.push(ctx.rect(288 + j * 50, y + 3, 44, 13, { rx: 2, fill: ctx.alpha('red', 0.45), stroke: 'red', sw: 1, parent: t }));
         }
       }
       ctx.line(492, y + 9.5, 510, y + 9.5, { color: ctx.alpha('cyan', 0.6), sw: 1.2, parent: t });
@@ -128,7 +144,7 @@
     }
     S.spineG = ctx.group({ parent: g });
     S.spine = ctx.path('M510,' + S.trayY[0] + ' L510,' + S.trayY[26], { stroke: ctx.alpha('cyan', 0.75), sw: 3, parent: S.spineG });
-    var sl = ctx.text(548, 516, 'NVLINK SPINE · ~5,000 copper cables', { size: 12, font: 'mono', color: 'cyan', anchor: 'middle', parent: S.spineG });
+    var sl = ctx.text(548, 516, 'NVLINK SPINE · 5,000+ copper cables', { size: 12, font: 'mono', color: 'cyan', anchor: 'middle', parent: S.spineG });
     sl.setAttribute('transform', 'rotate(-90 548 516)');
 
     /* first-beat annotations: what a compute tray and a switch tray are (removed when the domain card arrives) */
@@ -149,7 +165,7 @@
     S.rackLines = ctx.para(612, 296, [
       '18 compute trays × (2 Grace CPU + 4 Blackwell GPU) = 72 GPUs',
       '9 switch trays × 2 NVLink-5 switch chips = 18 NVSwitch',
-      'NVLink 5: 18 links × 100 GB/s = 1.8 TB/s per GPU → 130 TB/s total',
+      'NVLink 5: 18 links × 100 GB/s = 1.8 TB/s bidir per GPU → 130 TB/s',
       'HBM3e: up to 13.4 TB, 576 TB/s aggregate',
       '~180 PFLOP/s dense BF16 · ~720 PFLOP/s dense FP4'
     ], { size: 14, font: 'mono', color: 'text', lh: 29, parent: S.rackCard });
@@ -212,11 +228,17 @@
     S.cpuG = ctx.group({ parent: g });
     ctx.node({ x: 270, y: 620, w: 300, h: 54, title: 'CPU 0 · Xeon', sub: '1 TB DDR5 · PCIe Gen5 switches', titleSize: 13, subSize: 11, color: 'blue', icon: 'chip', parent: S.cpuG });
     ctx.node({ x: 640, y: 620, w: 300, h: 54, title: 'CPU 1 · Xeon', sub: '1 TB DDR5 · PCIe Gen5 switches', titleSize: 13, subSize: 11, color: 'blue', icon: 'chip', parent: S.cpuG });
-    S.nodePara = ctx.para(80, 700, [
-      '— NVLink4: 18 links per GPU, split 5·4·4·5 over 4 NVSwitch = 900 GB/s bidir',
-      'any GPU → any GPU is one switch hop; NVLS reduces inside the switch (SHARP)',
-      '- - PCIe Gen5 x16 to one ConnectX-7 per GPU: 400 Gb/s = 50 GB/s per direction'
-    ], { size: 13, font: 'mono', color: 'text', lh: 28, parent: g });
+    /* legend: a line swatch per link type, then the caption (the third row arrives with the NICs) */
+    S.nodePara = ctx.group({ parent: g });
+    S.nodeLn = [];
+    [[704, 'cyan', null, 'NVLink4: 18 links per GPU, split 5·4·4·5 over 4 NVSwitch = 900 GB/s bidir'],
+     [738, null, null, 'any GPU → any GPU is one switch hop; NVLS reduces inside the switch (SHARP)'],
+     [772, 'blue', '4 4', 'PCIe Gen5 x16 to one ConnectX-7 per GPU: 400 Gb/s = 50 GB/s per direction']].forEach(function (L) {
+      var lg = ctx.group({ parent: S.nodePara });
+      if (L[1]) ctx.path('M80,' + L[0] + ' H106', { stroke: L[1], sw: 2, dash: L[2], parent: lg });
+      ctx.text(118, L[0], L[3], { size: 13, font: 'mono', color: 'text', parent: lg });
+      S.nodeLn.push(lg);
+    });
 
     /* bandwidth bars */
     S.bwCard = card(ctx, g, 920, 160, 630, 400, 'red', 'PER-GPU BANDWIDTH · GB/s per direction');
@@ -238,7 +260,7 @@
       '14B video DiT · 75,600 tokens · d = 5,120',
       'per layer per GPU: 4 all-to-alls ≈ 340 MB',
       'NVLink4 450 GB/s → 0.75 ms  (attention ≈ 25 ms)',
-      'IB NDR 50 GB/s → 6.8 ms → +27% if not overlapped',
+      'IB NDR 50 GB/s → 6.8 ms  (+27% of attention time)',
       'verdict: SP group = one NVLink domain'
     ], { size: 13, font: 'mono', color: 'text', lh: 40, parent: S.foxCard });
   }
@@ -275,7 +297,7 @@
     [[206, 'partition 0'], [552, 'partition 1']].forEach(function (p) {
       var gr = ctx.group({ parent: S.l2G });
       ctx.rect(p[0], 390, 324, 96, { rx: 6, fill: ctx.alpha('blue', 0.14), stroke: 'blue', sw: 1.3, parent: gr });
-      ctx.text(p[0] + 162, 428, 'L2 cache · 25 MB', { size: 16, font: 'display', weight: 700, color: 'white', anchor: 'middle', parent: gr });
+      ctx.text(p[0] + 162, 428, 'L2 cache · half of 50 MB', { size: 16, font: 'display', weight: 700, color: 'white', anchor: 'middle', parent: gr });
       ctx.text(p[0] + 162, 452, p[1], { size: 11, font: 'mono', color: 'blue', anchor: 'middle', parent: gr });
       S.l2.push(gr);
     });
@@ -290,7 +312,7 @@
       var dead = i === 5;
       ctx.rect(h[0], h[1], 100, 128, { rx: 6, fill: dead ? 'rgba(120,130,150,0.06)' : ctx.alpha('red', 0.14), stroke: dead ? ctx.alpha('dim', 0.6) : 'red', sw: 1.3, dash: dead ? '4 4' : null, parent: S.hbmG });
       for (var l = 0; l < 4; l++) ctx.line(h[0] + 10, h[1] + 34 + l * 18, h[0] + 90, h[1] + 34 + l * 18, { color: ctx.alpha(dead ? 'dim' : 'red', 0.35), sw: 1, parent: S.hbmG });
-      ctx.text(h[0] + 50, h[1] + 16, dead ? 'spacer' : 'HBM3', { size: 13, font: 'mono', weight: 700, color: dead ? 'dim' : 'white', anchor: 'middle', parent: S.hbmG });
+      ctx.text(h[0] + 50, h[1] + 16, dead ? 'unused' : 'HBM3', { size: 13, font: 'mono', weight: 700, color: dead ? 'dim' : 'white', anchor: 'middle', parent: S.hbmG });
       ctx.text(h[0] + 50, h[1] + 112, dead ? 'no stack' : '16 GB', { size: 12, font: 'mono', color: dead ? 'dim' : 'red', anchor: 'middle', parent: S.hbmG });
       if (!dead) {
         var left = h[0] < 500;
@@ -304,7 +326,7 @@
     S.dieLines = ctx.para(1072, 218, [
       '132 SMs enabled (of 144)',
       '528 tensor cores · 16,896 FP32 lanes',
-      'L2 cache 50 MB (2 × 25 MB)',
+      'L2 cache 50 MB (two partitions)',
       'HBM3 80 GB (5 × 16 GB) · 3.35 TB/s'
     ], { size: 13, font: 'mono', color: 'text', lh: 30, parent: S.dieCard });
     /* card B: the peak-FLOPs multiplication */
@@ -326,7 +348,7 @@
       '      192 GB HBM3e · ~8 TB/s',
       '      ~2.25 PF BF16 · FP4 tensor cores'
     ], { size: 13, color: 'text', lh: 26, pre: true, parent: S.newCard });
-    S.dieNote = ctx.text(1300, 850, 'HBM → L2 → SMs: every byte crosses 3.35 TB/s', { size: 12, font: 'mono', color: 'dim', anchor: 'middle', parent: g });
+    S.dieNote = ctx.text(1300, 850, 'HBM → L2 → SMs: all 132 SMs share 3.35 TB/s', { size: 12, font: 'mono', color: 'dim', anchor: 'middle', parent: g });
   }
 
   /* ================================================================ SM */
@@ -354,14 +376,14 @@
       ctx.text(x0 + ux + w / 2, y0 + 206, '× ' + count, { size: 11, font: 'mono', color: 'dim', anchor: 'middle', parent: inn });
     }
     unit(8, 70, 4, 'INT32', 16, 'teal');
-    unit(84, 120, 8, 'FP32', 32, 'cyan');
-    unit(210, 70, 4, 'FP64', 16, 'violet');
+    unit(84, 112, 8, 'FP32', 32, 'cyan');
+    unit(202, 70, 4, 'FP64', 16, 'violet');
     var tc = ctx.group({ parent: inn });
-    ctx.rect(x0 + 286, y0 + 108, 101, 112, { rx: 6, fill: ctx.alpha('red', 0.22), stroke: 'red', sw: 1.6, parent: tc, glow: true });
-    ctx.text(x0 + 336, y0 + 138, 'TENSOR', { size: 13, font: 'display', weight: 700, color: 'white', anchor: 'middle', parent: tc });
-    ctx.text(x0 + 336, y0 + 156, 'CORE', { size: 13, font: 'display', weight: 700, color: 'white', anchor: 'middle', parent: tc });
-    ctx.text(x0 + 336, y0 + 180, '4th gen', { size: 11, font: 'mono', color: 'red', anchor: 'middle', parent: tc });
-    ctx.text(x0 + 336, y0 + 200, '1,024 FLOP/clk', { size: 11, font: 'mono', color: 'red', anchor: 'middle', parent: tc });
+    ctx.rect(x0 + 278, y0 + 108, 109, 112, { rx: 6, fill: ctx.alpha('red', 0.22), stroke: 'red', sw: 1.6, parent: tc, glow: true });
+    ctx.text(x0 + 332.5, y0 + 138, 'TENSOR', { size: 13, font: 'display', weight: 700, color: 'white', anchor: 'middle', parent: tc });
+    ctx.text(x0 + 332.5, y0 + 156, 'CORE', { size: 13, font: 'display', weight: 700, color: 'white', anchor: 'middle', parent: tc });
+    ctx.text(x0 + 332.5, y0 + 180, '4th gen', { size: 11, font: 'mono', color: 'red', anchor: 'middle', parent: tc });
+    ctx.text(x0 + 332.5, y0 + 200, '1,024 FLOP/clk', { size: 11, font: 'mono', color: 'red', anchor: 'middle', parent: tc });
     S.tcs.push(tc);
     ctx.rect(x0 + 8, y0 + 228, 186, 42, { rx: 5, fill: ctx.alpha('blue', 0.06), stroke: ctx.alpha('blue', 0.4), sw: 1, parent: inn });
     ctx.text(x0 + 101, y0 + 249, 'LD/ST × 8', { size: 12, font: 'mono', color: 'blue', anchor: 'middle', parent: inn });
@@ -433,7 +455,7 @@
       '≤ 64 warps (2,048 threads) resident per SM',
       '65,536 regs/SM: 128 regs/thread → 16 warps',
       '                255 regs/thread →  8 warps',
-      'global-load latency ≈ 0.5 µs ≈ 900 clocks',
+      'assumed DRAM latency ≈ 0.5 µs ≈ 900 clocks',
       'bytes in flight = 3.35 TB/s × 0.5 µs ≈ 1.7 MB',
       '→ ~13 KB outstanding per SM, all the time',
       'TMA / cp.async keep it in flight without regs'
@@ -474,42 +496,56 @@
     /* waves */
     S.waveCard = card(ctx, g, 860, 160, 690, 440, 'red', 'CTAs → SMs · WAVE QUANTIZATION');
     var wc = S.waveCard;
-    ctx.text(880, 206, 'launch 140 CTAs (1 CTA per SM) on 132 SMs', { size: 12, font: 'mono', color: 'dim', parent: wc });
+    S.waveSub = ctx.text(880, 206, 'launch 140 CTAs (1 CTA per SM) on 132 SMs', { size: 12, font: 'mono', color: 'dim', parent: wc });
     S.smGrid = ctx.matrix(882, 226, 11, 12, { cell: 26, gap: 6, values: function () { return 'rgba(255,255,255,0.04)'; }, stroke: ctx.alpha('red', 0.35), parent: wc });
     S.waveT = ctx.text(1272, 250, 'wave –', { size: 22, font: 'display', weight: 700, color: 'white', parent: wc });
     S.waveN = ctx.text(1272, 282, '', { size: 13, font: 'mono', color: 'lime', parent: wc });
     ctx.text(1272, 360, 'SM-time used', { size: 13, font: 'mono', color: 'dim', parent: wc });
     S.effT = ctx.text(1272, 396, '', { size: 28, font: 'display', weight: 700, color: 'orange', parent: wc });
-    ctx.text(1272, 430, '140 / (2 × 132)', { size: 13, font: 'mono', color: 'dim', parent: wc });
+    S.effF = ctx.text(1272, 430, '140 / (2 × 132)', { size: 13, font: 'mono', color: 'dim', parent: wc });
     ctx.rect(1272, 470, 14, 14, { rx: 2, fill: ctx.alpha('lime', 0.8), parent: wc });
     ctx.text(1294, 478, 'running', { size: 12, font: 'mono', color: 'text', parent: wc });
     ctx.rect(1272, 496, 14, 14, { rx: 2, fill: ctx.alpha('red', 0.25), stroke: ctx.alpha('red', 0.6), sw: 0.8, parent: wc });
     ctx.text(1294, 504, 'idle (tail)', { size: 12, font: 'mono', color: 'text', parent: wc });
     ctx.rect(1272, 522, 14, 14, { rx: 2, fill: ctx.alpha('dim', 0.35), parent: wc });
     ctx.text(1294, 530, 'finished', { size: 12, font: 'mono', color: 'text', parent: wc });
+    S.waveHint = ctx.group({ parent: wc });
+    ctx.text(1272, 558, 'click the SM grid to', { size: 12, font: 'mono', color: 'amber', parent: S.waveHint });
+    ctx.text(1272, 576, 'try other launch sizes', { size: 12, font: 'mono', color: 'amber', parent: S.waveHint });
     S.gemmCard = card(ctx, g, 860, 620, 690, 240, 'amber', 'FOX SHOT · DiT QKV PROJECTION GEMM');
     S.gemmLines = ctx.para(882, 668, [
       'M × N × K = 75,600 × 15,360 × 5,120',
       '128×256 tiles → 591 × 60 = 35,460 CTAs',
-      '= 268.6 waves → tail waste ≈ 0.15%  (fine)',
+      '= 268.6 waves → tail waste ≈ 0.14%  (fine)',
       'small grids (decode GEMMs, per-head ops) suffer:',
       'persistent kernels + Stream-K / split-K fix tails',
       'Hopper clusters: up to 16 CTAs share DSMEM'
     ], { size: 13, font: 'mono', color: 'text', lh: 30, parent: S.gemmCard });
   }
 
+  /* final state of a launch of T blocks, one CTA per SM, on 132 SMs: the last wave, its idle tail and the
+     SM-time efficiency T / (P · ceil(T/P)). Also drives the click-to-resize demo of the last beat. */
+  function showLaunch(ctx, S, T) {
+    var P = 132, W = Math.ceil(T / P), r = T - P * (W - 1), eff = T / (P * W);
+    S.smGrid.set(function (rr, c) { return rr * 12 + c < r ? ctx.alpha('lime', 0.8) : ctx.alpha('red', 0.25); });
+    S.waveSub.textContent = 'launch ' + T.toLocaleString('en-US') + ' CTAs (1 CTA per SM) on 132 SMs';
+    S.waveT.textContent = 'wave ' + W;
+    S.waveN.textContent = r + ' running, ' + (P - r) + ' idle';
+    S.effT.textContent = (eff > 0.9995 ? '100' : eff >= 0.995 ? (eff * 100).toFixed(1) : String(Math.round(eff * 100))) + '%';
+    S.effF.textContent = T.toLocaleString('en-US') + ' / (' + W + ' × 132)';
+  }
+
   function paintWaves(ctx, S, t) {
-    var lit = ctx.alpha('lime', 0.8), idle = ctx.alpha('red', 0.25), done = ctx.alpha('dim', 0.35), off = 'rgba(255,255,255,0.04)';
+    var lit = ctx.alpha('lime', 0.8), done = ctx.alpha('dim', 0.35), off = 'rgba(255,255,255,0.04)';
     var n1 = t < 0.4 ? Math.floor(t / 0.4 * 132) : 132;
+    if (t >= 0.65) { showLaunch(ctx, S, 140); return; }
     S.smGrid.set(function (r, c) {
       var i = r * 12 + c;
       if (t < 0.55) return i < n1 ? lit : off;
-      if (t < 0.65) return done;
-      return i < 8 ? lit : idle;
+      return done;
     });
     if (t < 0.55) { S.waveT.textContent = 'wave 1'; S.waveN.textContent = n1 + ' CTAs running'; S.effT.textContent = ''; }
-    else if (t < 0.65) { S.waveT.textContent = 'wave 1 done'; S.waveN.textContent = '8 CTAs left'; }
-    else { S.waveT.textContent = 'wave 2'; S.waveN.textContent = '8 running, 124 idle'; S.effT.textContent = '53%'; }
+    else { S.waveT.textContent = 'wave 1 done'; S.waveN.textContent = '8 CTAs left'; }
   }
 
   /* ================================================================ TENSOR CORE */
@@ -560,7 +596,7 @@
     /* right */
     S.code = ctx.code({ parent: g, x: 940, y: 160, w: 610, title: 'one Hopper tensor-core instruction (PTX)', lang: 'text', size: 13, color: 'red', typing: true, lines: [
       'wgmma.mma_async.sync.aligned',
-      '  .m64n256k16.f32.bf16.bf16  d, descA, descB;',
+      '  .m64n256k16.f32.bf16.bf16  d, descA, descB, …;',
       '// issued by 1 warpgroup = 4 warps = 128 threads',
       '// 2 · 64 · 256 · 16 = 524,288 FLOP, asynchronous'
     ] });
@@ -576,7 +612,7 @@
     S.bwLines = ctx.para(960, 640, [
       '· MMA issued by a single thread, fully async',
       '· accumulators live in Tensor Memory, 256 KB/SM',
-      '· 2-CTA MMA: an SM pair shares the B tile',
+      '· 2-CTA MMA: an SM pair works on one tile',
       '· NVFP4: 16-value blocks + FP8 E4M3 scale',
       '· MXFP8 / MXFP4: 32-value blocks + E8M0 scale',
       '· FP4 rate = 2× FP8 = 4× BF16'
@@ -609,11 +645,11 @@
     return 'M' + rX(0.1) + ',' + rY(0.1 * bw) + ' L' + rX(ridge) + ',' + rY(peak) + ' L' + rX(10000) + ',' + rY(peak);
   }
   var PTS = [
-    ['residual add (elementwise)', 0.17, ['y = x + f(x) in BF16: 1 FLOP per 6 bytes', '(two reads, one write) → I ≈ 0.17 FLOP/B', 'attainable ≈ 0.57 TFLOP/s: pure bandwidth', 'fix: fuse it into the GEMM epilogue so the', 'tensor never makes a round trip to HBM']],
+    ['residual add (elementwise)', 0.167, ['y = x + f(x) in BF16: 1 FLOP per 6 bytes', '(two reads, one write) → I = 1/6 ≈ 0.17 FLOP/B', 'attainable ≈ 0.56 TFLOP/s: pure bandwidth', 'fix: fuse it into the GEMM epilogue so the', 'tensor never makes a round trip to HBM']],
     ['decode GEMV, batch 1', 1, ['each BF16 weight (2 B) feeds one FMA (2 FLOP)', '→ I ≈ 1 FLOP/B → 3.35 TFLOP/s = 0.34% of peak', '70B model, TP=8: 140 GB ÷ (8 × 3.35 TB/s)', '≈ 5.2 ms per token, no matter the FLOPs', 'fixes: batching, FP8/FP4 weights, speculation']],
     ['decode attention, GQA-8', 8, ['each KV element is read once per step and', 'shared by g = 8 query heads → I ≈ g', '≈ 8 FLOP/B → ~27 TFLOP/s', 'batching does not help (KV is per sequence);', 'MLA, larger g, FP8 KV cache do']],
     ['decode GEMM, batch 64', 64, ['B tokens reuse every weight B times: I ≈ B', 'B = 64 → 214 TFLOP/s (22% of peak)', 'the ridge needs B ≳ 300 tokens in flight', 'this is why continuous batching exists and', 'why decode is priced per HBM byte']],
-    ['DiT attention tile (FA3)', 128, ['FA3 keeps a 128-row Q tile in SMEM and streams', 'K,V: per tile I ≈ Br = 128 FLOP/B → 429 TF/s', 'but ~132 resident CTAs of one head stream the', 'same K,V blocks together, so L2 serves most', 're-reads: effective I passes the ridge (~75% MFU)']],
+    ['DiT attention tile (FA3)', 128, ['FA3 keeps a 128-row Q tile in SMEM and streams K,V:', 'per tile I ≈ Br = 128 FLOP/B → 429 TF/s if K,V came', 'from HBM every time. But one head’s K,V (39 MB) can sit', 'in the 50 MB L2 and the head’s CTAs share it (best case):', 'HBM sees Q,K,V,O about once → I up to N/2 ≈ 37,800']],
     ['LLM prefill GEMM, 8k tok', 2731, ['M = N = K = 8,192 (8k tokens, d = 8,192)', 'I = MNK / (MK + KN + MN) = 8,192 / 3 ≈ 2,731', 'far right of the ridge: compute-bound', 'real kernels sustain ~70–80% of the 989 TF', 'datasheet peak (clocks droop under power cap)']],
     ['DiT QKV GEMM, 75.6k tok', 3654, ['M = 75,600 tokens, K = 5,120, N = 15,360', 'I = MNK / (MK + KN + MN) ≈ 3,650 FLOP/B', 'the video model lives on the flat roof:', 'FLOPs, not bytes, set the cost of a shot', '→ FP8 GEMMs, sparse attention, fewer steps']]
   ];
@@ -647,7 +683,7 @@
     var xr = rX(295);
     S.ridge = ctx.group({ parent: g });
     ctx.line(xr, rY(989), xr, 790, { color: ctx.alpha('red', 0.7), sw: 1.2, dash: '4 4', parent: S.ridge });
-    S.ridgeLab = ctx.label(xr, 770, 'ridge ≈ 295', { color: 'red', size: 11, parent: S.ridge });
+    S.ridgeLab = ctx.label(xr, 770, 'ridge ≈ 295', { color: 'red', textColor: 'white', size: 11, parent: S.ridge });
     ctx.text(430, 575, 'memory-bound', { size: 14, font: 'display', weight: 700, color: ctx.alpha('white', 0.35), anchor: 'middle', parent: S.ridge }).setAttribute('transform', 'rotate(-38.7 430 575)');
     ctx.text(800, 410, 'compute-bound', { size: 14, font: 'display', weight: 700, color: ctx.alpha('white', 0.35), anchor: 'middle', parent: S.ridge });
 
@@ -658,14 +694,15 @@
       var x = rX(p[1]), y = rY(perf);
       var pg = ctx.group({ parent: g });
       var hollow = i === 4;
-      ctx.circle(x, y, 8, { fill: hollow ? 'rgba(8,12,24,0.9)' : 'amber', stroke: 'amber', sw: 2, parent: pg, glow: !hollow });
+      ctx.circle(x, y, 7, { fill: hollow ? 'rgba(8,12,24,0.9)' : 'amber', stroke: 'amber', sw: 1.8, parent: pg, glow: !hollow });
       var dx = 12, dy = 15;
       if (i === 5) { dx = -16; dy = 16; }
       if (i === 6) { dx = 12; dy = -16; }
       ctx.text(x + dx, y + dy, String(i + 1), { size: 13, font: 'mono', weight: 700, color: 'amber', anchor: 'middle', parent: pg });
       if (hollow) {
-        ctx.line(x + 10, y, x + 70, y, { color: 'amber', sw: 1.5, dash: '4 3', arrow: true, parent: pg });
-        ctx.text(x + 76, y, 'L2 reuse', { size: 11, font: 'mono', color: 'amber', anchor: 'start', parent: pg });
+        /* L2 reuse lifts the tile from its HBM-only intensity up onto the compute roof */
+        ctx.path('M' + (x + 8) + ',' + (y - 6) + ' Q' + (x + 36) + ',' + (rY(989) + 4) + ' ' + rX(700) + ',' + (rY(989) + 4), { stroke: 'amber', sw: 1.5, dash: '4 3', arrow: true, parent: pg });
+        ctx.text(x + 30, y + 22, 'L2 reuse', { size: 11, font: 'mono', color: 'amber', anchor: 'start', parent: pg });
       }
       pg.style.cursor = 'pointer';
       pg.fy = y;
@@ -673,7 +710,7 @@
     });
 
     /* right panel */
-    S.eqCard = card(ctx, g, 940, 160, 610, 140, 'red', 'ROOFLINE MODEL');
+    S.eqCard = card(ctx, g, 940, 160, 610, 90, 'red', 'ROOFLINE MODEL');
     var eq = S.eqCard;
     ctx.text(1245, 212, 'P = min( π_peak ,  I · β_HBM )', { size: 18, font: 'mono', weight: 700, color: 'white', anchor: 'middle', parent: eq });
     S.ridgeTxt = ctx.text(960, 248, 'H100: 989 TF ÷ 3.35 TB/s → ridge I* ≈ 295 FLOP/B', { size: 13, font: 'mono', color: 'red', parent: eq });
@@ -708,8 +745,11 @@
       ctx.para(958, 706, PTS[i][2], { size: 13, font: 'mono', color: 'text', lh: 29, parent: S.detailBody });
     }
     S.select = select;
-    S.rows.forEach(function (rg, i) { rg.addEventListener('click', function () { select(i); }); });
-    S.pts.forEach(function (pg, i) { pg.addEventListener('click', function () { select(i); }); });
+    /* a row and its dot become clickable only when they appear (hidden elements still receive clicks otherwise) */
+    S.wireKernel = function (i) {
+      S.rows[i].addEventListener('click', function () { select(i); });
+      S.pts[i].addEventListener('click', function () { select(i); });
+    };
     select(1);
   }
 
@@ -809,7 +849,7 @@
 
   function buildBudget(ctx, S, g) {
     S.bcode = ctx.code({ parent: g, x: 70, y: 160, w: 830, title: 'shot_03_budget.txt · fox crash-lands · 5 s · 720p', lang: 'text', size: 14, color: 'red', typing: true, maxLines: 10, lines: BUDGET_LINES });
-    S.tcCard = card(ctx, g, 70, 456, 830, 404, 'red', 'WHERE THE SECONDS GO · shot 3 on 8 GPUs');
+    S.tcCard = card(ctx, g, 70, 456, 830, 100, 'red', 'WHERE THE SECONDS GO · shot 3 on 8 GPUs');
     var tc = S.tcCard;
     S.flopG = ctx.group({ parent: tc });
     ctx.text(90, 506, 'FLOPs / forward', { size: 13, font: 'mono', color: 'text', parent: S.flopG });
@@ -831,7 +871,7 @@
       r.lab = ctx.text(380 + w + 10, y + 10, b[1] + ' s', { size: 13, font: 'mono', weight: 700, color: b[2], parent: rg });
       S.tBars.push(r); S.tRows.push(rg);
     });
-    ctx.text(90, 832, 'assumes 40% MFU, Ulysses SP = 8 on NVLink; text encoder + VAE decode excluded', { size: 12, font: 'mono', color: 'dim', parent: tc });
+    S.tNote = ctx.text(90, 832, 'assumes 40% MFU, Ulysses SP = 8 on NVLink; text encoder + VAE decode excluded', { size: 12, font: 'mono', color: 'dim', parent: tc });
 
     /* shapes ribbon (beat 1 only, replaced by the level ladder in the last beat) */
     S.ribbon = ctx.group({ parent: g });
@@ -867,14 +907,15 @@
   Atlas.register({
     id: 'gpu',
     refs: [
-      'NVIDIA, <i>NVIDIA H100 Tensor Core GPU Architecture</i> (Hopper whitepaper), 2022',
-      'NVIDIA, <i>Blackwell Architecture Technical Brief</i> and <i>GB200 NVL72</i> datasheet, 2024–2025',
+      'NVIDIA, <i>NVIDIA H100 Tensor Core GPU Architecture</i> whitepaper, 2022',
+      'NVIDIA, <i>NVIDIA Blackwell Architecture Technical Brief</i>, 2024',
+      'NVIDIA, <i>GB200 NVL72</i> datasheet, 2024',
       'Williams, Waterman &amp; Patterson, <i>Roofline: An Insightful Visual Performance Model for Multicore Architectures</i>, CACM 2009',
       'NVIDIA, <i>CUDA C++ Programming Guide</i> and <i>PTX ISA 8.x</i> (thread-block clusters, wgmma, tcgen05), 2024–2025',
       'Shah, Bikshandi, Zhang, Thakkar, Ramani &amp; Dao, <i>FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-precision</i>, NeurIPS 2024',
       'Osama, Merrill, Cecka, Garland &amp; Owens, <i>Stream-K: Work-centric Parallel Decomposition for Dense Matrix-Matrix Multiplication on the GPU</i>, PPoPP 2023',
       'Gangidi et al. (Meta), <i>RDMA over Ethernet for Distributed AI Training at Meta Scale</i>, SIGCOMM 2024',
-      'Wan Team (Alibaba), <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025'
+      'Team Wan et al., <i>Wan: Open and Advanced Large-Scale Video Generative Models</i>, arXiv 2503.20314, 2025'
     ],
     steps: [
       /* ------------------------------------------------------------ 1 RACK */
@@ -912,7 +953,7 @@
             say: 'Why does the domain size matter? Tensor, expert, and sequence parallel traffic hits the fabric on every layer, so those groups must fit inside one domain. Step outside and bandwidth per GPU falls nine to eighteen times, which is why growing the domain from eight GPUs to seventy two changes what can be split.',
             card: { tag: 'WHY IT MATTERS', title: 'The domain is the unit of parallelism', body: 'Groups that all-to-all on every layer must live inside one NVLink domain. Domains grew from 8 GPUs (HGX) to 72 (NVL72).' },
             deep: '<p>Placement rule of thumb: <b>TP, EP and SP groups fit inside one NVLink domain; DP and PP may cross the NIC</b>. Leaving the domain costs 9× (NVLink 4 versus a 400G NIC) to 18× (NVLink 5 versus the same NIC) of per-GPU bandwidth.</p>' +
-              '<p>The spine is a passive copper cable cartridge (~5,000 cables): copper, not optics, to save power at rack scale. The rack draws ~120 kW and is direct-liquid-cooled. Vera Rubin (announced for 2026) keeps the rack form factor and counts 144 dies.</p>' +
+              '<p>The spine is a set of passive copper cable cartridges (over 5,000 cables): copper, not optics, to save power at rack scale. The rack needs about 120 kW of direct liquid cooling. Vera Rubin, announced for 2026, is again a 72-GPU rack and moves to NVLink 6, doubling per-GPU NVLink bandwidth once more to 3.6 TB/s.</p>' +
               '<div class="note">Running example: each of the six trailer shots is gang-scheduled onto GPUs of <i>one</i> domain, so its per-layer all-to-all never touches the NIC.</div>'
           }
         ],
@@ -923,9 +964,10 @@
           ctx.hud('GB200 NVL72: 18 compute + 9 switch trays');
           var g = freshPage(ctx, S);
           buildRack(ctx, S, g);
+          soften(ctx, g);
           hide([S.rackHead, S.rackCard, S.genCard, S.spineG, S.rackSub, S.callouts]);
           hide(S.nvlDots);
-          hide(kids(S.rackLines).slice(2));
+          hide(kids(S.rackLines).slice(1));
           /* beat 0: the rack and its 27 trays */
           return Promise.all([
             ctx.reveal(S.rackHead, { dur: 500 }),
@@ -948,7 +990,7 @@
             ctx.reveal(S.spineG, { dur: 400 });
             ctx.reveal(S.spine, { from: 'draw', dur: 700 });
             ctx.reveal(S.rackSub, { from: 'left', delay: 300 });
-            ctx.reveal(kids(S.rackLines).slice(2), { from: 'left', stagger: 160, delay: 400 });
+            ctx.reveal(kids(S.rackLines).slice(1), { from: 'left', stagger: 160, delay: 400 });
             var y3 = S.trayY[2], y15 = S.trayY[21], sw5 = S.trayY[14], y7 = S.trayY[6], y24 = S.trayY[25];
             var pa = ctx.path('M459,' + y3 + ' H510 V' + sw5 + ' H470 H510 V' + y15 + ' H355', { stroke: ctx.alpha('amber', 0.0), parent: S.page });
             var pb = ctx.path('M305,' + y24 + ' H510 V' + S.trayY[12] + ' H340 H510 V' + y7 + ' H407', { stroke: ctx.alpha('cyan', 0.0), parent: S.page });
@@ -973,35 +1015,35 @@
         title: 'Eight-GPU node',
         beats: [
           {
-            say: 'Most fleets still run the classic eight GPU node, so zoom into one. Eight H100 GPUs sit in a row, hosted by two Xeon CPUs with a terabyte of DDR5 memory each.',
+            say: 'The classic eight GPU node is still the workhorse of many fleets, so zoom into one. Eight H100 GPUs sit in a row, hosted by two Xeon CPUs with a terabyte of DDR5 memory each.',
             card: { tag: 'NUMBERS', title: 'The workhorse box', stat: { v: '8', u: 'GPUs', l: 'per HGX / DGX H100 node: 640 GB of HBM3, about 10 kW at the wall' } },
             deep: '<p><b>HGX / DGX H100</b>: 8 × H100 SXM5 on one baseboard, hosted by 2 × Xeon Platinum (Sapphire Rapids, 2 TB DDR5 in total) over PCIe Gen5. Eight ConnectX-7 NICs, one per GPU, serve the compute fabric; further NICs and NVMe drives handle storage and management.</p>' +
               '<p>The 8-GPU node is the scheduler’s atom: a gang-scheduled job asks for whole nodes, and the node’s NVLink domain is the largest group in which tensor and sequence parallelism are cheap. A DGX H100 draws up to ~10.2 kW.</p>'
           },
           {
-            say: 'Each H100 has eighteen NVLink links, spread over four NVSwitch chips. That gives four hundred fifty gigabytes per second in each direction, nine hundred in total, to every peer in the box, and any GPU is exactly one switch hop from any other.',
-            card: { tag: 'NUMBERS', title: 'Every peer at full speed', stat: { v: '450', u: 'GB/s', l: 'per direction to any peer: 18 NVLink4 links × 25 GB/s through 4 NVSwitch chips' } },
+            say: 'Each H100 has eighteen NVLink links, spread over four NVSwitch chips. That gives four hundred fifty gigabytes per second in each direction, nine hundred in total, to any peer in the box, and any GPU is exactly one switch hop from any other.',
+            card: { tag: 'NUMBERS', title: 'Any peer at full speed', stat: { v: '450', u: 'GB/s', l: 'per direction to any peer: 18 NVLink4 links × 25 GB/s through 4 NVSwitch chips' } },
             deep: '<p><b>HGX / DGX H100 topology</b>: 8 × H100 SXM5, 4 × third-generation NVSwitch (64 NVLink4 ports each). Each GPU’s 18 links are split 5·4·4·5 across the switches, so every GPU pair is one hop apart and the fabric is non-blocking.</p>' +
               '<div class="eq">18 links × 25 GB/s/dir = 450 GB/s/dir = 900 GB/s bidirectional</div>' +
-              '<p><b>NVLS</b> (NVLink SHARP) lets the NVSwitch chips perform the reduction of an all-reduce in-network, roughly halving the bytes each GPU must push. The highlighted link that sweeps across the fan is one of the 32 GPU-to-switch cables being exercised.</p>'
+              '<p><b>NVLS</b> (NVLink SHARP) lets the NVSwitch chips perform the reduction of an all-reduce in-network, so each GPU pushes roughly S bytes instead of the ring’s 2(n−1)/n · S (1.75 S for n = 8). Each line in the fan stands for a bundle of 4 or 5 links; the highlighted one sweeping across it is one of the 32 GPU-to-switch bundles.</p>'
           },
           {
-            say: 'Each GPU also owns one four hundred gigabit InfiniBand card, which is only fifty gigabytes per second per direction. That nine times cliff at the edge of the node is the single most important fact in distributed inference. Chatty tensor and sequence parallel traffic must stay on NVLink.',
-            card: { tag: 'PITFALL', title: 'The 9× cliff at the node edge', body: 'Traffic that leaves the box gets one ninth of the bandwidth. A tensor-parallel group that straddles two nodes stalls every layer on the NIC.' },
-            deep: '<p>Off-node path: GPU → PCIe Gen5 switch → ConnectX-7 (400 Gb/s = 50 GB/s per direction) → the “rail”. Local HBM3 streams at 3,350 GB/s, NVLink4 at 450 GB/s, PCIe Gen5 x16 at ~64 GB/s and the NIC at 50 GB/s: each boundary costs roughly an order of magnitude.</p>' +
+            say: 'Each GPU also owns one four hundred gigabit InfiniBand card, which is only fifty gigabytes per second per direction. That nine times cliff at the edge of the node shapes every parallelism decision, so chatty tensor and sequence parallel traffic must stay on NVLink.',
+            card: { tag: 'PITFALL', title: 'A TP group must not straddle nodes', body: 'Traffic that leaves the box gets one ninth of the bandwidth. A tensor-parallel group spanning two nodes would stall every layer on the NIC.' },
+            deep: '<p>Off-node path: GPU → PCIe Gen5 switch → ConnectX-7 (400 Gb/s = 50 GB/s per direction) → the “rail”. Local HBM3 streams at 3,350 GB/s, NVLink4 at 450 GB/s, PCIe Gen5 x16 at ~64 GB/s and the NIC at 50 GB/s: the first two boundaries each cost a factor of about seven, and the NIC sits just below PCIe.</p>' +
               '<div class="eq">NVLink4 450 GB/s ÷ NDR NIC 50 GB/s = 9×</div>' +
               '<p>Hence the placement rule: tensor and sequence parallel groups stay inside the NVLink domain; data and pipeline parallel traffic, which is rarer and overlappable, may cross the NIC. The bars are drawn on a linear scale, so the NIC bar is almost invisible next to HBM.</p>'
           },
           {
             say: 'Put numbers on it with one fox shot. Sequence parallelism over these eight GPUs moves about three hundred forty megabytes per layer per GPU. On NVLink that costs under a millisecond; over the NIC it would cost nearly seven, more than a quarter of the attention time.',
-            card: { tag: 'NUMBERS', title: 'What the cliff costs a shot', stat: { v: '+27%', l: 'per-layer time if the Ulysses all-to-alls ran over the NIC: 6.8 ms against 25 ms of attention' },
+            card: { tag: 'NUMBERS', title: 'What the cliff costs a shot', stat: { v: '+27%', l: 'of attention time per layer if the Ulysses all-to-alls ran over the NIC: 6.8 ms against ~25 ms' },
               more: '<p>Ulysses does four all-to-alls per layer (Q, K, V in, O out). Each GPU holds N/8 = 9,450 tokens × d = 5,120 channels × 2 B = 96.8 MB and sends 7/8 of it to its seven peers each time:</p><div class="eq">4 × 96.8 MB × 7/8 ≈ 339 MB per layer per GPU</div>' },
             deep: '<p>For one fox shot with Ulysses sequence parallelism over 8 GPUs, each layer does 4 all-to-alls (Q, K, V and O), each GPU sending 7/8 of its N/8 × d BF16 slice:</p>' +
               '<div class="eq">4 × (75,600/8) × 5,120 × 2 B × 7/8 ≈ 339 MB per layer per GPU</div>' +
               '<table><tr><th>Link</th><th>time / layer</th><th>vs attention (~25 ms)</th></tr>' +
               '<tr><td>NVLink4 450 GB/s</td><td>0.75 ms</td><td>3%</td></tr>' +
               '<tr><td>IB NDR 50 GB/s</td><td>6.8 ms</td><td>27%</td></tr></table>' +
-              '<p>The 25 ms is per-layer attention per GPU at ~60% of peak (14.6 TFLOP ÷ ~590 TFLOP/s).</p>' +
+              '<p>The 25 ms is per-layer attention per GPU at ~60% of peak (14.6 TFLOP ÷ ~590 TFLOP/s). The NIC row is a worst case with every byte on one 400G port; overlapping the all-to-all with the QKV GEMMs hides some of it, but the algorithm was designed for the NVLink number.</p>' +
               '<div class="note">Placement rule: TP and SP groups ⊆ one NVLink domain; DP and PP may cross the NIC.</div>'
           }
         ],
@@ -1013,7 +1055,7 @@
             buildNode(ctx, S, g);
             hide([S.fan, S.nicG, S.nodePara, S.bwCard, S.foxCard, S.cliffTxt, S.cpuG]);
             hide(S.nodeGpu); hide(S.nodeSw);
-            hide(kids(S.nodePara)[2]);
+            hide(S.nodeLn[2]);
             hide(kids(S.foxLines));
             zeroBars(S.bwBars);
           }).then(function () {
@@ -1044,7 +1086,7 @@
             /* beat 2: the NIC and the 9x cliff */
             ctx.hud('NVLink 450 GB/s vs NIC 50 GB/s = 9× cliff');
             ctx.reveal(S.nicG, { from: 'down', dur: 500 });
-            ctx.reveal(kids(S.nodePara)[2], { from: 'left', delay: 300 });
+            ctx.reveal(S.nodeLn[2], { from: 'left', delay: 300 });
             ctx.reveal(S.bwCard, { from: 'left', dur: 500 });
             return grow(ctx, S.bwBars, 700, 150, 300).then(function () {
               ctx.reveal(S.cliffTxt, { from: 'up' });
@@ -1068,17 +1110,17 @@
             say: 'Now zoom into one GPU. The H100 die is organized as eight graphics processing clusters holding one hundred forty four streaming multiprocessors, of which one hundred thirty two are enabled. The rest are fused off for yield.',
             card: { tag: 'NUMBERS', title: 'Binned for yield', stat: { v: '132 / 144', u: 'SMs', l: 'enabled on the H100 SXM5 (66 of 72 TPCs); each SM carries 4 tensor cores' } },
             deep: '<p><b>GH100</b>: 8 GPCs × 9 TPCs × 2 SMs = 144 SMs on the die; the H100 SXM5 ships with 132 enabled (66 TPCs). 80 B transistors, TSMC 4N, ~814 mm², 700 W.</p>' +
-              '<p>The die sits close to the reticle limit, so some defective units per wafer are unavoidable: fusing off bad TPCs is what makes the part manufacturable. The pale dashed columns in the picture are the fused-off units; the GigaThread engine at the top hands thread blocks to whichever SMs are free.</p>'
+              '<p>The die sits close to the reticle limit, so some defective units per wafer are unavoidable: fusing off bad TPCs is what makes the part manufacturable. The pale dashed columns in the picture are the fused-off units (their placement here is illustrative); the GigaThread engine at the top hands thread blocks to whichever SMs are free.</p>'
           },
           {
             say: 'Between the clusters sits a fifty megabyte L2 cache, split into two partitions. Every byte that reaches an SM from memory passes through it, which makes it the shared staging area for all one hundred thirty two SMs.',
-            card: { tag: 'NUMBERS', title: 'The chip-wide cache', stat: { v: '50 MB', l: 'L2 cache: two 25 MB partitions joined by a crossbar; a far-partition hit costs extra latency' } },
-            deep: '<p>The L2 is the chip-wide point of coherence and sits between HBM and every SM. A K,V tile fetched by one CTA is served to the next CTA from L2 instead of HBM. That reuse is why FlashAttention-3 on a video DiT beats the naive roofline (see the Roofline step).</p>' +
+            card: { tag: 'NUMBERS', title: 'The chip-wide cache', stat: { v: '50 MB', l: 'L2 cache in two partitions behind a crossbar; a far-partition hit takes nearly twice as long in microbenchmarks' } },
+            deep: '<p>The L2 is the chip-wide point of coherence and sits between HBM and every SM. A K,V tile fetched by one CTA is served to the next CTA from L2 instead of HBM. That reuse is what lets FlashAttention-3 on a long video sequence sit well above its per-tile roofline point (see the Roofline step).</p>' +
               '<p>Physically the L2 is two partitions. Data resident in the “far” partition pays extra latency and crossbar bandwidth. CUDA exposes residency control (persisting access-policy windows) so a kernel can pin hot data, for example shared KV blocks, in L2.</p>'
           },
           {
             say: 'Around the die, five stacks of HBM3 deliver eighty gigabytes at three point three five terabytes per second, through ten memory controllers on a five thousand bit wide bus.',
-            card: { tag: 'NUMBERS', title: 'Memory bandwidth', stat: { v: '3.35', u: 'TB/s', l: 'HBM3: five 16 GB stacks on a 5,120-bit bus; the sixth site is a dummy spacer' } },
+            card: { tag: 'NUMBERS', title: 'Memory bandwidth', stat: { v: '3.35', u: 'TB/s', l: 'HBM3: five 16 GB stacks on a 5,120-bit bus; the full GH100 has a sixth site, unused here' } },
             deep: '<div class="eq">5 stacks × 1,024 bit = 5,120 bit  ·  5,120 × 5.23 Gb/s ÷ 8 ≈ 3.35 TB/s</div>' +
               '<p>Each HBM3 stack is an 8-high pile of DRAM dies on a base die, 16 GB behind a 1,024-bit interface, sitting on a silicon interposer (CoWoS) next to the GPU die. That 2.5D packaging is what makes thousands of wires per stack possible, and it is also why HBM capacity is the scarcest resource in LLM inference: the KV cache competes with weights for these 80 GB.</p>'
           },
@@ -1087,12 +1129,12 @@
             card: { tag: 'NUMBERS', title: 'Peak tensor throughput', stat: { v: '989', u: 'TFLOP/s', l: 'dense BF16; FP8 doubles it to 1,979, and structured sparsity doubles both' },
               more: '<p>A tensor core retires 512 BF16 fused multiply-adds per clock, that is 1,024 FLOP (one multiply and one add each). Per SM: 4 × 1,024 = 4,096 FLOP per clock. The 1.83 GHz is the clock implied by the datasheet peak; under a 700 W power cap real kernels often run lower.</p>' },
             deep: '<div class="eq">π<sub>BF16</sub> = 132 SM × 4 TC × 1,024 FLOP/clk × 1.83 GHz ≈ 989 TFLOP/s</div>' +
-              '<p>(1,024 FLOP/clk = 512 dense BF16 FMAs per tensor core per clock; FP8 doubles it to 1,979 TF. The 1.83 GHz is the clock implied by the datasheet peak.) Datasheet peaks assume the tensor cores are fed every cycle; a real GEMM reaches 70–80% of it, and a whole model step typically 35–50% MFU.</p>' +
-              '<p>Compare with the FP32 CUDA-core path: 16,896 lanes × 2 FLOP × 1.83 GHz ≈ 62 TFLOP/s. The tensor cores are 16× faster, which is why every performance-critical kernel is written to hit them.</p>'
+              '<p>(1,024 FLOP/clk = 512 dense BF16 FMAs per tensor core per clock; FP8 doubles it to 1,979 TF. The 1.83 GHz is the clock implied by the datasheet peak.) Datasheet peaks assume the tensor cores are fed every cycle; a well-tuned kernel reaches roughly 70–75% of it (FlashAttention-3 reports 740 TFLOP/s in FP16), and a whole training step typically 35–50% MFU (Llama 3 405B reports 38–43% on H100).</p>' +
+              '<p>Compare with the FP32 CUDA-core path: 16,896 lanes × 2 FLOP × 1.83 GHz ≈ 62 TFLOP/s (the datasheet says 67, at the 1.98 GHz boost clock). The tensor cores are roughly 15× faster, which is why every performance-critical kernel is written to hit them.</p>'
           },
           {
             say: 'Newer parts keep the recipe and change the numbers. H200 keeps the same compute but swaps in HBM3e: one hundred forty one gigabytes at four point eight terabytes per second. B200 joins two dies with a ten terabyte per second link and adds four bit tensor cores.',
-            card: { tag: 'STATE OF THE ART', title: 'Same recipe, more bytes', body: 'H200 adds 43% bandwidth for identical FLOPs, which speeds up memory-bound decode. B200 doubles dense BF16 and adds FP4.' },
+            card: { tag: 'STATE OF THE ART', title: 'Same recipe, more bytes', body: 'H200 adds 43% bandwidth for identical FLOPs, which speeds up memory-bound decode. B200 more than doubles dense BF16 and adds FP4.' },
             deep: '<table><tr><th>Part</th><th>HBM</th><th>BW</th><th>Dense BF16</th></tr>' +
               '<tr><td>H100 SXM5</td><td>80 GB HBM3</td><td>3.35 TB/s</td><td>989 TF</td></tr>' +
               '<tr><td>H200</td><td>141 GB HBM3e</td><td>4.8 TB/s</td><td>989 TF</td></tr>' +
@@ -1123,7 +1165,7 @@
             return ctx.reveal(S.gpcs, { from: 'fade', stagger: 90, dur: 400 }).then(function () { return ctx.pulse(S.gpcs[0], { color: 'red', dur: 700 }); });
           }).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: the L2 cache */
-            ctx.hud('L2 cache: 2 × 25 MB between HBM and SMs');
+            ctx.hud('L2: 50 MB, 2 partitions, between HBM and SMs');
             fit(ctx, S.dieCard, 156);
             ctx.reveal(kids(S.dieLines)[2], { from: 'left' });
             return ctx.reveal(S.l2G, { dur: 500 }).then(function () {
@@ -1165,7 +1207,7 @@
           },
           {
             say: 'Each sub-partition has its own warp scheduler, a sixty four kilobyte slice of the register file, thirty two FP32 lanes, and one tensor core. Add the four slices and the register file is as large as the L1, and it is where every operand lives.',
-            card: { tag: 'NUMBERS', title: 'Registers are the biggest memory', stat: { v: '256 KB', l: 'register file per SM (4 × 64 KB), as large as L1 and shared memory together' } },
+            card: { tag: 'NUMBERS', title: 'Registers match L1 in size', stat: { v: '256 KB', l: 'register file per SM (4 × 64 KB), as large as L1 and shared memory together' } },
             deep: '<p>Each SMSP issues <b>one warp-instruction per clock</b> and owns 16,384 × 32-bit registers (64 KB), 32 FP32 lanes, 16 INT32, 16 FP64, one fourth-generation tensor core, 8 load/store units and 4 special-function units (exp, rsqrt, sin).</p>' +
               '<div class="eq">registers per SM = 4 × 16,384 × 4 B = 256 KB  ·  FP32 lanes per SM = 4 × 32 = 128</div>' +
               '<p>A thread can use at most 255 registers, and the more it uses the fewer warps fit on the SM (see the last beat). Register operands are the only near-free access; everything else is a memory operation with latency.</p>'
@@ -1178,15 +1220,15 @@
           },
           {
             say: 'With enough warps resident the latency disappears; with too few, the issue slot sits idle. In this simulation twelve warps keep the scheduler busy every cycle, while four warps leave it half empty.',
-            card: { tag: 'NUMBERS', title: 'Twelve warps versus four', stat: { v: '100% vs 50%', l: 'issue-slot utilisation with 12 versus 4 resident warps (10–16 cycle stalls)' } },
+            card: { tag: 'NUMBERS', title: 'Twelve warps versus four', stat: { v: '100%', u: 'vs 50%', l: 'issue-slot utilisation with 12 versus 4 resident warps (10–16 cycle stalls)' } },
             deep: '<p>With W warps the pipe stays full while the other warps’ bursts cover one warp’s stall:</p>' +
               '<div class="eq">utilisation ≈ min(1, W · burst / (burst + stall))  →  W ≳ (2 + 13) / 2 ≈ 8</div>' +
-              '<p>Twelve warps clear that with margin, four cover only about half of the stall (4 × 2 / 15 ≈ 53%). Real HBM latency is ~0.5 µs ≈ 900 clocks, so the number of independent memory operations in flight needed scales up by roughly two orders of magnitude, from warps per SMSP to bytes per SM.</p>'
+              '<p>Twelve warps clear that with margin, four cover only about half of the stall (4 × 2 / 15 ≈ 53%). Loaded HBM latency is of order 0.5 µs ≈ 900 clocks (idle pointer-chase measurements are lower: about 480 clocks, roughly 0.27 µs, in published microbenchmarks of an H800), so the number of independent memory operations in flight needed scales up by roughly two orders of magnitude, from warps per SMSP to bytes per SM.</p>'
           },
           {
-            say: 'How many warps is enough? Little’s law says the bytes in flight equal bandwidth times latency: about one point seven megabytes across the chip, thirteen kilobytes on every SM, at every instant. Registers cap the warp count, so Hopper’s TMA keeps those bytes in flight without holding registers.',
-            card: { tag: 'NUMBERS', title: 'Bytes that must stay in flight', stat: { v: '≈ 13 KB', l: 'outstanding on every SM, always, to saturate 3.35 TB/s at ~0.5 µs latency' },
-              more: '<p>Little’s law: L = λ · W. Here λ is the memory bandwidth (3.35 TB/s) and W the load latency (~0.5 µs), so L = 3.35e12 × 0.5e-6 ≈ 1.7 MB in flight across the chip, or 1.7 MB ÷ 132 ≈ 13 KB per SM. A 128-bit load per thread of one full warp is only 512 B, so ~26 such warp-loads must be outstanding per SM.</p>' },
+            say: 'How many warps is enough? Little’s law says the bytes in flight equal bandwidth times latency. Assume about half a microsecond: that is roughly one point seven megabytes across the chip, thirteen kilobytes on every SM, at every instant. Registers cap the warp count, so Hopper’s TMA keeps those bytes in flight without holding registers.',
+            card: { tag: 'NUMBERS', title: 'Bytes that must stay in flight', stat: { v: '≈ 13 KB', l: 'outstanding on every SM, always, to saturate 3.35 TB/s at an assumed ~0.5 µs loaded latency' },
+              more: '<p>Little’s law: L = λ · W. Here λ is the memory bandwidth (3.35 TB/s) and W the load latency (~0.5 µs), so L = 3.35e12 × 0.5e-6 ≈ 1.7 MB in flight across the chip, or 1.7 MB ÷ 132 ≈ 13 KB per SM. A 128-bit load per thread of one full warp is only 512 B, so about 25 such warp-loads must be outstanding per SM. The 0.5 µs is an assumed effective, loaded latency (idle pointer-chase measurements are lower), so read 13 KB as an order of magnitude.</p>' },
             deep: '<div class="eq">occupancy = resident warps / 64  ·  warps ≤ 65,536 / (32 · regs per thread)</div>' +
               '<div class="eq">Little: bytes in flight = β × latency = 3.35 TB/s × 0.5 µs ≈ 1.7 MB ≈ 13 KB per SM</div>' +
               '<p>65,536 registers per SM: at 128 registers per thread only 16 warps fit, at 255 only 8. Hopper decouples bytes-in-flight from occupancy: <b>TMA</b> bulk copies and <code>cp.async</code> put bytes in flight without holding registers, so a GEMM with only 1–2 CTAs per SM (low occupancy, huge tiles) can still saturate HBM. Occupancy is a means, not the goal.</p>'
@@ -1249,8 +1291,8 @@
           {
             say: 'This is the programming model the scheduler serves. A kernel launch creates a grid of thread blocks, and each block is scheduled independently onto whichever SM has room.',
             card: { tag: 'KEY IDEA', title: 'Grid, block, warp, lane', body: 'Four nested levels: the grid spans the GPU, a block owns one SM, a warp is the unit of issue, and a lane is one thread.' },
-            deep: '<p><b>SIMT hierarchy</b>: grid → thread-block clusters (Hopper: ≤ 8 portable / 16 non-portable CTAs, with distributed shared memory) → CTAs (≤ 1,024 threads, one SM for life) → warps (32 threads, one program counter for issue) → lanes.</p>' +
-              '<p>Blocks of a grid may run in any order on any SM, with no ordering guarantee. That independence lets the same kernel scale from a 16-SM laptop GPU to a 132-SM H100 without recompiling. The amber cell is one block; for the fox QKV GEMM the grid is (60, 591) blocks.</p>'
+            deep: '<p><b>SIMT hierarchy</b>: grid → thread-block clusters (Hopper: ≤ 8 portable / 16 non-portable CTAs, with distributed shared memory) → CTAs (≤ 1,024 threads, one SM for life) → warps (32 threads issued together) → lanes.</p>' +
+              '<p>Blocks of a grid may run in any order on any SM, with no ordering guarantee. That independence lets the same kernel scale from a 16-SM laptop GPU to a 132-SM H100 without changing the source. The amber cell is one block; for the fox QKV GEMM the grid is (60, 591) blocks.</p>'
           },
           {
             say: 'Each block runs on one SM for its whole life and shares that SM’s fast shared memory. The hardware slices the block into warps of thirty two threads that execute one instruction together.',
@@ -1273,9 +1315,10 @@
               '<p>In the picture, wave one fills all 132 SMs; when it finishes, only 8 blocks are left, so 124 SMs idle for a whole wave. The same effect shows up whenever a grid is just slightly larger than a multiple of the SM count.</p>'
           },
           {
-            say: 'For a real GEMM this rarely bites. The fox trailer’s QKV projection launches over thirty five thousand blocks, about two hundred sixty nine waves, so the tail wastes a fraction of a percent. Small grids, like decode GEMMs, are where persistent kernels and Stream-K earn their keep.',
-            card: { tag: 'NUMBERS', title: 'Big grids hide the tail', stat: { v: '0.15%', l: 'tail waste in the fox QKV GEMM: 35,460 tiles = 268.6 waves on 132 SMs' } },
-            deep: '<p>For the fox shot’s QKV GEMM (M = 75,600, N = 15,360, K = 5,120) with 128×256 tiles, T = 591 × 60 = 35,460 → 268.6 waves; tail loss ≈ 0.4 / 269 ≈ 0.15%. Decode GEMMs with a handful of tiles are where it bites.</p>' +
+            say: 'For a real GEMM this rarely bites. The fox trailer’s QKV projection launches over thirty five thousand blocks, about two hundred sixty nine waves, so the tail wastes a fraction of a percent. Small grids, like decode GEMMs, are where persistent kernels and Stream-K earn their keep. Click the grid of SMs to try other launch sizes.',
+            card: { tag: 'TRY IT', title: 'Resize the launch', body: 'Click the SM grid to cycle launch sizes. 264 blocks leave no tail, 268 runs a third wave of just 4 blocks, and the fox GEMM’s 35,460 tiles waste about 0.14%.' },
+            deep: '<p>For the fox shot’s QKV GEMM (M = 75,600, N = 15,360, K = 5,120) with 128×256 tiles, T = 591 × 60 = 35,460 → 268.6 waves; the tail wastes (269 − 268.6) / 269 ≈ 0.14% of SM-time. Decode GEMMs with a handful of tiles are where it bites.</p>' +
+              '<p>The SM grid on the stage is now live: each click re-launches with another block count, T = 140, 264, 268, 1,000, 35,460, and recomputes the last wave and the efficiency T / (132 · ⌈T/132⌉): 53%, 100%, 68%, 95%, 99.9%.</p>' +
               '<p><b>Stream-K</b> (Osama et al.) splits the K-loop across SMs so every SM gets equal work; <b>persistent kernels</b> launch exactly one CTA per SM and loop over tiles, overlapping one tile’s epilogue with the next tile’s mainloop; <b>split-K</b> trades a reduction for parallelism. Hopper clusters let up to 16 CTAs share DSMEM.</p>'
           }
         ],
@@ -1285,7 +1328,7 @@
           ctx.hud('warp = 32 threads · CTA → 1 SM · waves of 132');
           return zoomInto(ctx, S, 378, 243, 7, function (g) {
             buildSIMT(ctx, S, g);
-            hide([S.ctaCard, S.warpCard, S.waveCard, S.gemmCard, S.wire1, S.wire2, S.blocks, S.divNote]);
+            hide([S.ctaCard, S.warpCard, S.waveCard, S.gemmCard, S.wire1, S.wire2, S.blocks, S.divNote, S.waveHint]);
             hide(S.maskRows);
             hide(kids(S.gemmLines));
           }).then(function () {
@@ -1314,6 +1357,17 @@
             /* beat 4: the fox GEMM has 269 waves */
             ctx.hud('fox QKV GEMM: 35,460 CTAs = 268.6 waves');
             ctx.reveal(S.gemmCard, { from: 'up', dur: 500 });
+            ctx.reveal(S.waveHint, { from: 'up', delay: 300 });
+            /* the SM grid is now clickable: cycle through launch sizes and recompute the tail */
+            S.waveSizes = [140, 264, 268, 1000, 35460];
+            S.waveIdx = 0;
+            S.smGrid.style.cursor = 'pointer';
+            S.smGrid.addEventListener('click', function () {
+              S.waveIdx = (S.waveIdx + 1) % S.waveSizes.length;
+              var T = S.waveSizes[S.waveIdx];
+              showLaunch(ctx, S, T);
+              ctx.hud('launch ' + T.toLocaleString('en-US') + ' CTAs: ' + S.effT.textContent + ' of SM-time used');
+            });
             return ctx.reveal(kids(S.gemmLines), { from: 'left', stagger: 200, delay: 300 });
           });
         }
@@ -1325,7 +1379,7 @@
           {
             say: 'At the bottom of the zoom is the tensor core. It computes a small matrix multiply and accumulate, D equals A times B plus C, as a single hardware operation, with low precision inputs and full precision accumulators.',
             card: { tag: 'KEY IDEA', title: 'A matrix unit, not a vector unit', body: 'One instruction retires a whole tile: inputs in BF16 or FP8, accumulation in FP32. This is where nearly all of a transformer’s FLOPs run.' },
-            deep: '<p>A GEMM <code>D[M,N] = A[M,K]·B[K,N] + C</code> is tiled three times: a CTA tile (for example 128×256) lives in shared memory, a warpgroup tile (64×256) is one <code>wgmma</code>, and K is consumed in slices of 16. Inputs are BF16, FP16 or FP8; accumulation is FP32, so summing K = 5,120 products loses no bits to rounding.</p>' +
+            deep: '<p>A GEMM <code>D[M,N] = A[M,K]·B[K,N] + C</code> is tiled three times: a CTA tile (for example 128×256 of D) is fed from shared memory, a warpgroup tile (64×256) is one <code>wgmma</code>, and K is consumed in slices of 16. Inputs are BF16, FP16 or FP8; accumulation is FP32 (a 24-bit significand), which keeps rounding error small for BF16 inputs even when summing K = 5,120 products (FP8 inputs need extra care, see the last beat).</p>' +
               '<p>The three matrices are drawn scaled down (8×4 and 4×8) so the arithmetic is visible; the true shapes are printed under them.</p>'
           },
           {
@@ -1343,7 +1397,7 @@
           {
             say: 'A dedicated copy engine, the TMA, streams tiles from HBM into a ring of shared memory buffers so the tensor cores never wait. One producer warp issues the copies while consumer warpgroups run the math.',
             card: { tag: 'HOW IT WORKS', title: 'Copy and math overlap', body: 'Full and empty flags hand each ring slot between producer and consumers, so HBM latency hides behind the MMA of the previous tile.' },
-            deep: '<p><b>Warp specialization</b> (CUTLASS 3, FlashAttention-3): a producer warp issues TMA copies into a 3–5 stage SMEM ring; consumer warpgroups run <code>wgmma</code> and the epilogue. <code>mbarrier</code> “full/empty” flags per stage let copy and math overlap almost perfectly, the only way to reach more than 70% of the 989 TF peak.</p>' +
+            deep: '<p><b>Warp specialization</b> (CUTLASS 3, FlashAttention-3): a producer warp issues TMA copies into a 3–5 stage SMEM ring; consumer warpgroups run <code>wgmma</code> and the epilogue. <code>mbarrier</code> “full/empty” flags per stage let copy and math overlap almost perfectly, the standard way to reach more than 70% of the 989 TF peak.</p>' +
               '<pre>for kt in range(K // 64):  # consumer\n  wait(full[s])\n  wgmma(A[s], B[s], acc)\n  arrive(empty[s])\n  s = (s + 1) % STAGES</pre>' +
               '<p>Hopper’s <code>setmaxnreg</code> lets the register-light producer donate registers to the consumers, which need the large accumulator tiles.</p>'
           },
@@ -1351,7 +1405,8 @@
             say: 'Every halving of precision doubles the rate. Blackwell adds tensor memory, single thread issue, and block scaled four bit floating point, for roughly nine thousand dense teraflops per GPU.',
             card: { tag: 'STATE OF THE ART', title: 'FP4 with block scales', stat: { v: '~9,000', u: 'TFLOP/s', l: 'dense FP4 on B200: 2× FP8, 4× BF16, with a scale factor per 16 values' } },
             deep: '<p><b>Precision</b>: inputs BF16/FP16 → FP32 accumulate; FP8 E4M3/E5M2 doubles throughput (per-tensor or per-block scales). Blackwell <code>tcgen05.mma</code> is issued by one thread, accumulates in 256 KB of <b>Tensor Memory</b> per SM (freeing registers), supports 2-SM cooperative MMA, and adds block-scaled <b>NVFP4</b> (16-value blocks, E4M3 scale plus an FP32 tensor scale) and OCP <b>MX</b> formats (32-value blocks, E8M0 scale).</p>' +
-              '<p>The trade-off is accuracy: FP4 has only 8 representable magnitudes per value, so the block scale carries most of the dynamic range and quantization-aware recipes are needed. Blackwell numbers are dense; NVIDIA’s headline figures double them with 2:4 sparsity.</p>'
+              '<p>The trade-off is accuracy: FP4 has only 8 representable magnitudes per value, so the block scale carries most of the dynamic range and quantization-aware recipes are needed. Blackwell numbers are dense; NVIDIA’s headline figures double them with 2:4 sparsity.</p>' +
+              '<details><summary>Go deeper</summary><p>Low-precision inputs do not guarantee FP32 accumulation. The DeepSeek-V3 report measured that Hopper’s FP8 tensor-core accumulator keeps only about 14 mantissa bits, giving a maximum relative error near 2% in a K = 4,096 test. Their fix is to promote the partial sums into FP32 registers every 128 elements of K (four wgmma steps), at a small cost in issue slots.</p></details>'
           }
         ],
         run: function (ctx) {
@@ -1428,15 +1483,15 @@
             deep: '<table><tr><th>Kernel</th><th>I</th><th>Bound</th></tr>' +
               '<tr><td>LLM prefill GEMM, 8k tokens</td><td>≈ 2,731</td><td>compute</td></tr>' +
               '<tr><td>DiT QKV GEMM, 75.6k tokens</td><td>≈ 3,650</td><td>compute</td></tr>' +
-              '<tr><td>DiT attention (FA3)</td><td>128 → effective &gt; 295</td><td>compute, via L2 reuse</td></tr></table>' +
+              '<tr><td>DiT attention (FA3)</td><td>128 per tile; ≈ N/2 with L2 reuse</td><td>compute</td></tr></table>' +
               '<p>Consequences for the video system: the <b>LLM agents</b> (decode) are priced in HBM bytes, so batching, quantized weights and KV compression pay off; the <b>video DiT</b> is priced in FLOPs, so FP8 GEMMs, sparse or sliding-window attention, fewer sampling steps and caching pay off. Same GPU, opposite optimizations; hence separate serving pools.</p>'
           },
           {
-            say: 'Newer parts move the roofs. H200 adds bandwidth and pulls the ridge left, while Blackwell raises the peak and pushes it right. Click any point to see how its intensity is derived.',
+            say: 'Newer parts move the roofs. H200 adds bandwidth and pulls the ridge left, while Blackwell raises the peak, and at four bit precision pushes the ridge far to the right. Click any point to see how its intensity is derived.',
             card: { tag: 'TRY IT', title: 'Click a kernel', body: 'Click any dot or table row to see how its arithmetic intensity is derived and what would move it toward the roof.' },
             deep: '<p>The roofline is an <b>upper bound</b>. Real kernels also hit an L2 or SMEM roofline, instruction-issue limits, tail effects and power-capped clocks, so the achieved point sits below the roof even for well-tuned code.</p>' +
               '<p>Reading the chart: moving a point <i>up</i> at fixed I means better use of bandwidth (coalescing, overlap); moving it <i>right</i> means more reuse (bigger tiles, fusion, batching, KV compression). Fusing the residual add into a GEMM epilogue is the classic move from point 1 toward the right.</p>' +
-              '<div class="note">The hollow dot is FlashAttention-3: it streams K,V tiles that ~132 co-resident CTAs re-read, so L2 serves most of the traffic and the effective intensity crosses the ridge.</div>'
+              '<div class="note">The hollow dot is FlashAttention-3. Per tile it sits at I ≈ 128, but one head’s K and V (2 × 75,600 × 128 × 2 B ≈ 39 MB) can sit in the 50 MB L2 (a best case: the L2 is two partitions) and every CTA of that head re-reads them from there. HBM then sees roughly Q, K, V in and O out once: I ≤ 4N²d<sub>h</sub> / 8Nd<sub>h</sub> = N/2, far past the ridge.</div>'
           }
         ],
         run: function (ctx) {
@@ -1452,6 +1507,7 @@
             return ctx.pulse(S.eqCard, { color: 'red', dur: 800 });
           }).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: the H100 roof and its ridge */
+            fit(ctx, S.eqCard, 114);
             return Promise.all([
               ctx.reveal(S.roofPaths[0], { from: 'draw', dur: 900 }),
               ctx.reveal(S.roofLegs[0], { delay: 500 }),
@@ -1464,6 +1520,7 @@
             ctx.reveal(S.listCard, { from: 'left', dur: 500 });
             ctx.reveal(S.detail, { from: 'up', delay: 300, dur: 500 });
             ctx.reveal(S.rows.slice(0, 4), { from: 'left', stagger: 150, delay: 300 });
+            for (var w = 0; w < 4; w++) S.wireKernel(w);
             S.pts.slice(0, 4).forEach(function (pg, i) {
               pg.setAttribute('opacity', 0);
               ctx.tween(700, function (t) {
@@ -1476,6 +1533,7 @@
             /* beat 3: prefill and DiT on the flat roof */
             ctx.hud('video DiT: I ≈ 3,650 → on the compute roof');
             ctx.reveal(S.rows.slice(4), { from: 'left', stagger: 150 });
+            for (var w = 4; w < 7; w++) S.wireKernel(w);
             S.pts.slice(4).forEach(function (pg, i) {
               pg.setAttribute('opacity', 0);
               ctx.tween(700, function (t) {
@@ -1487,6 +1545,7 @@
           }).then(function () { return ctx.beat(4); }).then(function () {
             /* beat 4: newer parts move the roofs; the chart is clickable */
             ctx.hud('H200 ridge ≈ 206 · B200 FP4 ridge ≈ 1,125');
+            fit(ctx, S.eqCard, 142);
             ctx.reveal(S.ridgeTxt2, { from: 'left' });
             return Promise.all([
               ctx.reveal(S.roofPaths.slice(1), { from: 'draw', stagger: 250, dur: 800 }),
@@ -1500,8 +1559,8 @@
         title: 'Scale-out fabric',
         beats: [
           {
-            say: 'Beyond the NVLink domain, GPUs talk over a scale-out fabric. Bandwidth falls off a cliff at every boundary: local HBM, then NVLink, then PCIe, then the network card.',
-            card: { tag: 'NUMBERS', title: 'Each hop is a cliff', stat: { v: '9–18×', l: 'less bandwidth per GPU once traffic leaves the NVLink domain (NVLink 4 or 5 against a 400G NIC)' } },
+            say: 'Beyond the NVLink domain, GPUs talk over a scale-out fabric. Bandwidth steps down sharply as data moves away from the GPU: local HBM, then NVLink, then PCIe and the network card.',
+            card: { tag: 'NUMBERS', title: 'Every hop costs bandwidth', stat: { v: '9–18×', l: 'less bandwidth per GPU once traffic leaves the NVLink domain (NVLink 4 or 5 against a 400G NIC)' } },
             deep: '<table><tr><th>Link (per direction)</th><th>GB/s</th></tr>' +
               '<tr><td>HBM3e, B200</td><td>~8,000</td></tr>' +
               '<tr><td>HBM3, H100</td><td>3,350</td></tr>' +
@@ -1509,26 +1568,26 @@
               '<tr><td>InfiniBand XDR 800G NIC</td><td>100</td></tr>' +
               '<tr><td>PCIe Gen5 x16</td><td>~64</td></tr>' +
               '<tr><td>InfiniBand NDR 400G NIC</td><td>50</td></tr></table>' +
-              '<p>The bars use a log scale, so every step down the ladder is a factor of two to twenty. NVLink 5 against an NDR card is 18×; against an XDR card, 9×. Four of many nodes are shown below, each with eight GPUs and its own NVSwitch.</p>'
+              '<p>The bars use a log scale, so each step down the ladder loses a factor of roughly 1.3 to 4.5, and the whole ladder spans more than two orders of magnitude. NVLink 5 against an NDR card is 18×; against an XDR card, 9×. Four of many nodes are shown below, each with eight GPUs and its own NVSwitch.</p>'
           },
           {
             say: 'Each GPU has its own network card, and GPUDirect RDMA lets that card read and write GPU memory directly over PCIe, without the CPU and without a bounce through host memory.',
             card: { tag: 'HOW IT WORKS', title: 'The NIC reads HBM directly', body: 'The card DMAs straight from GPU memory across a PCIe peer-to-peer path. No staging copy in host DRAM, no CPU on the data path.' },
             deep: '<ul><li><b>GPUDirect RDMA</b>: the NIC DMA-reads and writes HBM through PCIe peer-to-peer (BAR mapping); no staging in host DRAM, no CPU on the data path.</li>' +
-              '<li><b>GPUDirect Async / IBGDA</b> goes further: GPU threads ring the NIC doorbell themselves, so the CPU proxy disappears from the critical path. DeepEP uses this for the MoE all-to-all.</li></ul>' +
+              '<li><b>GPUDirect Async / IBGDA</b> goes further: GPU threads ring the NIC doorbell themselves, so the CPU proxy disappears from the critical path. DeepEP’s low-latency MoE all-to-all kernels are built on it.</li></ul>' +
               '<p>Putting the NIC behind the same PCIe switch as its GPU keeps the transfer off the CPU root complex, which is why each GPU has a dedicated 400 Gb/s ConnectX-7.</p>'
           },
           {
             say: 'The fabric is rail optimized: GPU zero of every node plugs into leaf switch zero, GPU one into leaf one, and so on. Data parallel and pipeline traffic flows between same rank GPUs, so it crosses a single switch.',
             card: { tag: 'KEY IDEA', title: 'Rail k connects GPU k everywhere', body: 'Same-rank GPUs share a leaf switch, so the traffic that must cross nodes every step, DP and PP, travels one hop.' },
             deep: '<p><b>Rail-optimized fat-tree</b>: in a cluster of 8-GPU nodes, NIC k of every node connects to leaf (rail) switch k. Collectives are organized so that rank-k GPUs exchange data among themselves (NCCL rings and trees per rail), so almost all traffic is one hop and spine uplinks can be oversubscribed or even removed (“rail-only” designs).</p>' +
-              '<p>Meta’s 24k-GPU RoCE clusters and NVIDIA’s SuperPOD reference designs both follow this pattern. The amber lane, rail 3, is the one traced in the packet animation.</p>'
+              '<p>NVIDIA’s DGX SuperPOD reference designs follow this pattern, and “rail-only” network studies argue the spine can be dropped for most LLM-training traffic once collectives are rail-aware. The amber lane, rail 3, is the one traced in the packet animation.</p>'
           },
           {
             say: 'Traffic between different rails must climb to the spine, taking three switch hops and sharing uplinks, unless NCCL first moves it across NVLink to a GPU on the right rail. That trick is called PXN.',
             card: { tag: 'TRADE-OFF', title: 'PXN spends NVLink to save hops', body: 'Cross-rail data hops over cheap NVLink to the GPU on the destination rail, then takes one network hop instead of three.' },
             deep: '<ul><li><b>PXN</b> (PCI × NVLink): to reach GPU j on another node, NCCL first moves the data over NVLink to the local GPU j, then sends it on rail j, trading cheap NVLink bytes for spine hops.</li>' +
-              '<li><b>Transport</b>: InfiniBand NDR 400 Gb/s (ConnectX-7) → XDR 800 Gb/s (ConnectX-8), or RoCEv2 Ethernet (Spectrum-X, Meta’s clusters) with ECN/DCQCN or receiver-driven congestion control; Ultra Ethernet targets the same space.</li></ul>' +
+              '<li><b>Transport</b>: InfiniBand NDR 400 Gb/s (ConnectX-7) → XDR 800 Gb/s (ConnectX-8), or RoCEv2 Ethernet (Spectrum-X; Meta’s 24K-GPU Llama 3 cluster ran without DCQCN, using deep-buffer spines and E-ECMP load balancing); Ultra Ethernet targets the same space.</li></ul>' +
               '<div class="eq">NVLink4 450 GB/s/dir ÷ NDR 50 GB/s/dir = 9×</div>' +
               '<p>Mapping rule this implies (see the Distributed Parallelism chamber): TP, SP and EP inside the NVLink domain, PP between neighbouring nodes, DP across rails.</p>'
           }
@@ -1544,9 +1603,11 @@
             hide(S.nodes);
             zeroBars(S.ladder);
           }).then(function () {
-            /* beat 0: the nodes and the bandwidth ladder */
+            /* beat 0: the nodes, the bandwidth ladder and a ghost of the switch fabric above the nodes */
             ctx.reveal(S.ladCard, { from: 'left', dur: 500 });
             ctx.reveal(S.nodes, { from: 'up', stagger: 150 });
+            ctx.reveal([S.spineG, S.leafG], { opacity: 0.3, stagger: 150, delay: 500 });
+            ctx.reveal([S.upLinks, S.downLinks], { opacity: 0.55, stagger: 150, delay: 700 });
             return grow(ctx, S.ladder, 700, 120, 400);
           }).then(function () { return ctx.beat(1); }).then(function () {
             /* beat 1: GPUDirect RDMA */
@@ -1559,9 +1620,7 @@
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: rails, same-rank traffic is one hop */
             ctx.hud('rail k ↔ leaf k: same rank = 1 switch hop');
-            ctx.reveal([S.spineG, S.leafG], { from: 'fade', stagger: 200 });
-            ctx.reveal(S.upLinks, { delay: 500 });
-            ctx.reveal(S.downLinks, { delay: 300 });
+            ctx.fade([S.spineG, S.leafG, S.upLinks, S.downLinks], 1, 700);
             ctx.reveal(S.fabLines, { delay: 700 });
             ctx.reveal(kids(S.fabLines)[0], { from: 'left', delay: 900 });
             var same = [];
@@ -1601,14 +1660,16 @@
             say: 'One forward pass of a fourteen billion parameter transformer at that length costs about six point eight petaflops. More than two thirds of that is attention, because attention grows with the square of the token count.',
             card: { tag: 'NUMBERS', title: 'Attention dominates the forward', stat: { v: '69%', l: 'of forward FLOPs are attention (4.7 of 6.8 PFLOP), quadratic in tokens' } },
             deep: '<div class="eq">FLOP<sub>fwd</sub> ≈ 2·P·N + 4·N²·d·L = 2.1 + 4.7 ≈ 6.8 PFLOP</div>' +
-              '<p>The linear term (QKV, output and MLP projections, 2 FLOP per parameter per token) grows with N; the attention term 4·N²·d·L (QKᵀ and PV, 2 FLOP each) grows with N². At 75,600 tokens the quadratic term is 69% of the total, so cutting attention cost (FP8 attention, sparse or sliding-window spatiotemporal attention) pays off more than shrinking the MLP.</p>'
+              '<p>The linear term (QKV, output and MLP projections, 2 FLOP per parameter per token) grows with N; the attention term 4·N²·d·L (QKᵀ and PV, 2 FLOP each) grows with N². At 75,600 tokens the quadratic term is 69% of the total, so cutting attention cost (FP8 attention, sparse or sliding-window spatiotemporal attention) pays off more than shrinking the MLP.</p>' +
+              '<details><summary>Go deeper</summary><p>2·P·N slightly over-counts, because the text keys and values are projected once for 512 text tokens, not 75,600. A per-block count (self-attention, cross-attention queries and output, the 13,824-wide FFN) gives about 45 TFLOP of linear work plus 117 TFLOP of attention: 163 TFLOP per block, 6.5 PFLOP per forward, attention at 72%. Both roundings land on about 0.7 EFLOP per shot.</p></details>'
           },
           {
             say: 'Fifty sampling steps with classifier free guidance make it about zero point seven exaflops: three and a half minutes on eight H100s, or about a minute and a half on eight B200s. Distilled to four steps with no guidance, the same shot takes seconds.',
             card: { tag: 'STATE OF THE ART', title: 'Distillation is the biggest lever', stat: { v: '215 s → 8.6 s', l: 'one shot on 8 × H100: 50 CFG steps against a 4-step distilled student (25× fewer forwards)' },
               more: '<p>50 steps × 2 (conditional and unconditional branch for classifier-free guidance) = 100 forward passes. A 4-step student without guidance needs 4, a 25× reduction. On 8 × B200 the times are 94 s and 3.8 s. Step distillation costs quality headroom, so production stacks mix distilled previews with full-step final renders.</p>' },
             deep: '<div class="eq">FLOP<sub>shot</sub> ≈ 6.8 P × 50 steps × 2 (CFG) ≈ 0.68 EFLOP</div>' +
-              '<p>At 40% MFU on 8 × H100 (3.2 PFLOP/s effective) that is ≈ 215 s; on 8 × B200 (~2.25 PF dense each) ≈ 94 s. Beyond distillation, production stacks use FP8 attention (SageAttention / FA3-FP8), sparse or sliding-window attention and step-level feature caching. Text encoder and VAE decode are not included in these numbers.</p>'
+              '<p>At 40% MFU on 8 × H100 (3.2 PFLOP/s effective) that is ≈ 215 s; on 8 × B200 (~2.25 PF dense each) ≈ 94 s. Beyond distillation, production stacks use FP8 attention (SageAttention / FA3-FP8), sparse or sliding-window attention and step-level feature caching. Text encoder and VAE decode are not included in these numbers.</p>' +
+              '<p>The atlas’s running example, about 95 s of diffusion per shot on 8 GPUs, is close to the B200 row; on H100s, for this same 75,600-token shot, it corresponds to a sampler doing roughly 2.3× less work (guidance distillation, fewer steps, step caching); for the longer 111,600-token clip of the Video Generation Models chamber the gap is about 4×.</p>'
           },
           {
             say: 'Every level of this zoom sets one of those numbers. The tensor core sets utilization, the GPU decides memory bound or compute bound, the node and rack set the parallel degree, and the fabric sets how many shots run at once.',
@@ -1630,7 +1691,8 @@
           return ctx.fadeOut(old, 600, true).then(function () {
             var g = freshPage(ctx, S);
             buildBudget(ctx, S, g);
-            hide([S.tcCard, S.ldCard, S.flopG]);
+            soften(ctx, g);
+            hide([S.tcCard, S.ldCard, S.flopG, S.tNote]);
             hide(S.tRows);
             hide(S.ribbon); hide(S.ribLinks);
             zeroBars(S.tBars);
@@ -1649,6 +1711,8 @@
           }).then(function () { return ctx.beat(2); }).then(function () {
             /* beat 2: sampling, wall-clock, distillation */
             ctx.hud('one shot ≈ 0.68 EFLOP ≈ 3.6 min on 8×H100');
+            fit(ctx, S.tcCard, 404);
+            ctx.reveal(S.tNote, { delay: 600 });
             ctx.reveal(S.tRows, { from: 'left', stagger: 220, delay: 200 });
             var typed = typeBudget(ctx, S, 6, 10);
             return typed.then(function () { return grow(ctx, S.tBars, 800, 200, 0); });
